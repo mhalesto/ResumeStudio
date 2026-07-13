@@ -2,18 +2,20 @@
 
 ResumeStudio is a native SwiftUI app for building polished, export-ready resumes on iPhone and iPad.
 
-![ResumeStudio editor](docs/screenshots/editor.png)
+![ResumeStudio home screen](docs/screenshots/home.png)
 
 ## MVP features
 
 - Structured editing for personal details, profile, competencies, experience, education, and references
 - Automatic local draft persistence
 - Reordering and deletion of repeatable sections
-- Four accent colour themes
+- Three distinct PDF templates: Modern Executive, Classic Editorial, and Clean Minimal
+- Four accurately previewed accent colours
 - Data-driven, automatically paginated PDF generation
 - Live PDFKit preview
 - Files export and iOS share sheet support
-- Built-in Mandisa sample and blank-resume starting points
+- Built-in fictional example and blank-resume starting points
+- Versioned sample-data migration so legacy development data is not retained
 
 ## Architecture
 

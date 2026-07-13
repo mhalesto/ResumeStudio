@@ -2,13 +2,13 @@ import SwiftUI
 
 @main
 struct ResumeStudioApp: App {
-    @StateObject private var store = ResumeStore()
+  @StateObject private var store = ResumeStore()
 
-    var body: some Scene {
-        WindowGroup {
-            ResumeEditorView()
-                .environmentObject(store)
-                .tint(store.document.accent.color)
-        }
+  var body: some Scene {
+    WindowGroup {
+      RootView()
+        .environmentObject(store)
+        .tint(store.document.accent.color)
     }
+  }
 }
