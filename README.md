@@ -9,7 +9,7 @@ ResumeStudio is a native SwiftUI app for building polished, export-ready resumes
 - Structured editing for personal details, profile, competencies, experience, education, and references
 - Automatic local draft persistence
 - Reordering and deletion of repeatable sections
-- Three distinct PDF templates: Modern Executive, Classic Editorial, and Clean Minimal
+- Thirteen distinct PDF templates, from Modern Executive and Classic Editorial to Tech Grid and Timeline Focus
 - Four accurately previewed accent colours
 - Data-driven, automatically paginated PDF generation
 - Live PDFKit preview

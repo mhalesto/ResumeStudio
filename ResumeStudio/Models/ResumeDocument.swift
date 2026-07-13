@@ -236,6 +236,16 @@ enum ResumeTemplate: String, CaseIterable, Codable, Identifiable {
   case modern
   case classic
   case minimal
+  case contemporary
+  case corporate
+  case elegant
+  case nordic
+  case creative
+  case technical
+  case compact
+  case academic
+  case timeline
+  case monochrome
 
   var id: String { rawValue }
 
@@ -244,6 +254,16 @@ enum ResumeTemplate: String, CaseIterable, Codable, Identifiable {
     case .modern: "Modern Executive"
     case .classic: "Classic Editorial"
     case .minimal: "Clean Minimal"
+    case .contemporary: "Contemporary Split"
+    case .corporate: "Corporate Slate"
+    case .elegant: "Elegant Serif"
+    case .nordic: "Nordic Air"
+    case .creative: "Creative Blocks"
+    case .technical: "Tech Grid"
+    case .compact: "Compact Pro"
+    case .academic: "Academic CV"
+    case .timeline: "Timeline Focus"
+    case .monochrome: "Monochrome Ink"
     }
   }
 
@@ -252,6 +272,16 @@ enum ResumeTemplate: String, CaseIterable, Codable, Identifiable {
     case .modern: "Bold header and crisp section rules"
     case .classic: "Serif typography and timeless spacing"
     case .minimal: "Airy layout with subtle accents"
+    case .contemporary: "Asymmetric header with a split accent"
+    case .corporate: "Structured bands for leadership roles"
+    case .elegant: "Refined type with understated ornament"
+    case .nordic: "Generous whitespace and quiet detail"
+    case .creative: "Playful geometry with confident contrast"
+    case .technical: "Precise lines and modern technical type"
+    case .compact: "Dense, recruiter-friendly information"
+    case .academic: "Formal scholarly typography and hierarchy"
+    case .timeline: "Career storytelling with timeline details"
+    case .monochrome: "Black-and-white editorial confidence"
     }
   }
 
@@ -260,6 +290,16 @@ enum ResumeTemplate: String, CaseIterable, Codable, Identifiable {
     case .modern: "rectangle.topthird.inset.filled"
     case .classic: "text.book.closed.fill"
     case .minimal: "rectangle.inset.filled.and.person.filled"
+    case .contemporary: "rectangle.split.2x1.fill"
+    case .corporate: "building.2.fill"
+    case .elegant: "textformat"
+    case .nordic: "leaf.fill"
+    case .creative: "square.grid.2x2.fill"
+    case .technical: "chevron.left.forwardslash.chevron.right"
+    case .compact: "list.bullet.rectangle.fill"
+    case .academic: "graduationcap.fill"
+    case .timeline: "list.bullet.indent"
+    case .monochrome: "circle.lefthalf.filled"
     }
   }
 }

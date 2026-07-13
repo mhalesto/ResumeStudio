@@ -5,6 +5,11 @@ import XCTest
 
 @MainActor
 final class ResumeStudioTests: XCTestCase {
+  func testTemplateCatalogueContainsThirteenDistinctStyles() {
+    XCTAssertEqual(ResumeTemplate.allCases.count, 13)
+    XCTAssertEqual(Set(ResumeTemplate.allCases.map(\.title)).count, 13)
+  }
+
   func testEveryTemplateRendersSearchablePDF() throws {
     for template in ResumeTemplate.allCases {
       var source = ResumeDocument.example

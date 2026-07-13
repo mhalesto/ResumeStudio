@@ -105,7 +105,7 @@ struct HomeView: View {
         .buttonStyle(.plain)
 
         HStack(spacing: 18) {
-          FeatureMetric(value: "3", label: "Templates")
+          FeatureMetric(value: "\(ResumeTemplate.allCases.count)", label: "Templates")
           FeatureMetric(value: "4", label: "Colours")
           FeatureMetric(value: "PDF", label: "Ready")
         }
@@ -342,6 +342,159 @@ private struct TemplatePreviewCard: View {
           MockResumeLines(accent: accent.color, centered: false)
         }
         .padding(.vertical, 9)
+      }
+    case .contemporary:
+      HStack(spacing: 0) {
+        VStack(alignment: .leading, spacing: 7) {
+          Capsule().fill(.white).frame(width: 55, height: 7)
+          Capsule().fill(accent.color).frame(width: 34, height: 3)
+          Spacer()
+        }
+        .padding(10)
+        .frame(width: 68)
+        .background(Color(red: 0.17, green: 0.20, blue: 0.29))
+        VStack(alignment: .leading, spacing: 9) {
+          Capsule().fill(accent.color).frame(width: 62, height: 5)
+          MockResumeLines(accent: accent.color, centered: false)
+        }
+        .padding(10)
+      }
+    case .corporate:
+      VStack(spacing: 7) {
+        Rectangle().fill(accent.color).frame(height: 7)
+        RoundedRectangle(cornerRadius: 2)
+          .fill(Color(red: 0.17, green: 0.20, blue: 0.29))
+          .frame(height: 38)
+          .overlay(alignment: .leading) {
+            Capsule().fill(.white).frame(width: 92, height: 7).padding(.leading, 10)
+          }
+        MockResumeLines(accent: accent.color, centered: false)
+      }
+    case .elegant:
+      VStack(spacing: 7) {
+        HStack {
+          Divider()
+          Circle().fill(accent.color).frame(width: 5, height: 5)
+          Divider()
+        }
+        Capsule().fill(Color.black.opacity(0.76)).frame(width: 96, height: 8)
+        Capsule().fill(Color.black.opacity(0.32)).frame(width: 70, height: 3)
+        HStack {
+          Divider()
+          Circle().fill(accent.color).frame(width: 4, height: 4)
+          Divider()
+        }
+        MockResumeLines(accent: accent.color, centered: true)
+      }
+      .padding(.top, 5)
+    case .nordic:
+      VStack(alignment: .leading, spacing: 11) {
+        HStack(spacing: 8) {
+          Circle().fill(accent.color.opacity(0.16)).frame(width: 31, height: 31)
+            .overlay { Circle().fill(accent.color).frame(width: 8, height: 8) }
+          VStack(alignment: .leading, spacing: 4) {
+            Capsule().fill(Color.black.opacity(0.76)).frame(width: 76, height: 7)
+            Capsule().fill(accent.color).frame(width: 48, height: 3)
+          }
+        }
+        MockResumeLines(accent: accent.color, centered: false)
+      }
+      .padding(5)
+    case .creative:
+      VStack(spacing: 8) {
+        ZStack(alignment: .leading) {
+          RoundedRectangle(cornerRadius: 4).fill(Color(red: 0.17, green: 0.20, blue: 0.29))
+          Circle().fill(accent.color).frame(width: 55, height: 55).offset(x: 105, y: -15)
+          VStack(alignment: .leading, spacing: 4) {
+            Capsule().fill(.white).frame(width: 87, height: 8)
+            Capsule().fill(accent.color).frame(width: 55, height: 4)
+          }
+          .padding(10)
+        }
+        .frame(height: 50)
+        MockResumeLines(accent: accent.color, centered: false)
+      }
+    case .technical:
+      VStack(alignment: .leading, spacing: 7) {
+        Rectangle().fill(accent.color).frame(height: 4)
+        HStack(spacing: 7) {
+          Text("</>").font(.system(size: 10, weight: .bold, design: .monospaced))
+            .foregroundStyle(accent.color)
+          Capsule().fill(Color.black.opacity(0.75)).frame(width: 82, height: 7)
+        }
+        Divider()
+        MockResumeLines(accent: accent.color, centered: false)
+      }
+      .padding(5)
+    case .compact:
+      VStack(alignment: .leading, spacing: 5) {
+        HStack {
+          Capsule().fill(Color.black.opacity(0.8)).frame(width: 82, height: 8)
+          Spacer()
+          VStack(spacing: 3) {
+            Capsule().fill(accent.color).frame(width: 36, height: 3)
+            Capsule().fill(Color.black.opacity(0.2)).frame(width: 36, height: 3)
+          }
+        }
+        Rectangle().fill(accent.color).frame(height: 3)
+        MockCompactLines(accent: accent.color)
+      }
+      .padding(.top, 5)
+    case .academic:
+      VStack(spacing: 7) {
+        Text("CURRICULUM VITAE")
+          .font(.system(size: 6, weight: .semibold, design: .serif))
+          .foregroundStyle(accent.color)
+        Capsule().fill(Color.black.opacity(0.78)).frame(width: 100, height: 8)
+        HStack {
+          Divider()
+          Divider()
+        }
+        MockResumeLines(accent: accent.color, centered: false)
+      }
+      .padding(.top, 6)
+    case .timeline:
+      HStack(alignment: .top, spacing: 10) {
+        VStack(spacing: 0) {
+          ForEach(0..<4, id: \.self) { _ in
+            Circle().fill(accent.color).frame(width: 7, height: 7)
+            Rectangle().fill(accent.color.opacity(0.35)).frame(width: 2, height: 35)
+          }
+        }
+        VStack(alignment: .leading, spacing: 10) {
+          Capsule().fill(Color.black.opacity(0.78)).frame(width: 88, height: 8)
+          MockResumeLines(accent: accent.color, centered: false)
+        }
+      }
+      .padding(5)
+    case .monochrome:
+      VStack(spacing: 8) {
+        Rectangle()
+          .stroke(Color.black.opacity(0.78), lineWidth: 2)
+          .frame(height: 43)
+          .overlay {
+            VStack(spacing: 4) {
+              Capsule().fill(Color.black.opacity(0.82)).frame(width: 96, height: 8)
+              Capsule().fill(Color.black.opacity(0.38)).frame(width: 64, height: 3)
+            }
+          }
+        MockResumeLines(accent: .black, centered: false)
+      }
+    }
+  }
+}
+
+private struct MockCompactLines: View {
+  let accent: Color
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      ForEach(0..<6, id: \.self) { index in
+        HStack(spacing: 5) {
+          Rectangle().fill(accent).frame(width: 3, height: 3)
+          Capsule().fill(Color.black.opacity(index.isMultiple(of: 2) ? 0.20 : 0.12))
+            .frame(height: 3)
+        }
       }
     }
   }
