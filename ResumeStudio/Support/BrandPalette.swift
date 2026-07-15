@@ -25,6 +25,10 @@ enum BrandPalette {
   static let bandTop = Color(red: 0.90, green: 0.33, blue: 0.05)
   static let bandBottom = Color(red: 0.99, green: 0.57, blue: 0.16)
 
+  /// Warm accent for the splash wordmark ("Studio") and tagline ("STYLE"), a
+  /// touch brighter than the icon band so it reads on the navy field.
+  static let splashAccent = Color(red: 0.98, green: 0.52, blue: 0.14)
+
   static let ink = Color(red: 0.16, green: 0.19, blue: 0.29)
 
   /// The home hero's navy, a touch lighter than the splash field.

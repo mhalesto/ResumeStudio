@@ -191,12 +191,13 @@ struct SplashView: View {
   private var wordmark: some View {
     let title = "Resume Studio"
     // The same display serif the home hero uses, so the launch and the app read
-    // as one piece of typography.
+    // as one piece of typography. "Studio" takes the brand orange to echo the
+    // icon's accent.
     let font = Theme.display(36)
 
-    return Text(title)
+    return (Text("Resume ").foregroundColor(.white)
+      + Text("Studio").foregroundColor(BrandPalette.splashAccent))
       .font(font)
-      .foregroundStyle(.white)
       .overlay(
         // A light sweep across the glyphs, clipped to them by the mask below.
         LinearGradient(
@@ -214,10 +215,13 @@ struct SplashView: View {
   }
 
   private var tagline: some View {
-    Text("CRAFT · STYLE · EXPORT")
+    let muted = Color.white.opacity(0.45)
+
+    return (Text("CRAFT · ").foregroundColor(muted)
+      + Text("STYLE").foregroundColor(BrandPalette.splashAccent)
+      + Text(" · EXPORT").foregroundColor(muted))
       .font(.system(size: 11, weight: .semibold, design: .rounded))
       .tracking(2.6)
-      .foregroundStyle(.white.opacity(0.45))
       .opacity(taglineIn ? 1 : 0)
   }
 }
