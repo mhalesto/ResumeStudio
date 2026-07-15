@@ -361,6 +361,12 @@ enum ResumeAccent: String, CaseIterable, Codable, Identifiable {
   case sapphire
   case rose
   case midnight
+  // The Atelier palette: five more refined tones, also part of the subscription.
+  case bronze
+  case graphite
+  case plum
+  case steel
+  case terracotta
 
   var id: String { rawValue }
 
@@ -378,10 +384,15 @@ enum ResumeAccent: String, CaseIterable, Codable, Identifiable {
     case .sapphire: "Sapphire"
     case .rose: "Rose Gold"
     case .midnight: "Midnight"
+    case .bronze: "Bronze"
+    case .graphite: "Graphite"
+    case .plum: "Plum"
+    case .steel: "Steel Blue"
+    case .terracotta: "Terracotta"
     }
   }
 
-  /// The four original accents ship free; the five jewel tones are part of the
+  /// The four original accents ship free; every richer tone is part of the
   /// subscription, checked through `PurchaseManager.canUse(_:)` in the UI.
   var isPremium: Bool {
     !MonetizationCatalog.freeAccents.contains(self)
@@ -411,6 +422,16 @@ enum ResumeAccent: String, CaseIterable, Codable, Identifiable {
       UIColor(red: 0.79, green: 0.32, blue: 0.44, alpha: 1)
     case .midnight:
       UIColor(red: 0.14, green: 0.18, blue: 0.28, alpha: 1)
+    case .bronze:
+      UIColor(red: 0.63, green: 0.44, blue: 0.18, alpha: 1)
+    case .graphite:
+      UIColor(red: 0.26, green: 0.29, blue: 0.33, alpha: 1)
+    case .plum:
+      UIColor(red: 0.42, green: 0.18, blue: 0.38, alpha: 1)
+    case .steel:
+      UIColor(red: 0.28, green: 0.42, blue: 0.53, alpha: 1)
+    case .terracotta:
+      UIColor(red: 0.75, green: 0.39, blue: 0.28, alpha: 1)
     }
   }
 }

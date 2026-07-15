@@ -80,8 +80,9 @@ enum MonetizationCatalog {
     .salute, .lozenge,
   ]
 
-  /// The original four accent colours are free; the five jewel tones are gated
-  /// behind a subscription, the same way the premium templates are.
+  /// The original four accent colours are free; the richer Signature and
+  /// Atelier tones are gated behind a subscription, the same way the premium
+  /// templates are.
   static let freeAccents: Set<ResumeAccent> = [.orange, .blue, .teal, .burgundy]
 }
 
