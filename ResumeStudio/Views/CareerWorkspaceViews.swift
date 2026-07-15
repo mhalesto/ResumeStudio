@@ -41,6 +41,18 @@ struct ResumeLibraryView: View {
             } label: { Label("Rename", systemImage: "pencil") }
             .tint(.blue)
           }
+          .swipeActions(edge: .leading) {
+            // Fork this version — a "save as" for tailoring one résumé per job
+            // without losing the original.
+            Button {
+              if purchases.canCreateResume(currentCount: store.resumes.count) {
+                _ = store.createResume(title: "\(draft.title) Copy", from: draft.document)
+              } else {
+                purchases.requestPlans()
+              }
+            } label: { Label("Duplicate", systemImage: "doc.on.doc") }
+            .tint(store.document.accent.color)
+          }
         }
       } header: { Text("Résumé versions") }
 
