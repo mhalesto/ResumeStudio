@@ -7,6 +7,7 @@ enum ResumeAIError: LocalizedError, Equatable {
   case invalidResponse
   case server(message: String)
   case transport(message: String)
+  case offline
   case resumeIncomplete
 
   var errorDescription: String? {
@@ -17,9 +18,25 @@ enum ResumeAIError: LocalizedError, Equatable {
       "The AI service returned an unreadable response. Please try again."
     case .server(let message), .transport(let message):
       message
+    case .offline:
+      "You’re offline. Reconnect to the internet and try again."
     case .resumeIncomplete:
       "Complete at least 90% of your résumé before using AI interview preparation."
     }
+  }
+
+  /// A network failure that a retry won't fix until the connection returns —
+  /// worth its own, calmer treatment than a generic error.
+  static func from(_ error: Error) -> ResumeAIError {
+    if let aiError = error as? ResumeAIError { return aiError }
+    if let urlError = error as? URLError,
+      [
+        .notConnectedToInternet, .networkConnectionLost, .cannotConnectToHost,
+        .cannotFindHost, .dnsLookupFailed, .timedOut, .dataNotAllowed,
+      ].contains(urlError.code) {
+      return .offline
+    }
+    return .transport(message: error.localizedDescription)
   }
 }
 
@@ -332,7 +349,7 @@ actor ResumeAIService {
     do {
       (data, response) = try await session.data(for: request)
     } catch {
-      throw ResumeAIError.transport(message: error.localizedDescription)
+      throw ResumeAIError.from(error)
     }
 
     guard let http = response as? HTTPURLResponse else {

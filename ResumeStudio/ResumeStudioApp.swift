@@ -14,6 +14,7 @@ struct ResumeStudioApp: App {
   @StateObject private var account = AccountStore()
   @StateObject private var aiArtifacts = AIArtifactStore.shared
   @StateObject private var referrals = ReferralStore()
+  @StateObject private var network = NetworkMonitor.shared
 
   var body: some Scene {
     WindowGroup {
@@ -27,6 +28,7 @@ struct ResumeStudioApp: App {
         .environmentObject(account)
         .environmentObject(aiArtifacts)
         .environmentObject(referrals)
+        .environmentObject(network)
         .tint(store.document.accent.color)
         .task {
           // Yield the first frame to SplashView before Firebase performs its

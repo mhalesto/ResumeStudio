@@ -9,6 +9,7 @@ struct AITextSuggestionsView: View {
   @Environment(\.dismiss) private var dismiss
   @State private var result: AITextAlternatives?
   @State private var errorMessage: String?
+  @State private var isOffline = false
   @State private var isLoading = true
 
   var body: some View {
@@ -17,11 +18,9 @@ struct AITextSuggestionsView: View {
         if isLoading {
           ProgressView("Preparing suggestions…")
         } else if let errorMessage {
-          ContentUnavailableView(
-            "Unable to Generate Suggestions",
-            systemImage: "exclamationmark.triangle",
-            description: Text(errorMessage)
-          )
+          AIErrorUnavailableView(message: errorMessage, isOffline: isOffline) {
+            Task { await generate() }
+          }
         } else if let result {
           List {
             Section {
@@ -68,11 +67,6 @@ struct AITextSuggestionsView: View {
         ToolbarItem(placement: .cancellationAction) {
           Button("Cancel") { dismiss() }
         }
-        if errorMessage != nil {
-          ToolbarItem(placement: .confirmationAction) {
-            Button("Retry") { Task { await generate() } }
-          }
-        }
       }
       .task { await generate() }
     }
@@ -85,7 +79,9 @@ struct AITextSuggestionsView: View {
     do {
       result = try await load()
     } catch {
-      errorMessage = error.localizedDescription
+      let aiError = ResumeAIError.from(error)
+      errorMessage = aiError.localizedDescription
+      isOffline = aiError == .offline
     }
     isLoading = false
   }
@@ -99,6 +95,7 @@ struct AICompetencySuggestionsView: View {
   @State private var result: AICompetencySuggestions?
   @State private var selected: Set<String> = []
   @State private var errorMessage: String?
+  @State private var isOffline = false
   @State private var isLoading = true
 
   var body: some View {
@@ -107,11 +104,9 @@ struct AICompetencySuggestionsView: View {
         if isLoading {
           ProgressView("Finding supported skills…")
         } else if let errorMessage {
-          ContentUnavailableView(
-            "Unable to Suggest Competencies",
-            systemImage: "exclamationmark.triangle",
-            description: Text(errorMessage)
-          )
+          AIErrorUnavailableView(message: errorMessage, isOffline: isOffline) {
+            Task { await generate() }
+          }
         } else if let result {
           List {
             if !result.rationale.isBlank {
@@ -170,9 +165,35 @@ struct AICompetencySuggestionsView: View {
       result = response
       selected = Set(response.suggestions)
     } catch {
-      errorMessage = error.localizedDescription
+      let aiError = ResumeAIError.from(error)
+      errorMessage = aiError.localizedDescription
+      isOffline = aiError == .offline
     }
     isLoading = false
+  }
+}
+
+/// A calm, offline-aware failure state shared by the AI surfaces: a network drop
+/// gets the "you're offline" treatment and a retry, anything else the generic one.
+struct AIErrorUnavailableView: View {
+  let message: String
+  let isOffline: Bool
+  var retry: (() -> Void)?
+
+  var body: some View {
+    ContentUnavailableView {
+      Label(
+        isOffline ? "You’re offline" : "Something went wrong",
+        systemImage: isOffline ? "wifi.slash" : "exclamationmark.triangle"
+      )
+    } description: {
+      Text(message)
+    } actions: {
+      if let retry {
+        Button("Try again", action: retry)
+          .buttonStyle(.borderedProminent)
+      }
+    }
   }
 }
 
@@ -180,6 +201,7 @@ struct JobTargetingView: View {
   @EnvironmentObject private var store: ResumeStore
   @EnvironmentObject private var applicationStore: ApplicationStore
   @EnvironmentObject private var purchases: PurchaseManager
+  @EnvironmentObject private var network: NetworkMonitor
 
   @State private var role = ""
   @State private var company = ""
@@ -234,11 +256,16 @@ struct JobTargetingView: View {
       Section("AI actions") {
         Button { dismissKeyboard(); Task { await analyze() } } label: {
           Label("Review job match", systemImage: "checklist")
-        }.disabled(!canRun || isLoading)
+        }.disabled(!canRun || isLoading || !network.isOnline)
         Button { dismissKeyboard(); Task { await tailor() } } label: {
           Label("Create tailored version", systemImage: "wand.and.stars")
-        }.disabled(!canRun || isLoading)
+        }.disabled(!canRun || isLoading || !network.isOnline)
         if isLoading { ProgressView("Working from your résumé evidence…") }
+        if !network.isOnline {
+          Label("You’re offline — reconnect to run AI actions.", systemImage: "wifi.slash")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        }
       }
 
       if let errorMessage {
