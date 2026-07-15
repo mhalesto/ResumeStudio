@@ -4,28 +4,147 @@ ResumeStudio is a native SwiftUI app for building polished, export-ready resumes
 
 ![ResumeStudio home screen](docs/screenshots/home.png)
 
-## MVP features
+## Features
 
 - Structured editing for personal details, profile, competencies, experience, education, and references
+- AI profile writing, competency suggestions, experience-bullet rewrites, job-match review, and reviewed résumé tailoring
+- AI-generated cover letters grounded in the existing résumé and pasted job description
+- Forty-five editable, searchable-PDF cover-letter templates, with coordinated designs drawn to match résumé templates
+- Multiple named résumé versions with duplication and non-destructive AI tailoring
+- Side-by-side version comparison with per-section restore into the active résumé
+- A Layout Studio with font, scale, line spacing, margins, paper size, custom headings, section order, and one- or two-page auto-fit
+- Market localization for A4/US Letter conventions, localized headings, market photo guidance, and evidence-preserving AI translation
+- Account-free iCloud sync for résumé versions, applications, and cover letters
+- Application tracker with saved, applied, interview, offer, and rejected stages
+- Live ATS coaching with a readiness score, matched and missing job-language evidence, and links back to the exact résumé section
+- A role-, seniority-, market-, portrait-, page-, plan-, and ATS-aware Template Finder with favorites, recent styles, and three-way comparison
+- Per-application packets that keep the selected résumé, cover letter, application email, follow-up email, notes, and interview checklist together
+- Outcome analytics for application-to-interview and interview-to-offer conversion, response time, source performance, and résumé-version performance
+- A complete interview workspace with a graphical calendar, upcoming and past interviews, outcomes, reflections, and local day-before reminders
+- AI interview plans and eight-question résumé-based quizzes, unlocked at 90% résumé completion
+- AI marking with saved totals, percentages, strengths, knowledge gaps, per-question feedback, focus plans, and attempt history
+- A floating animated Career Coach grounded in the saved résumé, applications, interview reflections,
+  assessment history, and cover-letter target, with a strict work and job-search scope
+- On-device PDF, DOCX, text, and LinkedIn data-export import
+- Projects, certifications, languages, awards, volunteering, publications, and custom sections
 - Automatic local draft persistence
 - Reordering and deletion of repeatable sections
-- Thirteen distinct PDF templates, from Modern Executive and Classic Editorial to Tech Grid and Timeline Focus
-- Four accurately previewed accent colours
+- One hundred and twenty-one distinct résumé PDF templates, twenty-three of them photo-led
+- Fifty-one structural templates that rearrange the page rather than the letterhead: sidebar columns for contact, skills and education; a dated timeline rail; dates hung in the margin; card-per-entry; two-column splits; a ticked skills matrix; and a skills-first order
+- Contact icons, skill pills and a skills matrix drawn as real text, so a two-column page stays searchable and selectable
+- An optional profile photo on every template: the photo-led styles build their header around it, the rest close the space up without one
+- An ATS check that warns when a template puts content in a second column, because some parsers read columns out of order
+- Nine accurately previewed accent colours: four free originals and five premium jewel tones
+- Calendar deadline/interview export, Mail handoff, App Shortcuts, a Career Momentum widget, and explicit-action Safari application autofill backed by the private app group
 - Data-driven, automatically paginated PDF generation
 - Live PDFKit preview
-- Files export and iOS share sheet support
+- Searchable PDF and editable DOCX export, Files export, and iOS share-sheet support
 - Built-in fictional example and blank-resume starting points
 - Versioned sample-data migration so legacy development data is not retained
 
 ## Architecture
 
 - `Models/ResumeDocument.swift`: platform-neutral, Codable resume data
+- `Models/CoverLetterDocument.swift`: locally persisted cover-letter content and its styles
+- `Models/TemplatePlan.swift`: what a template does with the *page* — the second column, the timeline rail, the margin dates — as opposed to what it does with the letterhead
+- `Services/ResumeAIService.swift`: redacted client requests to the Firebase AI proxy
+- `Services/CoverLetterPDFRenderer.swift`: searchable, automatically paginated letter PDFs
 - `Services/ResumePDFRenderer.swift`: reusable PDF layout and pagination engine
-- `Services/ResumeStore.swift`: local JSON draft persistence
+- `Services/ResumeStore.swift`: versioned local résumé-library persistence
+- `Services/ApplicationStore.swift`: local application-tracker persistence
+- `Services/ResumeAnalysisServices.swift`: on-device job-advert and ATS checks
+- `Services/ProductivityServices.swift`: template recommendations, packet export, analytics, auto-fit, and market localization
+- `Services/PlatformIntegrationService.swift`: Calendar, Mail, widget, Shortcut, and Safari-profile bridges
+- `Services/ResumeDocumentInterchange.swift`: DOCX export and local document import
+- `Services/ICloudSyncService.swift`: private iCloud Documents workspace sync
 - `Views/`: SwiftUI editor and PDF preview flows
 - `Support/`: file export and share-sheet adapters
 
 The renderer is intentionally separated from the editor so additional templates can be added without changing how resume data is stored.
+
+## AI architecture
+
+The OpenAI API key is never included in the iOS app. ResumeStudio calls a Firebase Cloud Function in the registered `resumestudio-4addf` project. That function:
+
+- verifies Firebase App Check in production;
+- rate-limits individual installations;
+- strips the client down to a fixed set of supported actions;
+- calls the OpenAI Responses API with `store: false` and strict JSON schemas;
+- returns suggestions for review instead of silently editing a draft.
+
+The client sends a redacted resume snapshot. Names, phone numbers, email addresses, references, and profile photos are not included in AI resume-writing requests.
+
+## Plans and in-app purchases
+
+The résumé builder remains useful without payment: manual editing, ATS checks, application tracking, iCloud sync, privacy controls, and unwatermarked PDF, DOCX, and text export are free. AI-assisted import uses the included AI allowance.
+
+- **Free**: three résumé versions, 32 résumé templates, 14 cover-letter templates, 10 introductory AI credits, then five credits per month.
+- **Go — R49.99/month**: all templates, unlimited versions, 35 AI credits per month, and one active hosted Review Room.
+- **Pro — R129.99/month**: everything in Go, 150 AI credits per month, and up to ten active hosted Review Rooms.
+- **Design Pack Forever — R299.99 once-off**: all current and future templates plus unlimited local versions. AI and hosted-service allowances remain on the user's active Free, Go, or Pro plan.
+
+Verified members can share a referral link. A new member who claims it during their first 30 days receives 10 bonus AI credits, while the inviter receives 5. Rewards are enforced by Firebase, limited to three successful referrals per UTC day and 20 in a rolling 90-day window, and exclude duplicate and self-referrals.
+
+AI actions use weighted credits: focused writing and Career Coach responses cost one; job analysis, cover letters, voice feedback and career-toolkit drafts cost three; full import, tailoring, interview packs, and evidence-preserving translation cost five. The Firebase backend verifies StoreKit's signed transaction JWS and performs the credit reservation in Firestore before calling the model. Failed upstream requests are refunded automatically.
+
+The local Xcode catalog is `ResumeStudio/Configuration.storekit` and is selected by the shared Run scheme. The production products must use these exact identifiers:
+
+```text
+com.halalisanimbanjwa.ResumeStudio.go.monthly
+com.halalisanimbanjwa.ResumeStudio.pro.monthly
+com.halalisanimbanjwa.ResumeStudio.designpack.forever
+```
+
+In App Store Connect:
+
+1. Accept the Paid Apps Agreement and finish banking/tax setup.
+2. Create one auto-renewable subscription group named `ResumeStudio Plans`.
+3. Add Pro Monthly at service level 1 and Go Monthly at service level 2, using the identifiers and South African prices above.
+4. Add Design Pack Forever as a non-consumable in-app purchase.
+5. Add the required localization, review screenshots, and subscription terms, then submit the products with the app version.
+6. Add the app's numeric Apple ID to the deployed Functions environment as `APP_APPLE_ID`. Production subscription proofs intentionally fall back to Free until this value is configured.
+
+For local purchase testing, run the shared scheme and use Xcode's **Debug > StoreKit > Manage Transactions** window to renew, expire, refund, or revoke the test products.
+
+### Run the AI proxy locally
+
+1. Install the function dependencies:
+
+   ```sh
+   cd functions
+   npm install
+   ```
+
+2. Create `functions/.secret.local` (it is ignored by Git) containing:
+
+   ```text
+   OPENAI_API_KEY=your_key_here
+   ```
+
+3. Start the emulator from the repository root:
+
+   ```sh
+   firebase emulators:start --only functions
+   ```
+
+4. In the Xcode scheme, add this launch environment variable:
+
+   ```text
+   AI_SERVICE_BASE_URL=http://127.0.0.1:5001/resumestudio-4addf/europe-west1/api
+   ```
+
+The emulator intentionally bypasses App Check. Production never does.
+
+### Deploy the AI proxy
+
+The Firebase project uses the Blaze plan and the function is deployed in `europe-west1`. To rotate the secret and redeploy:
+
+```sh
+firebase functions:secrets:set OPENAI_API_KEY
+firebase deploy --only functions:api
+```
+
+Firebase App Check is registered with App Attest for the production iOS app. Debug builds use Firebase's App Check debug provider; each new simulator or development device needs its printed debug token registered in Firebase Console before it can call the deployed function.
 
 ## Run
 
@@ -38,6 +157,6 @@ The renderer is intentionally separated from the editor so additional templates 
 ```sh
 xcodebuild -project ResumeStudio.xcodeproj \
   -scheme ResumeStudio \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
+  -destination 'platform=iOS Simulator,name=iPhone 17' \
   test
 ```

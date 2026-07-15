@@ -19,6 +19,7 @@ struct ReferenceEditorView: View {
                     .autocorrectionDisabled()
             }
         }
+        .supportsKeyboardDismissal()
         .navigationTitle(reference.name.isEmpty ? "Reference" : reference.name)
         .navigationBarTitleDisplayMode(.inline)
     }

@@ -17,6 +17,7 @@ struct EducationEditorView: View {
                     .accessibilityLabel("Education details")
             }
         }
+        .supportsKeyboardDismissal()
         .navigationTitle(entry.qualification.isEmpty ? "Education" : entry.qualification)
         .navigationBarTitleDisplayMode(.inline)
     }

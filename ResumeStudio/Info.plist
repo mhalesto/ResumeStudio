@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.halalisanimbanjwa.ResumeStudio</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>resumestudio</string>
+			</array>
+		</dict>
+	</array>
+	<key>AIServiceBaseURL</key>
+	<string>https://europe-west1-resumestudio-4addf.cloudfunctions.net/api</string>
+	<!-- The app's only encryption is HTTPS through URLSession and StoreKit's
+	     signed transactions, both exempt. Declaring this here stops App Store
+	     Connect asking for export compliance on every upload. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>ResumeStudio records your practice answer so it can transcribe and coach your interview delivery.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>ResumeStudio adds interviews and application deadlines to your calendar when you request it.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>ResumeStudio transcribes your spoken practice answers for private interview coaching.</string>
+	<!-- The rest of Info.plist is generated from the INFOPLIST_KEY_* build
+	     settings and merged into this file. UILaunchScreen lives here because
+	     its nested UIColorName has no INFOPLIST_KEY_ equivalent.
+
+	     The launch screen is a flat field of LaunchBackground, which is the
+	     exact colour SplashView opens on, so there is no flash between the
+	     system launch screen and the app. -->
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+		<key>UIImageName</key>
+		<string>LaunchMark</string>
+		<key>UIImageRespectsSafeAreaInsets</key>
+		<false/>
+	</dict>
+</dict>
+</plist>

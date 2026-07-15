@@ -1,0 +1,20 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId}/aiArtifacts/{artifactId} {
+      allow read, delete: if request.auth != null && request.auth.uid == userId;
+      allow create, update: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.data.keys().hasOnly([
+          'action', 'context', 'createdAt', 'outputJSON', 'previewLines', 'schemaVersion'
+        ])
+        && request.resource.data.outputJSON is string
+        && request.resource.data.outputJSON.size() <= 200000;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

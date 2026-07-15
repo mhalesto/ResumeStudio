@@ -1,0 +1,22 @@
+{
+  "name": "resumestudio-functions",
+  "private": true,
+  "type": "module",
+  "main": "src/index.js",
+  "engines": {
+    "node": "22"
+  },
+  "scripts": {
+    "check": "node --check src/index.js",
+    "serve": "firebase emulators:start --only functions",
+    "deploy": "firebase deploy --only functions:api"
+  },
+  "dependencies": {
+    "@apple/app-store-server-library": "^3.1.0",
+    "firebase-admin": "^13.10.0",
+    "firebase-functions": "^7.2.5"
+  },
+  "overrides": {
+    "uuid": "^11.1.1"
+  }
+}

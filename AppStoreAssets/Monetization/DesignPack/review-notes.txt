@@ -1,0 +1,5 @@
+Open the app and navigate to Settings > Plans and purchases > View plans.
+
+Design Pack Forever is a one-time, non-consumable purchase. It unlocks all current and future resume and cover-letter templates and unlimited local document versions.
+
+AI credits and hosted Review Rooms remain governed by the customer’s Free, Go, or Pro plan. Tap “Buy Design Pack” to begin the StoreKit purchase. “Restore purchases” is available at the bottom of the Plans screen.

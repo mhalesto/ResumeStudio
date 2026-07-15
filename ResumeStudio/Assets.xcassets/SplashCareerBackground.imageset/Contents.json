@@ -1,0 +1,17 @@
+{
+  "images" : [
+    {
+      "filename" : "SplashCareerBackground.jpg",
+      "idiom" : "universal",
+      "scale" : "1x"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  },
+  "properties" : {
+    "compression-type" : "automatic",
+    "template-rendering-intent" : "original"
+  }
+}

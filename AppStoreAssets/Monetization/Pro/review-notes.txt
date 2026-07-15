@@ -1,0 +1,5 @@
+Open the app and navigate to Settings > Plans and purchases > View plans.
+
+Pro Monthly includes all current resume and cover-letter templates, unlimited local document versions, 150 AI credits per monthly billing period, and up to ten active hosted Review Rooms.
+
+Tap “Choose Pro” to begin the StoreKit purchase. “Restore purchases” is available at the bottom of the Plans screen. No test account is required to reach the purchase screen.

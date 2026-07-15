@@ -1,0 +1,5 @@
+Open the app and navigate to Settings > Plans and purchases > View plans.
+
+Go Monthly unlocks all current resume and cover-letter templates, unlimited local document versions, 35 AI credits per monthly billing period, and one active hosted Review Room.
+
+Tap “Choose Go” to begin the StoreKit purchase. “Restore purchases” is available at the bottom of the Plans screen. No test account is required to reach the purchase screen.

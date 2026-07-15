@@ -1,0 +1,156 @@
+{
+  "appPolicies" : {
+    "eula" : "",
+    "policies" : [
+      {
+        "locale" : "en_ZA",
+        "policyText" : "",
+        "policyURL" : ""
+      }
+    ]
+  },
+  "identifier" : "95D81C53",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+    {
+      "displayPrice" : "299.99",
+      "familyShareable" : false,
+      "internalID" : "D35A8F21",
+      "localizations" : [
+        {
+          "description" : "Own every current and future résumé and cover-letter design, with unlimited local document versions.",
+          "displayName" : "Design Pack Forever",
+          "locale" : "en_ZA"
+        }
+      ],
+      "productID" : "com.halalisanimbanjwa.ResumeStudio.designpack.forever",
+      "referenceName" : "ResumeStudio Design Pack Forever",
+      "type" : "NonConsumable"
+    }
+  ],
+  "settings" : {
+    "_failTransactionsEnabled" : false,
+    "_locale" : "en_ZA",
+    "_storefront" : "ZAF",
+    "_storeKitErrors" : [
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Load Products"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Purchase"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Verification"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Store Sync"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Subscription Status"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Transaction"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Manage Subscriptions Sheet"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Refund Request Sheet"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Offer Code Redeem Sheet"
+      }
+    ]
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "9AA674B2",
+      "localizations" : [
+
+      ],
+      "name" : "ResumeStudio Plans",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "129.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "A5F8039C",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "150 monthly AI credits, every design and up to ten active Review Rooms.",
+              "displayName" : "ResumeStudio Pro",
+              "locale" : "en_ZA"
+            }
+          ],
+          "productID" : "com.halalisanimbanjwa.ResumeStudio.pro.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "ResumeStudio Pro Monthly",
+          "subscriptionGroupID" : "9AA674B2",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "49.99",
+          "familyShareable" : false,
+          "groupNumber" : 2,
+          "internalID" : "4D19E670",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "35 monthly AI credits, every design and one active Review Room.",
+              "displayName" : "ResumeStudio Go",
+              "locale" : "en_ZA"
+            }
+          ],
+          "productID" : "com.halalisanimbanjwa.ResumeStudio.go.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "ResumeStudio Go Monthly",
+          "subscriptionGroupID" : "9AA674B2",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}
