@@ -1,4 +1,6 @@
+import PDFKit
 import SwiftUI
+import UIKit
 
 struct ResumePreviewView: View {
   let document: ResumeDocument
@@ -8,6 +10,7 @@ struct ResumePreviewView: View {
   @State private var isExporting = false
   @State private var isExportingDOCX = false
   @State private var docxData: Data?
+  @State private var showCopied = false
   @State private var shareItem: ShareItem?
   @State private var atsSafe = false
 
@@ -65,58 +68,59 @@ struct ResumePreviewView: View {
             .minimumScaleFactor(0.8)
         }
       }
-      if pdfData != nil {
-        ToolbarItemGroup(placement: .topBarTrailing) {
-          Button {
-            prepareShare()
-          } label: {
-            Image(systemName: "square.and.arrow.up")
-          }
-          .accessibilityLabel("Share PDF")
-
-          Menu {
-            Button("Save PDF", systemImage: "doc.richtext") { isExporting = true }
-            Button("Save editable DOCX", systemImage: "doc.text") { prepareDOCXExport() }
-          } label: {
-            Label("Export", systemImage: "square.and.arrow.down")
-          }
+      ToolbarItemGroup(placement: .topBarTrailing) {
+        Button {
+          prepareShare()
+        } label: {
+          Image(systemName: "square.and.arrow.up")
         }
+        .accessibilityLabel("Share PDF")
+        .disabled(pdfData == nil)
+
+        Menu {
+          Button("Save PDF", systemImage: "doc.richtext") { isExporting = true }
+          Button("Save editable DOCX", systemImage: "doc.text") { prepareDOCXExport() }
+        } label: {
+          Image(systemName: "square.and.arrow.down")
+        }
+        .accessibilityLabel("Download")
+        .disabled(pdfData == nil)
+
+        // The overflow of page actions — kept out of the preview so the résumé
+        // itself gets the full screen.
+        Menu {
+          Toggle(isOn: $atsSafe.animation(.easeInOut(duration: 0.2))) {
+            Label("ATS-safe layout", systemImage: "checkmark.shield")
+          }
+          Section {
+            Button {
+              printResume()
+            } label: {
+              Label("Print", systemImage: "printer")
+            }
+            Button {
+              copyResumeText()
+            } label: {
+              Label("Copy résumé text", systemImage: "doc.on.clipboard")
+            }
+          }
+        } label: {
+          Image(systemName: "ellipsis.circle")
+        }
+        .accessibilityLabel("More actions")
       }
     }
-    .safeAreaInset(edge: .bottom) {
-      // The whole journey ends here; make the last step the loudest thing on screen.
-      VStack(spacing: 12) {
-        Toggle(isOn: $atsSafe.animation(.easeInOut(duration: 0.2))) {
-          VStack(alignment: .leading, spacing: 2) {
-            Label("ATS-safe layout", systemImage: "checkmark.shield.fill")
-              .font(.subheadline.weight(.semibold))
-              .foregroundStyle(Theme.ink)
-            Text("Single column, no photo — parses cleanly in applicant tracking systems.")
-              .font(.caption)
-              .foregroundStyle(Theme.mutedInk)
-              .fixedSize(horizontal: false, vertical: true)
-          }
-        }
-        .tint(document.accent.color)
-
-        if pdfData != nil {
-          Button {
-            prepareShare()
-          } label: {
-            Label("Share PDF", systemImage: "square.and.arrow.up")
-              .font(.headline)
-              .foregroundStyle(.white)
-              .frame(maxWidth: .infinity)
-              .padding(.vertical, 16)
-              .background(document.accent.color, in: Capsule())
-          }
-          .buttonStyle(.plain)
-        }
+    .overlay(alignment: .bottom) {
+      if showCopied {
+        Label("Résumé text copied", systemImage: "checkmark.circle.fill")
+          .font(.subheadline.weight(.semibold))
+          .foregroundStyle(.white)
+          .padding(.horizontal, 18)
+          .padding(.vertical, 11)
+          .background(.black.opacity(0.82), in: Capsule())
+          .padding(.bottom, 30)
+          .transition(.move(edge: .bottom).combined(with: .opacity))
       }
-      .padding(.horizontal, 20)
-      .padding(.top, 12)
-      .padding(.bottom, 8)
-      .background(.bar)
     }
     .task(id: renderDocument) {
       await renderPreview()
@@ -178,6 +182,34 @@ struct ResumePreviewView: View {
       isExportingDOCX = true
     } catch {
       renderError = error.localizedDescription
+    }
+  }
+
+  /// Hands the rendered PDF to AirPrint.
+  private func printResume() {
+    guard let pdfData else { return }
+    let info = UIPrintInfo(dictionary: nil)
+    info.outputType = .general
+    info.jobName = exportFilename
+    let controller = UIPrintInteractionController.shared
+    controller.printInfo = info
+    controller.printingItem = pdfData
+    controller.present(animated: true, completionHandler: nil)
+  }
+
+  /// Copies the résumé's text to the clipboard, for pasting straight into an
+  /// online application's form fields.
+  private func copyResumeText() {
+    guard let pdfData, let pdf = PDFDocument(data: pdfData) else { return }
+    let text = (0..<pdf.pageCount)
+      .compactMap { pdf.page(at: $0)?.string }
+      .joined(separator: "\n")
+    guard !text.isEmpty else { return }
+    UIPasteboard.general.string = text
+    withAnimation { showCopied = true }
+    Task {
+      try? await Task.sleep(nanoseconds: 1_600_000_000)
+      withAnimation { showCopied = false }
     }
   }
 }
