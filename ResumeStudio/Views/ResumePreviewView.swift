@@ -9,6 +9,29 @@ struct ResumePreviewView: View {
   @State private var isExportingDOCX = false
   @State private var docxData: Data?
   @State private var shareItem: ShareItem?
+  @State private var atsSafe = false
+
+  /// What actually gets rendered and exported: the chosen design, or an
+  /// ATS-safe transform of it when the toggle is on.
+  private var renderDocument: ResumeDocument {
+    atsSafe ? Self.atsSafeVariant(of: document) : document
+  }
+
+  private var exportFilename: String {
+    atsSafe ? "\(document.suggestedFilename)-ATS" : document.suggestedFilename
+  }
+
+  /// A guaranteed applicant-tracking-friendly version of the résumé: a single
+  /// column with standard section headings and no photo, which the parsers most
+  /// reliably read in the right order. Only the layout changes — every word of
+  /// the résumé is the user's own.
+  private static func atsSafeVariant(of document: ResumeDocument) -> ResumeDocument {
+    var doc = document
+    doc.template = .classic
+    doc.photo = nil
+    doc.photoCrop = nil
+    return doc
+  }
 
   var body: some View {
     Group {
@@ -33,7 +56,9 @@ struct ResumePreviewView: View {
         VStack(spacing: 1) {
           Text("Preview")
             .font(.headline)
-          Text("\(document.template.title) · \(document.accent.title)")
+          Text(atsSafe
+            ? "ATS-safe layout"
+            : "\(document.template.title) · \(document.accent.title)")
             .font(.caption2)
             .foregroundStyle(Theme.mutedInk)
             .lineLimit(1)
@@ -60,37 +85,53 @@ struct ResumePreviewView: View {
     }
     .safeAreaInset(edge: .bottom) {
       // The whole journey ends here; make the last step the loudest thing on screen.
-      if pdfData != nil {
-        Button {
-          prepareShare()
-        } label: {
-          Label("Share PDF", systemImage: "square.and.arrow.up")
-            .font(.headline)
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
-            .background(document.accent.color, in: Capsule())
+      VStack(spacing: 12) {
+        Toggle(isOn: $atsSafe.animation(.easeInOut(duration: 0.2))) {
+          VStack(alignment: .leading, spacing: 2) {
+            Label("ATS-safe layout", systemImage: "checkmark.shield.fill")
+              .font(.subheadline.weight(.semibold))
+              .foregroundStyle(Theme.ink)
+            Text("Single column, no photo — parses cleanly in applicant tracking systems.")
+              .font(.caption)
+              .foregroundStyle(Theme.mutedInk)
+              .fixedSize(horizontal: false, vertical: true)
+          }
         }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 20)
-        .padding(.bottom, 8)
-        .background(.bar)
+        .tint(document.accent.color)
+
+        if pdfData != nil {
+          Button {
+            prepareShare()
+          } label: {
+            Label("Share PDF", systemImage: "square.and.arrow.up")
+              .font(.headline)
+              .foregroundStyle(.white)
+              .frame(maxWidth: .infinity)
+              .padding(.vertical, 16)
+              .background(document.accent.color, in: Capsule())
+          }
+          .buttonStyle(.plain)
+        }
       }
+      .padding(.horizontal, 20)
+      .padding(.top, 12)
+      .padding(.bottom, 8)
+      .background(.bar)
     }
-    .task(id: document) {
+    .task(id: renderDocument) {
       await renderPreview()
     }
     .fileExporter(
       isPresented: $isExporting,
       document: PDFFile(data: pdfData ?? Data()),
       contentType: .pdf,
-      defaultFilename: document.suggestedFilename
+      defaultFilename: exportFilename
     ) { _ in }
     .fileExporter(
       isPresented: $isExportingDOCX,
       document: DataFile(data: docxData ?? Data()),
       contentType: .wordProcessingDocument,
-      defaultFilename: document.suggestedFilename
+      defaultFilename: exportFilename
     ) { _ in }
     .sheet(item: $shareItem) { item in
       ShareSheet(activityItems: [item.url])
@@ -106,7 +147,7 @@ struct ResumePreviewView: View {
       // its local PDF context. The renderer is main-actor isolated by UIKit, but
       // the pagination guard below keeps this work finite.
       await Task.yield()
-      let data = try ResumePDFRenderer.render(document: document)
+      let data = try ResumePDFRenderer.render(document: renderDocument)
       guard !Task.isCancelled else { return }
       pdfData = data
       renderError = nil
@@ -122,7 +163,7 @@ struct ResumePreviewView: View {
     guard let pdfData else { return }
     do {
       let url = FileManager.default.temporaryDirectory
-        .appendingPathComponent(document.suggestedFilename)
+        .appendingPathComponent(exportFilename)
         .appendingPathExtension("pdf")
       try pdfData.write(to: url, options: .atomic)
       shareItem = ShareItem(url: url)
@@ -133,7 +174,7 @@ struct ResumePreviewView: View {
 
   private func prepareDOCXExport() {
     do {
-      docxData = try ResumeDOCXRenderer.render(document: document)
+      docxData = try ResumeDOCXRenderer.render(document: renderDocument)
       isExportingDOCX = true
     } catch {
       renderError = error.localizedDescription
