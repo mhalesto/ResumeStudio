@@ -869,73 +869,79 @@ private struct WelcomeSheet: View {
   let onImport: () -> Void
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 0) {
-      HStack {
-        Spacer()
-        Button {
-          dismiss()
-        } label: {
-          Image(systemName: "xmark.circle.fill")
-            .font(.title2)
+    // Scrolls if it ever has to (large text sizes), and the close button gets a
+    // clear top row of its own — the previous layout was taller than the medium
+    // detent, so the button sat jammed under the grabber until you expanded it.
+    ScrollView {
+      VStack(alignment: .leading, spacing: 0) {
+        HStack {
+          Spacer()
+          Button {
+            dismiss()
+          } label: {
+            Image(systemName: "xmark.circle.fill")
+              .font(.system(size: 28))
+              .symbolRenderingMode(.hierarchical)
+              .foregroundStyle(Theme.mutedInk)
+          }
+          .buttonStyle(.plain)
+          .accessibilityLabel("Close")
+        }
+
+        VStack(alignment: .leading, spacing: 12) {
+          ZStack {
+            Circle().fill(accent.opacity(0.14))
+            Image(systemName: "doc.text.fill")
+              .font(.system(size: 26, weight: .semibold))
+              .foregroundStyle(accent)
+          }
+          .frame(width: 58, height: 58)
+
+          Text("Welcome to Resume Studio")
+            .font(Theme.display(28))
+            .foregroundStyle(Theme.ink)
+            .fixedSize(horizontal: false, vertical: true)
+          Text("\(templateCount) templates, private on-device drafts, and a polished PDF in minutes. How would you like to start?")
+            .font(.subheadline)
             .foregroundStyle(Theme.mutedInk)
+            .fixedSize(horizontal: false, vertical: true)
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Close")
-      }
+        .padding(.top, 8)
 
-      VStack(alignment: .leading, spacing: 12) {
-        ZStack {
-          Circle().fill(accent.opacity(0.14))
-          Image(systemName: "doc.text.fill")
-            .font(.system(size: 26, weight: .semibold))
-            .foregroundStyle(accent)
+        VStack(spacing: 12) {
+          WelcomeChoice(
+            title: "Start with an example",
+            subtitle: "A complete sample you can edit into your own",
+            systemImage: "sparkles",
+            accent: accent,
+            prominent: true,
+            action: onExample
+          )
+          WelcomeChoice(
+            title: "Start blank",
+            subtitle: "Build every section yourself",
+            systemImage: "plus",
+            accent: accent,
+            prominent: false,
+            action: onBlank
+          )
+          WelcomeChoice(
+            title: "Import a résumé",
+            subtitle: "Bring in a PDF, DOCX or LinkedIn export",
+            systemImage: "square.and.arrow.down",
+            accent: accent,
+            prominent: false,
+            action: onImport
+          )
         }
-        .frame(width: 58, height: 58)
-
-        Text("Welcome to Resume Studio")
-          .font(Theme.display(28))
-          .foregroundStyle(Theme.ink)
-          .fixedSize(horizontal: false, vertical: true)
-        Text("\(templateCount) templates, private on-device drafts, and a polished PDF in minutes. How would you like to start?")
-          .font(.subheadline)
-          .foregroundStyle(Theme.mutedInk)
-          .fixedSize(horizontal: false, vertical: true)
+        .padding(.top, 26)
       }
-      .padding(.top, 4)
-
-      VStack(spacing: 12) {
-        WelcomeChoice(
-          title: "Start with an example",
-          subtitle: "A complete sample you can edit into your own",
-          systemImage: "sparkles",
-          accent: accent,
-          prominent: true,
-          action: onExample
-        )
-        WelcomeChoice(
-          title: "Start blank",
-          subtitle: "Build every section yourself",
-          systemImage: "plus",
-          accent: accent,
-          prominent: false,
-          action: onBlank
-        )
-        WelcomeChoice(
-          title: "Import a résumé",
-          subtitle: "Bring in a PDF, DOCX or LinkedIn export",
-          systemImage: "square.and.arrow.down",
-          accent: accent,
-          prominent: false,
-          action: onImport
-        )
-      }
-      .padding(.top, 26)
-
-      Spacer(minLength: 0)
+      .padding(.horizontal, 24)
+      .padding(.top, 16)
+      .padding(.bottom, 28)
     }
-    .padding(24)
-    .presentationDetents([.medium, .large])
-    .presentationDragIndicator(.visible)
+    .presentationDetents([.fraction(0.7), .large])
+    .presentationDragIndicator(.hidden)
   }
 }
 
