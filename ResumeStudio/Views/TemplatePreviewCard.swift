@@ -44,14 +44,14 @@ struct TemplatePreviewCard: View {
       .task(id: TemplateKey(template: template, accent: accent, photo: photo, crop: photoCrop)) {
         // Already rendered this session: show it instantly, no skeleton flash.
         if let ready = TemplateThumbnailRenderer.cached(
-          template: template, accent: accent, photo: photo, crop: photoCrop, width: width * 3) {
+          template: template, accent: accent, photo: photo, crop: photoCrop) {
           thumbnail = ready
           return
         }
         // Otherwise load from disk or render (off the main thread where possible,
         // serialised so a screenful of cards can't freeze the frame together).
         let image = await TemplateThumbnailRenderer.image(
-          template: template, accent: accent, photo: photo, crop: photoCrop, width: width * 3)
+          template: template, accent: accent, photo: photo, crop: photoCrop)
         guard !Task.isCancelled else { return }
         withAnimation(.easeOut(duration: 0.25)) { thumbnail = image }
       }

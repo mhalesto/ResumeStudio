@@ -10,22 +10,29 @@ import UIKit
 ///
 /// Rendering a page is expensive, so results are cached twice over: in memory
 /// for the session, and on disk so a template is only ever rendered once (see
-/// `ThumbnailDiskCache`). Renders pass through `ThumbnailRenderGate` so a
-/// screenful of cards can't stack their renders into one main-thread freeze.
+/// `ThumbnailDiskCache`). Everything renders at a single canonical resolution and
+/// the cards scale it down, so the same template is never rendered twice just
+/// because two screens show it at different sizes. Renders pass through
+/// `ThumbnailRenderGate` so a screenful of cards can't stack their renders into
+/// one main-thread freeze.
 @MainActor
 enum TemplateThumbnailRenderer {
   private static var cache: [Key: UIImage] = [:]
+
+  /// One resolution for every card. The largest on-screen preview is the
+  /// comparison view at 210pt (630px @3x); 640 keeps that crisp and lets every
+  /// smaller card scale the same image down.
+  static let renderWidth: CGFloat = 640
 
   private struct Key: Hashable {
     let template: ResumeTemplate
     let accent: ResumeAccent
     let photo: Data?
     let crop: PhotoCrop?
-    let width: Int
 
     /// A filename-safe, launch-stable identity for the disk cache.
     var diskName: String {
-      var name = "resume-\(template.rawValue)-\(accent.rawValue)-\(width)"
+      var name = "resume-\(template.rawValue)-\(accent.rawValue)"
       if let photo { name += "-p\(ThumbnailDiskCache.digest(photo))" }
       if let crop {
         name += "-c\(Int(crop.centerX * 1000))x\(Int(crop.centerY * 1000))z\(Int(crop.zoom * 1000))"
@@ -52,9 +59,9 @@ enum TemplateThumbnailRenderer {
   /// A synchronous peek at the in-memory cache, so a card that has already been
   /// rendered this session shows instantly without a skeleton flash.
   static func cached(
-    template: ResumeTemplate, accent: ResumeAccent, photo: Data?, crop: PhotoCrop?, width: CGFloat
+    template: ResumeTemplate, accent: ResumeAccent, photo: Data?, crop: PhotoCrop?
   ) -> UIImage? {
-    cache[Key(template: template, accent: accent, photo: photo, crop: crop, width: Int(width))]
+    cache[Key(template: template, accent: accent, photo: photo, crop: crop)]
   }
 
   /// The full lookup: memory → disk → render. The render is serialised and
@@ -63,10 +70,9 @@ enum TemplateThumbnailRenderer {
     template: ResumeTemplate,
     accent: ResumeAccent,
     photo: Data?,
-    crop: PhotoCrop?,
-    width: CGFloat
+    crop: PhotoCrop?
   ) async -> UIImage? {
-    let key = Key(template: template, accent: accent, photo: photo, crop: crop, width: Int(width))
+    let key = Key(template: template, accent: accent, photo: photo, crop: crop)
     if let cached = cache[key] { return cached }
 
     if let onDisk = await ThumbnailDiskCache.load(key.diskName) {
@@ -83,13 +89,37 @@ enum TemplateThumbnailRenderer {
     // Another card with the same key may have rendered while we waited.
     if let cached = cache[key] { return cached }
 
-    guard let image = render(key: key) else { return nil }
+    guard let image = render(key: key, width: renderWidth) else { return nil }
     cache[key] = image
     ThumbnailDiskCache.save(image, name: key.diskName)
     return image
   }
 
-  private static func render(key: Key) -> UIImage? {
+  /// Renders the previews for `templates` ahead of being scrolled to, so the
+  /// carousel and gallery are warm on the first launch too. Cheap on later
+  /// launches: each call is a memory or disk hit. Yields between templates and
+  /// stops the moment its task is cancelled.
+  static func prewarm(
+    templates: [ResumeTemplate], accent: ResumeAccent, photo: Data?, crop: PhotoCrop?
+  ) async {
+    for template in templates {
+      if Task.isCancelled { return }
+      _ = await image(template: template, accent: accent, photo: photo, crop: crop)
+    }
+  }
+
+  /// A one-off, higher-resolution render for sharing a preview image. Not cached:
+  /// it is user-initiated and infrequent, and does not belong beside the small
+  /// card thumbnails.
+  static func shareImage(
+    template: ResumeTemplate, accent: ResumeAccent, photo: Data?, crop: PhotoCrop?
+  ) async -> UIImage? {
+    if Task.isCancelled { return nil }
+    let key = Key(template: template, accent: accent, photo: photo, crop: crop)
+    return render(key: key, width: 1000)
+  }
+
+  private static func render(key: Key, width: CGFloat) -> UIImage? {
     let document = sample(
       template: key.template, accent: key.accent, photo: key.photo, crop: key.crop)
     guard
@@ -98,7 +128,7 @@ enum TemplateThumbnailRenderer {
     else { return nil }
 
     // A4 proportions, so the thumbnail is the page and not a crop of it.
-    let size = CGSize(width: CGFloat(key.width), height: CGFloat(key.width) * 842 / 595)
+    let size = CGSize(width: width, height: width * 842 / 595)
     return page.thumbnail(of: size, for: .mediaBox)
   }
 }

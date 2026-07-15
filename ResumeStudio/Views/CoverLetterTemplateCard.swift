@@ -36,14 +36,12 @@ struct CoverLetterTemplateCard: View {
       .frame(width: width, height: height)
       .task(id: CoverLetterKey(template: template, accent: accent)) {
         // Already rendered this session: show it instantly, no skeleton flash.
-        if let ready = CoverLetterThumbnailRenderer.cached(
-          template: template, accent: accent, width: width * 3) {
+        if let ready = CoverLetterThumbnailRenderer.cached(template: template, accent: accent) {
           thumbnail = ready
           return
         }
         // Otherwise load from disk or render, serialised through the shared gate.
-        let image = await CoverLetterThumbnailRenderer.image(
-          template: template, accent: accent, width: width * 3)
+        let image = await CoverLetterThumbnailRenderer.image(template: template, accent: accent)
         guard !Task.isCancelled else { return }
         withAnimation(.easeOut(duration: 0.25)) { thumbnail = image }
       }

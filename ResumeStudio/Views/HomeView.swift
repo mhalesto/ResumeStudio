@@ -66,6 +66,7 @@ struct HomeView: View {
         .frame(maxWidth: .infinity)
       }
       .background(Theme.paper)
+      .task(id: store.document.accent) { await warmThumbnails() }
       .navigationTitle("Resume Studio")
       .navigationBarTitleDisplayMode(.inline)
       .toolbarBackground(Theme.paper, for: .navigationBar)
@@ -171,6 +172,20 @@ struct HomeView: View {
   }
 
   private var accent: Color { store.document.accent.color }
+
+  /// Render the first stretch of template and cover-letter previews ahead of
+  /// being scrolled to, so the carousels and gallery are warm even on the very
+  /// first launch. Re-runs when the accent changes so the quick-pick swatches
+  /// preview instantly. The gate keeps this from competing with visible cards.
+  private func warmThumbnails() async {
+    let doc = store.document
+    await TemplateThumbnailRenderer.prewarm(
+      templates: Array(ResumeTemplate.allCases.prefix(16)),
+      accent: doc.accent, photo: doc.photo, crop: doc.photoCrop)
+    await CoverLetterThumbnailRenderer.prewarm(
+      templates: Array(CoverLetterTemplate.allCases.prefix(10)),
+      accent: doc.accent)
+  }
 
   // MARK: - Hero
 
