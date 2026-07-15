@@ -6,6 +6,18 @@ struct AppearanceEditorView: View {
   @EnvironmentObject private var purchases: PurchaseManager
   @AppStorage("appAppearance") private var appearanceRawValue = AppAppearance.system.rawValue
 
+  /// The template catalogue is long enough that the accent swatches used to sit a
+  /// hundred-odd rows down. This switch keeps both one tap away.
+  @State private var section = ExportSection.template
+
+  private enum ExportSection: String, CaseIterable, Identifiable {
+    case template
+    case colour
+
+    var id: String { rawValue }
+    var title: String { self == .template ? "Template" : "Colour" }
+  }
+
   private var appAppearance: Binding<AppAppearance> {
     Binding(
       get: { AppAppearance(rawValue: appearanceRawValue) ?? .system },
@@ -40,6 +52,29 @@ struct AppearanceEditorView: View {
       }
 
       Section {
+        Picker("Section", selection: $section) {
+          ForEach(ExportSection.allCases) { option in
+            Text(option.title).tag(option)
+          }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+      } header: {
+        Text("Exported PDF")
+      }
+
+      if section == .template {
+        templateSection
+      } else {
+        accentSection
+      }
+    }
+    .navigationTitle("Template & Colour")
+    .navigationBarTitleDisplayMode(.inline)
+  }
+
+  private var templateSection: some View {
+    Section {
         ForEach(ResumeTemplate.allCases) { option in
           let unlocked = purchases.canUse(option)
           Button {
@@ -68,8 +103,10 @@ struct AppearanceEditorView: View {
           "Templates change the typography, header, section styling, and reference cards in the exported PDF."
         )
       }
+  }
 
-      Section {
+  private var accentSection: some View {
+    Section {
         ForEach(ResumeAccent.allCases) { option in
           let unlocked = purchases.canUse(option)
           Button {
@@ -127,9 +164,6 @@ struct AppearanceEditorView: View {
           "Each swatch uses its true export colour, so you can compare them before previewing the PDF. The five jewel tones are part of a subscription."
         )
       }
-    }
-    .navigationTitle("Template & Colour")
-    .navigationBarTitleDisplayMode(.inline)
   }
 }
 

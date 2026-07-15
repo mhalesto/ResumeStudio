@@ -42,10 +42,17 @@ struct TemplatePreviewCard: View {
       }
       .frame(width: width, height: height)
       .task(id: TemplateKey(template: template, accent: accent, photo: photo, crop: photoCrop)) {
-        // Let the skeleton paint before the (synchronous, main-actor) render.
-        await Task.yield()
-        let image = TemplateThumbnailRenderer.thumbnail(
+        // Already rendered this session: show it instantly, no skeleton flash.
+        if let ready = TemplateThumbnailRenderer.cached(
+          template: template, accent: accent, photo: photo, crop: photoCrop, width: width * 3) {
+          thumbnail = ready
+          return
+        }
+        // Otherwise load from disk or render (off the main thread where possible,
+        // serialised so a screenful of cards can't freeze the frame together).
+        let image = await TemplateThumbnailRenderer.image(
           template: template, accent: accent, photo: photo, crop: photoCrop, width: width * 3)
+        guard !Task.isCancelled else { return }
         withAnimation(.easeOut(duration: 0.25)) { thumbnail = image }
       }
       // Some artwork (Contemporary Split's sidebar) is intrinsically wider than

@@ -35,10 +35,16 @@ struct CoverLetterTemplateCard: View {
       }
       .frame(width: width, height: height)
       .task(id: CoverLetterKey(template: template, accent: accent)) {
-        // Let the skeleton paint before the (synchronous, main-actor) render.
-        await Task.yield()
-        let image = CoverLetterThumbnailRenderer.thumbnail(
+        // Already rendered this session: show it instantly, no skeleton flash.
+        if let ready = CoverLetterThumbnailRenderer.cached(
+          template: template, accent: accent, width: width * 3) {
+          thumbnail = ready
+          return
+        }
+        // Otherwise load from disk or render, serialised through the shared gate.
+        let image = await CoverLetterThumbnailRenderer.image(
           template: template, accent: accent, width: width * 3)
+        guard !Task.isCancelled else { return }
         withAnimation(.easeOut(duration: 0.25)) { thumbnail = image }
       }
       .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
