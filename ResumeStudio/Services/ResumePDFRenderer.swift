@@ -518,6 +518,29 @@ private final class ResumePDFLayout {
                 ink: self.sideInk, track: self.sideMeterTrack, fill: self.sideAccent) + 7
           }
           return rowY - y
+        case .dots:
+          var rowY = y
+          for (index, item) in competencies.enumerated() {
+            let height = self.measuredHeight(
+              item, width: self.sideWidth, font: self.regularFont(8.2), lineHeight: 10.6)
+            self.drawText(
+              item,
+              rect: CGRect(x: self.sideX, y: rowY, width: self.sideWidth, height: height),
+              font: self.regularFont(8.2), color: self.sideInk, lineHeight: 10.6)
+            let dots = 5
+            let dotDiameter: CGFloat = 5
+            let dotGap: CGFloat = 3.5
+            let filled = max(1, min(dots, Int((self.meterLevel(index) * CGFloat(dots)).rounded())))
+            for dot in 0..<dots {
+              (dot < filled ? self.sideAccent : self.sideMeterTrack).setFill()
+              self.rendererContext.cgContext.fillEllipse(
+                in: CGRect(
+                  x: self.sideX + CGFloat(dot) * (dotDiameter + dotGap), y: rowY + height + 2,
+                  width: dotDiameter, height: dotDiameter))
+            }
+            rowY += height + dotDiameter + 8
+          }
+          return rowY - y
         case .bullets, .iconGrid, .columns:
           var rowY = y
           for item in competencies {
@@ -543,6 +566,12 @@ private final class ResumePDFLayout {
           self.chipsHeight(competencies, width: self.sideWidth)
         case .meters:
           competencies.reduce(0) { $0 + self.meterHeight($1, width: self.sideWidth) + 7 }
+        case .dots:
+          competencies.reduce(0) {
+            $0
+              + self.measuredHeight(
+                $1, width: self.sideWidth, font: self.regularFont(8.2), lineHeight: 10.6) + 13
+          }
         case .bullets, .iconGrid, .columns:
           competencies.reduce(0) {
             $0
@@ -941,6 +970,13 @@ private final class ResumePDFLayout {
   /// of each. The motif controls the geometry; the variant changes alignment,
   /// ornament density, portrait frame and typographic voice.
   private func drawAdvancedPrimaryHeader(_ style: AdvancedResumeStyle) {
+    // The Showcase Collection (mastheads 16-25) is self-contained: each draws its
+    // own background, name, portrait and contact, so the original sixteen motifs
+    // below are untouched.
+    if style.motif >= 16 {
+      drawShowcaseMasthead(style)
+      return
+    }
     let carriesProfile = plan.profileInHeader && heroCarriesProfile
     let profileHeight = carriesProfile ? heroProfileHeight : 0
     let headerHeight = max(
@@ -1302,6 +1338,10 @@ private final class ResumePDFLayout {
   }
 
   private func drawAdvancedContinuationHeader(_ style: AdvancedResumeStyle) {
+    if style.motif >= 16 {
+      drawShowcaseContinuation(style)
+      return
+    }
     let context = rendererContext.cgContext
     let dark = [0, 2, 4, 5, 7, 8, 12].contains(style.motif) || plan.darkPaper
     if dark {
@@ -1331,6 +1371,387 @@ private final class ResumePDFLayout {
       alignment: .right,
       kern: 1
     )
+  }
+
+  // MARK: - Showcase Collection (mastheads 16-25)
+
+  /// The portfolio-grade letterheads. Each is fully self-contained — background,
+  /// name, portrait and contact — so it can restructure the header rather than
+  /// sit behind the shared name block the first sixteen motifs use.
+  private func drawShowcaseMasthead(_ style: AdvancedResumeStyle) {
+    let context = rendererContext.cgContext
+    let w = pageBounds.width
+    let name = displayName
+    let headline = document.personal.headline.trimmingCharacters(in: .whitespacesAndNewlines)
+    let warm = UIColor(red: 0.905, green: 0.865, blue: 0.795, alpha: 1)
+    var headerHeight: CGFloat = 176
+
+    switch style.motif {
+    case 16:  // Salute — a warm hello and a round portrait
+      headerHeight = 172
+      accent.setFill()
+      context.fill(CGRect(x: margin, y: 40, width: 7, height: 7))
+      accent.withAlphaComponent(0.45).setFill()
+      context.fill(CGRect(x: margin + 9, y: 40, width: 7, height: 7))
+      context.fill(CGRect(x: margin, y: 49, width: 7, height: 7))
+      let pSize: CGFloat = 82
+      if showsPortrait {
+        drawPortrait(
+          in: CGRect(x: w - margin - pSize, y: 34, width: pSize, height: pSize),
+          ring: accent, ringWidth: 3,
+          emptyFill: accent.withAlphaComponent(0.12), emptyText: accent, shape: .circle,
+          outerRing: accent.withAlphaComponent(0.22), outerRingWidth: 5)
+      }
+      let textW = w - margin * 2 - (showsPortrait ? pSize + 26 : 0)
+      drawText(
+        "Hi, I'm", rect: CGRect(x: margin, y: 64, width: textW, height: 28),
+        font: boldFont(23), color: headingInk, lineHeight: 27)
+      drawText(
+        "\(name).", rect: CGRect(x: margin, y: 91, width: textW, height: 32),
+        font: boldFont(23), color: accent, lineHeight: 27)
+      if !headline.isEmpty {
+        drawText(
+          headline, rect: CGRect(x: margin, y: 130, width: textW + 40, height: 15),
+          font: mediumFont(9.4), color: mutedInk, lineHeight: 13)
+      }
+      drawContactStrip(x: margin, y: headerHeight - 22, color: mutedInk, iconColor: accent)
+
+    case 17:  // Couture — the name up the page beside a fashion portrait
+      headerHeight = 216
+      let pW: CGFloat = 152, pH: CGFloat = 190
+      if showsPortrait {
+        drawPortrait(
+          in: CGRect(x: w - margin - pW, y: 12, width: pW, height: pH),
+          ring: accent, ringWidth: 2,
+          emptyFill: navy, emptyText: .white, shape: .rounded(6))
+      }
+      accent.setFill()
+      context.fill(CGRect(x: margin, y: 14, width: 3, height: 168))
+      drawVerticalText(
+        name.uppercased(), x: margin + 28, bottom: 184, length: 168,
+        font: boldFont(22), color: headingInk, lineHeight: 26, kern: 0.5)
+      if !headline.isEmpty {
+        drawVerticalText(
+          headline.uppercased(), x: margin + 11, bottom: 184, length: 152,
+          font: mediumFont(7.6), color: accent, lineHeight: 10, kern: 2.2)
+      }
+      // A horizontal byline keeps the name machine-readable (a rotated line is not)
+      // and carries the contacts the single column has nowhere else to put.
+      drawText(
+        name, rect: CGRect(x: margin, y: 190, width: w - pW - margin * 2 - 12, height: 15),
+        font: mediumFont(10), color: headingInk, lineHeight: 13)
+      drawContactStrip(x: margin, y: headerHeight - 15, color: mutedInk, iconColor: accent)
+
+    case 18:  // Medallion — a monogram seal between the name and a big portrait
+      headerHeight = 190
+      let pW: CGFloat = 150, pH: CGFloat = 170
+      if showsPortrait {
+        drawPortrait(
+          in: CGRect(x: w - margin - pW, y: 12, width: pW, height: pH),
+          ring: UIColor(white: 0.86, alpha: 1), ringWidth: 0.8,
+          emptyFill: UIColor(white: 0.9, alpha: 1), emptyText: navy, shape: .square)
+      }
+      drawText(
+        name.uppercased(),
+        rect: CGRect(x: margin, y: 56, width: w - pW - margin * 2 - 26, height: 66),
+        font: boldFont(30), color: headingInk, lineHeight: 33)
+      if !headline.isEmpty {
+        drawText(
+          headline, rect: CGRect(x: margin, y: 124, width: 240, height: 16),
+          font: mediumFont(9.6), color: accent, lineHeight: 13, kern: 0.6)
+      }
+      drawMonogramBadge(centre: CGPoint(x: w - margin - pW - 2, y: 150), radius: 30)
+      accent.setFill()
+      context.fill(CGRect(x: margin, y: headerHeight - 6, width: 40, height: 3))
+      drawContactStrip(x: margin, y: headerHeight - 24, color: mutedInk, iconColor: accent)
+
+    case 19:  // Sable — a dark banner meeting the dark facts column
+      headerHeight = 150
+      navy.setFill()
+      context.fill(CGRect(x: 0, y: 0, width: w, height: headerHeight + 24))
+      accent.setFill()
+      context.fill(CGRect(x: 0, y: headerHeight - 4, width: w, height: 4))
+      let pSize: CGFloat = 96
+      if showsPortrait {
+        drawPortrait(
+          in: CGRect(x: margin, y: 27, width: pSize, height: pSize),
+          ring: .white, ringWidth: 2,
+          emptyFill: accent, emptyText: .white, shape: .square)
+      }
+      let tx = margin + (showsPortrait ? pSize + 20 : 0)
+      drawText(
+        name.uppercased(), rect: CGRect(x: tx, y: 42, width: w - tx - margin, height: 48),
+        font: boldFont(26), color: .white, lineHeight: 29)
+      if !headline.isEmpty {
+        drawText(
+          headline.uppercased(), rect: CGRect(x: tx, y: 94, width: w - tx - margin, height: 14),
+          font: mediumFont(8.4), color: accent, lineHeight: 12, kern: 1.6)
+      }
+
+    case 20:  // Terracotta — an earthen band and a bold profile circle
+      headerHeight = 182
+      warm.setFill()
+      context.fill(CGRect(x: 0, y: 0, width: w, height: headerHeight))
+      navy.setFill()
+      context.fillEllipse(in: CGRect(x: -46, y: 28, width: 132, height: 132))
+      let pSize: CGFloat = 74
+      if showsPortrait {
+        drawPortrait(
+          in: CGRect(x: 6, y: 54, width: pSize, height: pSize),
+          ring: warm, ringWidth: 3,
+          emptyFill: accent, emptyText: .white, shape: .circle)
+      }
+      let tx: CGFloat = 108
+      drawText(
+        "Hello, I'm", rect: CGRect(x: tx, y: 50, width: w - tx - margin, height: 24),
+        font: boldFont(20), color: navy, lineHeight: 24)
+      drawText(
+        name, rect: CGRect(x: tx, y: 74, width: w - tx - margin, height: 42),
+        font: boldFont(30), color: navy, lineHeight: 34)
+      if !headline.isEmpty {
+        drawText(
+          headline.uppercased(), rect: CGRect(x: tx, y: 122, width: w - tx - margin, height: 14),
+          font: mediumFont(8.2), color: accent, lineHeight: 12, kern: 1.8)
+      }
+      drawContactStrip(
+        x: tx, y: headerHeight - 26, color: navy.withAlphaComponent(0.72), iconColor: accent)
+
+    case 21:  // Lozenge — airy, with capsule contact labels
+      headerHeight = 168
+      let pSize: CGFloat = 72
+      if showsPortrait {
+        drawPortrait(
+          in: CGRect(x: w - margin - pSize, y: 30, width: pSize, height: pSize),
+          ring: accent, ringWidth: 2,
+          emptyFill: accent.withAlphaComponent(0.12), emptyText: accent, shape: .rounded(16))
+      }
+      let textW = w - margin * 2 - (showsPortrait ? pSize + 24 : 0)
+      drawText(
+        name, rect: CGRect(x: margin, y: 46, width: textW, height: 42),
+        font: boldFont(30), color: headingInk, lineHeight: 34)
+      if !headline.isEmpty {
+        drawText(
+          headline.uppercased(), rect: CGRect(x: margin, y: 90, width: textW, height: 14),
+          font: mediumFont(8.6), color: accent, lineHeight: 12, kern: 2)
+      }
+      drawContactPills(x: margin, y: 112)
+      accent.withAlphaComponent(0.2).setFill()
+      context.fill(CGRect(x: margin, y: headerHeight - 3, width: contentWidth, height: 1.4))
+
+    case 22:  // Circlet — a ringed portrait with orbiting rated dots
+      headerHeight = 198
+      let pSize: CGFloat = 96
+      let pc = CGPoint(x: w / 2, y: 62)
+      let orbit = pSize / 2 + 15
+      for i in 0..<12 {
+        let a = CGFloat(i) / 12 * .pi * 2 - .pi / 2
+        let filled = i < 7
+        (filled ? accent : accent.withAlphaComponent(0.28)).setFill()
+        let d: CGFloat = filled ? 5 : 3.4
+        context.fillEllipse(
+          in: CGRect(x: pc.x + cos(a) * orbit - d / 2, y: pc.y + sin(a) * orbit - d / 2, width: d, height: d))
+      }
+      if showsPortrait {
+        drawPortrait(
+          in: CGRect(x: pc.x - pSize / 2, y: pc.y - pSize / 2, width: pSize, height: pSize),
+          ring: accent, ringWidth: 3,
+          emptyFill: accent.withAlphaComponent(0.12), emptyText: accent, shape: .circle,
+          outerRing: accent.withAlphaComponent(0.3), outerRingWidth: 1)
+      }
+      drawText(
+        name, rect: CGRect(x: margin, y: 128, width: contentWidth, height: 34),
+        font: boldFont(26), color: headingInk, lineHeight: 30, alignment: .center)
+      if !headline.isEmpty {
+        drawText(
+          headline.uppercased(), rect: CGRect(x: margin, y: 160, width: contentWidth, height: 14),
+          font: mediumFont(8.4), color: accent, lineHeight: 12, alignment: .center, kern: 2)
+      }
+      drawCentredContact(y: headerHeight - 20)
+
+    case 23:  // Vogue — an oversized serif editorial
+      headerHeight = 178
+      headingInk.withAlphaComponent(0.82).setFill()
+      context.fill(CGRect(x: margin, y: 30, width: contentWidth, height: 1))
+      drawText(
+        String(format: "PORTFOLIO / %02d", style.ordinal + 1),
+        rect: CGRect(x: margin, y: 36, width: contentWidth, height: 12),
+        font: mediumFont(7.6), color: accent, lineHeight: 10, kern: 3)
+      drawText(
+        name, rect: CGRect(x: margin, y: 54, width: contentWidth, height: 72),
+        font: boldFont(46), color: headingInk, lineHeight: 48)
+      if !headline.isEmpty {
+        drawText(
+          headline, rect: CGRect(x: margin, y: 130, width: contentWidth, height: 16),
+          font: mediumFont(10), color: mutedInk, lineHeight: 14)
+      }
+      headingInk.withAlphaComponent(0.82).setFill()
+      context.fill(CGRect(x: margin, y: headerHeight - 22, width: contentWidth, height: 1))
+      drawContactStrip(x: margin, y: headerHeight - 16, color: mutedInk, iconColor: accent)
+
+    case 24:  // Signet — a pressed wax seal over a centred classic
+      headerHeight = 184
+      drawSealBadge(centre: CGPoint(x: w / 2, y: 46), radius: 26)
+      drawText(
+        name, rect: CGRect(x: margin, y: 84, width: contentWidth, height: 36),
+        font: boldFont(28), color: headingInk, lineHeight: 32, alignment: .center)
+      if !headline.isEmpty {
+        drawText(
+          headline.uppercased(), rect: CGRect(x: margin, y: 120, width: contentWidth, height: 14),
+          font: mediumFont(8.4), color: accent, lineHeight: 12, alignment: .center, kern: 2.4)
+      }
+      headingInk.withAlphaComponent(0.7).setFill()
+      context.fill(CGRect(x: w / 2 - 60, y: 140, width: 120, height: 1))
+      drawCentredContact(y: headerHeight - 20)
+
+    default:  // 25 Almanac — an icon-led fact strip
+      headerHeight = 176
+      drawText(
+        name.uppercased(), rect: CGRect(x: margin, y: 40, width: contentWidth, height: 40),
+        font: boldFont(28), color: headingInk, lineHeight: 31)
+      if !headline.isEmpty {
+        drawText(
+          headline, rect: CGRect(x: margin, y: 79, width: contentWidth, height: 16),
+          font: mediumFont(9.6), color: accent, lineHeight: 13)
+      }
+      drawFactStrip(y: 104)
+      accent.setFill()
+      context.fill(CGRect(x: margin, y: headerHeight - 5, width: 44, height: 3))
+    }
+
+    measuredHeaderBottom = headerHeight + 24
+  }
+
+  private func drawShowcaseContinuation(_ style: AdvancedResumeStyle) {
+    let context = rendererContext.cgContext
+    let dark = style.motif == 19  // Sable is the dark one
+    if dark {
+      navy.setFill()
+      context.fill(CGRect(x: 0, y: 0, width: pageBounds.width, height: 64))
+      accent.setFill()
+      context.fill(CGRect(x: 0, y: 64, width: pageBounds.width, height: 3))
+    } else {
+      accent.withAlphaComponent(0.08).setFill()
+      context.fill(CGRect(x: 0, y: 0, width: pageBounds.width, height: 60))
+      accent.setFill()
+      context.fill(CGRect(x: bodyX, y: 48, width: 46, height: 2.5))
+    }
+    drawText(
+      displayName, rect: CGRect(x: bodyX, y: 20, width: bodyWidth - 90, height: 22),
+      font: boldFont(17), color: dark ? .white : headingInk, lineHeight: 21)
+    drawText(
+      String(format: "%02d / PAGE %02d", style.ordinal + 1, pageNumber),
+      rect: CGRect(x: pageBounds.width - margin - 110, y: 24, width: 110, height: 12),
+      font: mediumFont(7.4),
+      color: dark ? UIColor.white.withAlphaComponent(0.75) : mutedInk,
+      lineHeight: 9, alignment: .right, kern: 1)
+  }
+
+  /// A concentric-ring monogram seal, initials centred, for Medallion.
+  private func drawMonogramBadge(centre: CGPoint, radius: CGFloat) {
+    let context = rendererContext.cgContext
+    UIColor.white.setFill()
+    context.fillEllipse(
+      in: CGRect(x: centre.x - radius, y: centre.y - radius, width: radius * 2, height: radius * 2))
+    accent.setStroke()
+    let outer = UIBezierPath(
+      ovalIn: CGRect(x: centre.x - radius, y: centre.y - radius, width: radius * 2, height: radius * 2))
+    outer.lineWidth = 1.4
+    outer.stroke()
+    accent.withAlphaComponent(0.5).setStroke()
+    let inner = UIBezierPath(
+      ovalIn: CGRect(
+        x: centre.x - radius + 5, y: centre.y - radius + 5, width: (radius - 5) * 2,
+        height: (radius - 5) * 2))
+    inner.lineWidth = 0.6
+    inner.stroke()
+    drawText(
+      document.initials,
+      rect: CGRect(x: centre.x - radius, y: centre.y - 9, width: radius * 2, height: 20),
+      font: boldFont(15), color: accent, lineHeight: 18, alignment: .center)
+    accent.setFill()
+    context.fillEllipse(in: CGRect(x: centre.x - 2, y: centre.y - radius - 2, width: 4, height: 4))
+  }
+
+  /// A scalloped wax-seal monogram, for Signet.
+  private func drawSealBadge(centre: CGPoint, radius: CGFloat) {
+    let context = rendererContext.cgContext
+    accent.withAlphaComponent(0.55).setFill()
+    let scallops = 20
+    for i in 0..<scallops {
+      let a = CGFloat(i) / CGFloat(scallops) * .pi * 2
+      let r = radius + 3
+      context.fillEllipse(
+        in: CGRect(x: centre.x + cos(a) * r - 1.6, y: centre.y + sin(a) * r - 1.6, width: 3.2, height: 3.2))
+    }
+    accent.setFill()
+    context.fillEllipse(
+      in: CGRect(x: centre.x - radius, y: centre.y - radius, width: radius * 2, height: radius * 2))
+    UIColor.white.withAlphaComponent(0.9).setStroke()
+    let ring = UIBezierPath(
+      ovalIn: CGRect(
+        x: centre.x - radius + 4, y: centre.y - radius + 4, width: (radius - 4) * 2,
+        height: (radius - 4) * 2))
+    ring.lineWidth = 0.8
+    ring.stroke()
+    drawText(
+      document.initials,
+      rect: CGRect(x: centre.x - radius, y: centre.y - 8, width: radius * 2, height: 18),
+      font: boldFont(14), color: .white, lineHeight: 17, alignment: .center)
+  }
+
+  /// Capsule contact labels, for Lozenge.
+  private func drawContactPills(x: CGFloat, y: CGFloat) {
+    var cx = x
+    for (icon, value) in [
+      ("phone.fill", document.personal.phone),
+      ("envelope.fill", document.personal.email),
+    ] where !value.isBlank {
+      let attributes = textAttributes(font: mediumFont(8), color: headingInk, lineHeight: 10)
+      let textWidth = singleLineWidth(value, attributes: attributes)
+      let pillWidth = textWidth + 32
+      let pill = UIBezierPath(
+        roundedRect: CGRect(x: cx, y: y, width: pillWidth, height: 20), cornerRadius: 10)
+      accent.withAlphaComponent(0.1).setFill()
+      pill.fill()
+      drawIcon("\(icon)", in: CGRect(x: cx + 9, y: y + 5.5, width: 9, height: 9), color: accent)
+      NSAttributedString(string: value, attributes: attributes).draw(at: CGPoint(x: cx + 23, y: y + 5))
+      cx += pillWidth + 8
+    }
+  }
+
+  /// An icon-tile fact strip, for Almanac.
+  private func drawFactStrip(y: CGFloat) {
+    let facts: [(String, String)] = [
+      ("phone.fill", document.personal.phone),
+      ("envelope.fill", document.personal.email),
+      ("briefcase.fill", document.personal.headline),
+    ].filter { !$0.1.isBlank }
+    guard !facts.isEmpty else { return }
+    let count = CGFloat(facts.count)
+    let tileWidth = (contentWidth - (count - 1) * 8) / count
+    var tx = margin
+    for (icon, value) in facts {
+      let tile = UIBezierPath(
+        roundedRect: CGRect(x: tx, y: y, width: tileWidth, height: 34), cornerRadius: 7)
+      accent.withAlphaComponent(0.08).setFill()
+      tile.fill()
+      drawIcon(icon, in: CGRect(x: tx + 9, y: y + 11, width: 12, height: 12), color: accent)
+      drawText(
+        value, rect: CGRect(x: tx + 26, y: y + 9, width: tileWidth - 30, height: 18),
+        font: regularFont(7.4), color: ink, lineHeight: 8.6)
+      tx += tileWidth + 8
+    }
+  }
+
+  /// A centred "phone · email" line, for the symmetric mastheads.
+  private func drawCentredContact(y: CGFloat) {
+    let contact = [document.personal.phone, document.personal.email]
+      .filter { !$0.isBlank }
+      .joined(separator: "    ·    ")
+    guard !contact.isEmpty else { return }
+    drawText(
+      contact, rect: CGRect(x: margin, y: y, width: contentWidth, height: 12),
+      font: regularFont(8.6), color: mutedInk, lineHeight: 11, alignment: .center)
   }
 
   private func drawPrimaryHeader() {
@@ -5157,6 +5578,10 @@ private final class ResumePDFLayout {
       drawSectionTitle(heading(.competencies))
       drawCompetencyMeters(items)
       return
+    case .dots:
+      drawSectionTitle(heading(.competencies))
+      drawCompetencyDots(items)
+      return
     case .columns:
       drawSectionTitle(heading(.competencies))
       drawCompetencyColumns(items)
@@ -5287,6 +5712,54 @@ private final class ResumePDFLayout {
       cursorY += rowHeight
     }
     cursorY += 8
+  }
+
+  /// Dot ratings, two across. The rank is the position in the list, exactly as
+  /// the meters read it, drawn as five beads filled to that level.
+  private func drawCompetencyDots(_ items: [String]) {
+    let gap: CGFloat = 18
+    let columnWidth = (bodyWidth - gap) / 2
+    for rowStart in stride(from: 0, to: items.count, by: 2) {
+      let rowItems = (rowStart..<min(rowStart + 2, items.count)).map { ($0, items[$0]) }
+      let rowHeight: CGFloat = 20
+      ensureSpace(rowHeight, continuationTitle: continuedHeading(.competencies))
+      for (column, entry) in rowItems.enumerated() {
+        drawDotRating(
+          entry.1, index: entry.0,
+          x: bodyX + CGFloat(column) * (columnWidth + gap), y: cursorY, width: columnWidth,
+          textInk: ink, fill: accent, empty: accent.withAlphaComponent(0.18))
+      }
+      cursorY += rowHeight
+    }
+    cursorY += 6
+  }
+
+  @discardableResult
+  private func drawDotRating(
+    _ item: String, index: Int, x: CGFloat, y: CGFloat, width: CGFloat,
+    textInk: UIColor, fill: UIColor, empty: UIColor
+  ) -> CGFloat {
+    let dots = 5
+    let dotDiameter: CGFloat = 6
+    let dotGap: CGFloat = 4
+    let dotsWidth = CGFloat(dots) * dotDiameter + CGFloat(dots - 1) * dotGap
+    let labelWidth = width - dotsWidth - 8
+    let labelHeight = max(
+      measuredHeight(item, width: labelWidth, font: regularFont(8.4), lineHeight: 10.6), 11)
+    drawText(
+      item, rect: CGRect(x: x, y: y, width: labelWidth, height: labelHeight),
+      font: regularFont(8.4), color: textInk, lineHeight: 10.6)
+    let filled = max(1, min(dots, Int((meterLevel(index) * CGFloat(dots)).rounded())))
+    let context = rendererContext.cgContext
+    let dotsX = x + width - dotsWidth
+    for dot in 0..<dots {
+      (dot < filled ? fill : empty).setFill()
+      context.fillEllipse(
+        in: CGRect(
+          x: dotsX + CGFloat(dot) * (dotDiameter + dotGap), y: y + 1.5,
+          width: dotDiameter, height: dotDiameter))
+    }
+    return labelHeight
   }
 
   private func drawExperience() {
@@ -5768,7 +6241,9 @@ private final class ResumePDFLayout {
       .quantum, .ribbon, .runway, .sentinel, .spectrum, .summit, .tessera, .vault, .wave,
       .zenith, .alcove, .sovereign, .palisade, .volta, .obsidian, .radiant, .verge, .datum,
       .pinnacle, .cobalt, .equinox, .mirage, .parallax, .emblem, .cadence, .citadel, .atrium,
-      .zephyr, .cinder, .keystone, .loom, .graphite, .stratus, .vellum:
+      .zephyr, .cinder, .keystone, .loom, .graphite, .stratus, .vellum,
+      .salute, .couture, .medallion, .sable, .terracotta, .lozenge, .circlet, .vogue, .signet,
+      .almanac:
       if let style = template.advancedStyle {
         drawAdvancedReferenceCard(style, rect: cardRect)
       }
@@ -6787,6 +7262,17 @@ private final class ResumePDFLayout {
       case 12: .condensed
       case 13: .avenir
       case 14: .georgia
+      // The Showcase Collection.
+      case 16: .avenir  // Salute — friendly
+      case 17: .condensed  // Couture — tall editorial
+      case 18: .futura  // Medallion — geometric
+      case 19: .helvetica  // Sable — neutral
+      case 20: .iowan  // Terracotta — warm serif
+      case 21: .rounded  // Lozenge — soft
+      case 22: .avenir  // Circlet
+      case 23: .baskerville  // Vogue — serif editorial
+      case 24: .georgia  // Signet — classic serif
+      case 25: .helvetica  // Almanac — data
       default: .avenir
       }
     }

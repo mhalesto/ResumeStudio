@@ -1280,7 +1280,9 @@ struct TemplatePreviewCard: View {
       .quantum, .ribbon, .runway, .sentinel, .spectrum, .summit, .tessera, .vault, .wave,
       .zenith, .alcove, .sovereign, .palisade, .volta, .obsidian, .radiant, .verge, .datum,
       .pinnacle, .cobalt, .equinox, .mirage, .parallax, .emblem, .cadence, .citadel, .atrium,
-      .zephyr, .cinder, .keystone, .loom, .graphite, .stratus, .vellum:
+      .zephyr, .cinder, .keystone, .loom, .graphite, .stratus, .vellum,
+      .salute, .couture, .medallion, .sable, .terracotta, .lozenge, .circlet, .vogue, .signet,
+      .almanac:
       if let style = template.advancedStyle {
         AdvancedTemplateSkeleton(
           style: style,

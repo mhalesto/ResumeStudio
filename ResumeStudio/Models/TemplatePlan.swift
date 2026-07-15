@@ -101,6 +101,9 @@ enum CompetencyStyle: Equatable, Hashable {
   /// Ranked bars, strongest first. The level is the position in the list, so
   /// the order chosen in the editor is the ranking — nothing is invented.
   case meters
+  /// A row of five dots, filled by rank — the "rating" look the portfolio
+  /// templates use. Same ranking logic as `meters`, drawn as beads.
+  case dots
   /// Three across, plain type: the compact list the ATS guides recommend.
   case columns
 }

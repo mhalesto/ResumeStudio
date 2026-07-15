@@ -14,7 +14,7 @@ final class ResumeStudioTests: XCTestCase {
     XCTAssertEqual(ResumeStudioPlan.go.hostedReviewRoomLimit, 1)
     XCTAssertEqual(ResumeStudioPlan.pro.hostedReviewRoomLimit, 10)
 
-    XCTAssertEqual(MonetizationCatalog.freeResumeTemplates.count, 32)
+    XCTAssertEqual(MonetizationCatalog.freeResumeTemplates.count, 34)
     XCTAssertEqual(MonetizationCatalog.freeCoverLetterTemplates.count, 14)
     XCTAssertTrue(MonetizationCatalog.freeResumeTemplates.isSubset(of: Set(ResumeTemplate.allCases)))
     XCTAssertTrue(MonetizationCatalog.freeCoverLetterTemplates.isSubset(of: Set(CoverLetterTemplate.allCases)))
@@ -45,12 +45,12 @@ final class ResumeStudioTests: XCTestCase {
   }
 
   func testTemplateCatalogueIsDistinct() {
-    XCTAssertEqual(ResumeTemplate.allCases.count, 121)
+    XCTAssertEqual(ResumeTemplate.allCases.count, 131)
 
     // Every template is its own look: no shared names, no shared descriptions.
-    XCTAssertEqual(Set(ResumeTemplate.allCases.map(\.title)).count, 121)
-    XCTAssertEqual(Set(ResumeTemplate.allCases.map(\.subtitle)).count, 121)
-    XCTAssertEqual(Set(ResumeTemplate.allCases.map(\.rawValue)).count, 121)
+    XCTAssertEqual(Set(ResumeTemplate.allCases.map(\.title)).count, 131)
+    XCTAssertEqual(Set(ResumeTemplate.allCases.map(\.subtitle)).count, 131)
+    XCTAssertEqual(Set(ResumeTemplate.allCases.map(\.rawValue)).count, 131)
 
     // The photo-led ones build their header around the portrait. Everything else
     // takes a photo too — it just closes the space up without one.
@@ -60,17 +60,18 @@ final class ResumeStudioTests: XCTestCase {
         .atlas, .portrait, .spotlight, .beacon, .harbor, .bloom, .atelier, .canvas, .insignia,
         .nova, .monarch, .eclipse, .aperture, .gallery, .halo, .orbit, .panorama, .spectrum,
         .zenith, .alcove, .radiant, .zephyr, .vellum,
+        .salute, .couture, .medallion, .sable, .terracotta, .circlet, .vogue,
       ]
     )
   }
 
   func testAdvancedCollectionAndFreeShowcaseStayIntentional() throws {
     let advanced = ResumeTemplate.allCases.filter { $0.advancedStyle != nil }
-    XCTAssertEqual(advanced.count, 52)
-    XCTAssertEqual(Set(advanced.compactMap { $0.advancedStyle?.ordinal }), Set(0..<52))
+    XCTAssertEqual(advanced.count, 62)
+    XCTAssertEqual(Set(advanced.compactMap { $0.advancedStyle?.ordinal }), Set(0..<62))
 
     let freeAdvanced = Set(advanced).intersection(MonetizationCatalog.freeResumeTemplates)
-    XCTAssertEqual(freeAdvanced.count, 20)
+    XCTAssertEqual(freeAdvanced.count, 22)
     XCTAssertEqual(
       freeAdvanced,
       [
@@ -78,13 +79,17 @@ final class ResumeStudioTests: XCTestCase {
         .circuit, .continuum, .district, .ember, .facet,
         .gallery, .halo, .helix, .kinetic, .lattice,
         .nexus, .orbit, .panorama, .quantum, .ribbon,
+        .salute, .lozenge,
       ]
     )
-    XCTAssertEqual(Set(advanced).subtracting(freeAdvanced).count, 32)
+    XCTAssertEqual(Set(advanced).subtracting(freeAdvanced).count, 40)
 
     // The twenty Signature Collection mastheads reach beyond the first thirty-two
     // into constructions 8-15, each addressed explicitly rather than by modulo.
-    let signature = advanced.filter { ($0.advancedStyle?.ordinal ?? 0) >= 32 }
+    let signature = advanced.filter {
+      let ordinal = $0.advancedStyle?.ordinal ?? 0
+      return ordinal >= 32 && ordinal < 52
+    }
     XCTAssertEqual(signature.count, 20)
     for template in signature {
       let style = try XCTUnwrap(template.advancedStyle)
@@ -92,6 +97,19 @@ final class ResumeStudioTests: XCTestCase {
       XCTAssertLessThanOrEqual(style.motif, 15, template.title)
       XCTAssertLessThanOrEqual(style.variant, 3, template.title)
     }
+
+    // The ten Showcase mastheads occupy their own constructions, 16-25, and all
+    // carry the Showcase tag so they group together in the gallery.
+    let showcase = advanced.filter { ($0.advancedStyle?.ordinal ?? 0) >= 52 }
+    XCTAssertEqual(showcase.count, 10)
+    for template in showcase {
+      let style = try XCTUnwrap(template.advancedStyle)
+      XCTAssertGreaterThanOrEqual(style.motif, 16, template.title)
+      XCTAssertLessThanOrEqual(style.motif, 25, template.title)
+      XCTAssertTrue(style.styleTags.contains(.showcase), template.title)
+    }
+    XCTAssertEqual(
+      ResumeTemplate.allCases.filter { $0.styleTags.contains(.showcase) }.count, 10)
   }
 
   /// The point of the structural templates: they rearrange the page, not the
@@ -246,6 +264,35 @@ final class ResumeStudioTests: XCTestCase {
       attachment.lifetime = .keepAlways
       add(attachment)
     }
+  }
+
+  /// Visual-review artifact for the Showcase Collection: the ten portfolio-grade
+  /// mastheads — greeting, monogram, vertical name, dot ratings — at export size.
+  func testShowcaseCollectionContactSheets() throws {
+    let resumeTemplates: [ResumeTemplate] = [
+      .salute, .couture, .medallion, .sable, .terracotta,
+      .lozenge, .circlet, .vogue, .signet, .almanac,
+    ]
+    let resumeItems = try resumeTemplates.map { template in
+      var document = ResumeDocument.example
+      document.template = template
+      let pdf = try XCTUnwrap(PDFDocument(data: ResumePDFRenderer.render(document: document)))
+      let page = try XCTUnwrap(pdf.page(at: 0))
+      return (template.title, page.thumbnail(of: CGSize(width: 357, height: 505), for: .mediaBox))
+    }
+    let sheet = contactSheet(
+      items: resumeItems, columns: 5, pageSize: CGSize(width: 357, height: 505))
+    let outputDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("ResumeStudioContactSheets", isDirectory: true)
+    try FileManager.default.createDirectory(
+      at: outputDirectory, withIntermediateDirectories: true)
+    let data = try XCTUnwrap(sheet.pngData())
+    try data.write(
+      to: outputDirectory.appendingPathComponent("showcase-resume-templates.png"), options: .atomic)
+    let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.png")
+    attachment.name = "showcase-resume-templates.png"
+    attachment.lifetime = .keepAlways
+    add(attachment)
   }
 
   /// Focused visual-review artifacts for the art-led release: five résumé

@@ -66,6 +66,8 @@ enum MonetizationCatalog {
     .circuit, .continuum, .district, .ember, .facet,
     .gallery, .halo, .helix, .kinetic, .lattice,
     .nexus, .orbit, .panorama, .quantum, .ribbon,
+    // A taste of the Showcase Collection stays free; the rest are premium.
+    .salute, .lozenge,
   ]
 
   static let freeCoverLetterTemplates: Set<CoverLetterTemplate> = [

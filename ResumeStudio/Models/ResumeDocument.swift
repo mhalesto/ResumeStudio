@@ -416,6 +416,7 @@ enum ResumeAccent: String, CaseIterable, Codable, Identifiable {
 }
 
 enum TemplateStyleTag: String, CaseIterable, Identifiable, Hashable {
+  case showcase
   case structured
   case modern
   case clean
@@ -429,6 +430,10 @@ enum TemplateStyleTag: String, CaseIterable, Identifiable, Hashable {
 
   var title: String {
     switch self {
+    // The Showcase Collection: the portfolio-grade, "goes a bit beyond" designs —
+    // monogram badges, vertical names, dot ratings. Kept first so someone after a
+    // standout résumé finds them in one tap.
+    case .showcase: "Showcase"
     // The templates that rearrange the page rather than the letterhead. First in
     // the filter row because it is the thing people are actually looking for
     // when they say a résumé looks like every other résumé.
@@ -573,6 +578,18 @@ enum ResumeTemplate: String, CaseIterable, Codable, Identifiable {
   case graphite
   case stratus
   case vellum
+  // The Showcase Collection: portfolio-grade designs that go a step beyond —
+  // greetings, monogram badges, vertical names, dot ratings. Mastheads 16-25.
+  case salute
+  case couture
+  case medallion
+  case sable
+  case terracotta
+  case lozenge
+  case circlet
+  case vogue
+  case signet
+  case almanac
 
   var id: String { rawValue }
 
@@ -584,7 +601,8 @@ enum ResumeTemplate: String, CaseIterable, Codable, Identifiable {
     switch self {
     case .portrait, .spotlight, .beacon, .harbor, .bloom, .atelier, .canvas, .atlas, .insignia,
       .nova, .monarch, .eclipse, .aperture, .gallery, .halo, .orbit, .panorama, .spectrum,
-      .zenith, .alcove, .radiant, .zephyr, .vellum:
+      .zenith, .alcove, .radiant, .zephyr, .vellum,
+      .salute, .couture, .medallion, .sable, .terracotta, .circlet, .vogue:
       true
     default: false
     }
@@ -888,6 +906,45 @@ enum ResumeTemplate: String, CaseIterable, Codable, Identifiable {
       TemplatePlan(competencies: .chips)
     case .vellum:
       TemplatePlan(experience: .dateGutter, competencies: .columns)
+    // The Showcase Collection.
+    case .salute:
+      // Greeting masthead, then a quiet facts column beside ranked skills.
+      TemplatePlan(
+        body: .side(SideColumn(edge: .leading, width: 176, fill: .none, divider: true)),
+        competencies: .meters, skillsFirst: true)
+    case .couture:
+      // Fashion editorial: dates hang in the margin, skills read as a set.
+      TemplatePlan(experience: .dateGutter, competencies: .columns)
+    case .medallion:
+      // Monogram hero over a two-column page rated in dots.
+      TemplatePlan(
+        body: .side(SideColumn(edge: .leading, width: 178, fill: .none, divider: true)),
+        competencies: .dots)
+    case .sable:
+      // Dark facts column with icon rows, story on the light side.
+      TemplatePlan(
+        body: .side(SideColumn(edge: .leading, width: 186, fill: .dark)),
+        competencies: .dots, contact: .iconRows, skillsFirst: true)
+    case .terracotta:
+      // Earthen masthead, timeline roles, ranked strengths in the margin column.
+      TemplatePlan(
+        body: .side(SideColumn(edge: .trailing, width: 168, fill: .none, divider: true)),
+        experience: .timeline, competencies: .meters)
+    case .lozenge:
+      // Airy single column; the pill labels and dot ratings carry the look.
+      TemplatePlan(competencies: .dots, sectionChrome: .card)
+    case .circlet:
+      // Ringed portrait hero, dot-rated skills lead the page.
+      TemplatePlan(competencies: .dots, skillsFirst: true)
+    case .vogue:
+      // Oversized serif editorial with dates hung in the margin.
+      TemplatePlan(experience: .dateGutter, competencies: .columns)
+    case .signet:
+      // Centred classic beneath a seal; strengths rated in dots.
+      TemplatePlan(competencies: .dots)
+    case .almanac:
+      // Infographic fact strip; carded sections and dot-rated strengths.
+      TemplatePlan(competencies: .dots, sectionChrome: .card, skillsFirst: true)
     default:
       TemplatePlan()
     }
@@ -1323,6 +1380,27 @@ enum ResumeTemplate: String, CaseIterable, Codable, Identifiable {
       AdvancedResumeStyle(motif: 15, variant: 2, ordinal: 50, "Stratus Drift", "Layered cloud bands drift behind the name", "cloud.fill", [.clean, .modern, .creative])
     case .vellum:
       AdvancedResumeStyle(motif: 9, variant: 2, ordinal: 51, "Vellum Press", "A warm halo on pressed editorial paper", "doc.richtext.fill", [.classic, .clean, .photo])
+    // The Showcase Collection: mastheads 16-25, each a bespoke construction.
+    case .salute:
+      AdvancedResumeStyle(motif: 16, variant: 0, ordinal: 52, "Salute Greeting", "A warm hello, a round portrait and ranked skills", "hand.wave.fill", [.showcase, .modern, .clean, .photo])
+    case .couture:
+      AdvancedResumeStyle(motif: 17, variant: 1, ordinal: 53, "Couture Vertical", "A tall name up the page beside a fashion portrait", "textformat.abc.dottedunderline", [.showcase, .creative, .photo, .bold])
+    case .medallion:
+      AdvancedResumeStyle(motif: 18, variant: 0, ordinal: 54, "Medallion Monogram", "A circular monogram seal, big portrait and dot ratings", "seal.fill", [.showcase, .creative, .photo, .modern])
+    case .sable:
+      AdvancedResumeStyle(motif: 19, variant: 0, ordinal: 55, "Sable Sidebar", "A dark facts column with icons beside a bright story", "sidebar.left", [.showcase, .bold, .photo, .modern])
+    case .terracotta:
+      AdvancedResumeStyle(motif: 20, variant: 2, ordinal: 56, "Terracotta Circle", "A warm earthen masthead and a bold profile circle", "circle.circle.fill", [.showcase, .creative, .classic, .photo])
+    case .lozenge:
+      AdvancedResumeStyle(motif: 21, variant: 0, ordinal: 57, "Lozenge Pills", "Capsule section labels over an airy two-column page", "capsule.portrait.fill", [.showcase, .clean, .modern])
+    case .circlet:
+      AdvancedResumeStyle(motif: 22, variant: 0, ordinal: 58, "Circlet Orbit", "A ringed portrait with orbiting rated skills", "circle.dashed.inset.filled", [.showcase, .photo, .creative, .modern])
+    case .vogue:
+      AdvancedResumeStyle(motif: 23, variant: 1, ordinal: 59, "Vogue Editorial", "Oversized serif name, hairline rules, margin labels", "textformat.size.larger", [.showcase, .creative, .classic, .bold])
+    case .signet:
+      AdvancedResumeStyle(motif: 24, variant: 0, ordinal: 60, "Signet Seal", "A pressed wax-seal monogram over a centred classic", "checkmark.seal.fill", [.showcase, .classic, .clean])
+    case .almanac:
+      AdvancedResumeStyle(motif: 25, variant: 0, ordinal: 61, "Almanac Infographic", "An icon-led fact strip with dot-rated strengths", "chart.bar.xaxis", [.showcase, .modern, .creative, .bold])
     default:
       nil
     }
