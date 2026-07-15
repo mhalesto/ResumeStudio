@@ -3,9 +3,9 @@ import SwiftUI
 /// Brand surfaces shared by the app icon, the launch screen and the splash.
 ///
 /// These values mirror the artwork in `Assets.xcassets/AppIcon.appiconset`.
-/// Keep them in step: `SplashView` recreates the icon's résumé sheet, so any
-/// drift here shows up as a visible mismatch between the icon a user taps and
-/// the screen they land on.
+/// Keep them in step: the launch screen and `SplashView` sit the rendered icon
+/// tile on this field, so drift here shows up as a visible mismatch between the
+/// icon a user taps and the screen they land on.
 enum BrandPalette {
   /// The flat navy of the static launch screen (the `LaunchBackground` colour
   /// set). `SplashView` opens on this exact colour so the hand-off has no seam.
