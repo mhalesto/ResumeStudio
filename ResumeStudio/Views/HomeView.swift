@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Where the home screen can take you.
 enum HomeRoute: Hashable {
@@ -43,6 +44,9 @@ struct HomeView: View {
   @EnvironmentObject private var purchases: PurchaseManager
   @State private var path: [HomeRoute] = []
   @State private var pendingStart: StartChoice?
+  @State private var sharePreview: PreviewShareItem?
+  @State private var showWelcome = false
+  @AppStorage("hasSeenWelcome") private var hasSeenWelcome = false
 
   var body: some View {
     NavigationStack(path: $path) {
@@ -145,6 +149,34 @@ struct HomeView: View {
           PrivacyCenterView()
         }
       }
+      .sheet(item: $sharePreview) { item in
+        ShareSheet(activityItems: [item.image])
+      }
+      .sheet(isPresented: $showWelcome, onDismiss: { hasSeenWelcome = true }) {
+        WelcomeSheet(
+          accent: accent,
+          templateCount: ResumeTemplate.allCases.count,
+          onExample: {
+            showWelcome = false
+            path = [.editor(nil)]
+          },
+          onBlank: {
+            store.startBlankResume()
+            showWelcome = false
+            path = [.editor(store.document.incompleteSections.first)]
+          },
+          onImport: {
+            showWelcome = false
+            path = [.importResume]
+          }
+        )
+      }
+      .onAppear {
+        // First launch only: point people at a starting move before they face
+        // the full home screen. The flag is set when the sheet is dismissed, so
+        // a launch where presentation is pre-empted doesn't burn the one chance.
+        if !hasSeenWelcome { showWelcome = true }
+      }
       .alert(item: $pendingStart) { choice in
         Alert(
           title: Text("Replace current draft?"),
@@ -185,6 +217,56 @@ struct HomeView: View {
     await CoverLetterThumbnailRenderer.prewarm(
       templates: Array(CoverLetterTemplate.allCases.prefix(10)),
       accent: doc.accent)
+  }
+
+  /// A row of accent swatches under the template header. Colour lived only in the
+  /// editor's Template & Colour screen; here it recolours the preview cards live
+  /// while you browse looks. Each swatch is the true export colour.
+  private var accentQuickPick: some View {
+    ScrollView(.horizontal, showsIndicators: false) {
+      HStack(spacing: 12) {
+        ForEach(ResumeAccent.allCases) { option in
+          let selected = store.document.accent == option
+          let unlocked = purchases.canUse(option)
+          Button {
+            guard unlocked else {
+              purchases.requestPlans()
+              return
+            }
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.72)) {
+              store.document.accent = option
+            }
+          } label: {
+            ZStack {
+              if selected {
+                Circle()
+                  .strokeBorder(option.color, lineWidth: 2)
+                  .frame(width: 38, height: 38)
+              }
+              Circle()
+                .fill(option.color)
+                .frame(width: 26, height: 26)
+                .overlay { Circle().strokeBorder(Color.primary.opacity(0.10), lineWidth: 1) }
+                .overlay {
+                  if !unlocked {
+                    Image(systemName: "lock.fill")
+                      .font(.system(size: 10, weight: .bold))
+                      .foregroundStyle(.white)
+                      .shadow(color: .black.opacity(0.35), radius: 1)
+                  }
+                }
+            }
+            .frame(width: 40, height: 40)
+          }
+          .buttonStyle(.plain)
+          .accessibilityLabel("\(option.title) accent\(option.isPremium ? ", premium" : "")")
+          .accessibilityAddTraits(selected ? .isSelected : [])
+        }
+      }
+      .padding(.horizontal, 1)
+    }
+    .contentMargins(.horizontal, 1, for: .scrollContent)
+    .sensoryFeedback(.selection, trigger: store.document.accent)
   }
 
   // MARK: - Hero
@@ -511,6 +593,8 @@ struct HomeView: View {
         }
       }
 
+      accentQuickPick
+
       ScrollView(.horizontal, showsIndicators: false) {
         // Lazy: each card renders a real PDF to make its thumbnail, and the
         // catalogue is now long enough that doing all of them up front would
@@ -540,6 +624,13 @@ struct HomeView: View {
               }
             }
             .buttonStyle(.plain)
+            .contextMenu {
+              Button {
+                shareTemplatePreview(template)
+              } label: {
+                Label("Share preview", systemImage: "square.and.arrow.up")
+              }
+            }
           }
         }
         .padding(.vertical, 6)
@@ -623,6 +714,18 @@ struct HomeView: View {
           .background(accent, in: Capsule())
       }
       .buttonStyle(.plain)
+    }
+  }
+
+  /// Renders a shareable, higher-resolution image of the template preview and
+  /// hands it to the system share sheet.
+  private func shareTemplatePreview(_ template: ResumeTemplate) {
+    let doc = store.document
+    Task {
+      if let image = await TemplateThumbnailRenderer.shareImage(
+        template: template, accent: doc.accent, photo: doc.photo, crop: doc.photoCrop) {
+        sharePreview = PreviewShareItem(image: image)
+      }
     }
   }
 
@@ -747,6 +850,138 @@ private enum StartChoice: String, Identifiable {
   case blank
 
   var id: String { rawValue }
+}
+
+/// A rendered template preview on its way to the share sheet.
+private struct PreviewShareItem: Identifiable {
+  let id = UUID()
+  let image: UIImage
+}
+
+/// The first-run welcome. Deliberately a single decision — how do you want to
+/// start — rather than a multi-screen tour, so it gets out of the way fast.
+private struct WelcomeSheet: View {
+  @Environment(\.dismiss) private var dismiss
+  let accent: Color
+  let templateCount: Int
+  let onExample: () -> Void
+  let onBlank: () -> Void
+  let onImport: () -> Void
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      HStack {
+        Spacer()
+        Button {
+          dismiss()
+        } label: {
+          Image(systemName: "xmark.circle.fill")
+            .font(.title2)
+            .foregroundStyle(Theme.mutedInk)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Close")
+      }
+
+      VStack(alignment: .leading, spacing: 12) {
+        ZStack {
+          Circle().fill(accent.opacity(0.14))
+          Image(systemName: "doc.text.fill")
+            .font(.system(size: 26, weight: .semibold))
+            .foregroundStyle(accent)
+        }
+        .frame(width: 58, height: 58)
+
+        Text("Welcome to Resume Studio")
+          .font(Theme.display(28))
+          .foregroundStyle(Theme.ink)
+          .fixedSize(horizontal: false, vertical: true)
+        Text("\(templateCount) templates, private on-device drafts, and a polished PDF in minutes. How would you like to start?")
+          .font(.subheadline)
+          .foregroundStyle(Theme.mutedInk)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      .padding(.top, 4)
+
+      VStack(spacing: 12) {
+        WelcomeChoice(
+          title: "Start with an example",
+          subtitle: "A complete sample you can edit into your own",
+          systemImage: "sparkles",
+          accent: accent,
+          prominent: true,
+          action: onExample
+        )
+        WelcomeChoice(
+          title: "Start blank",
+          subtitle: "Build every section yourself",
+          systemImage: "plus",
+          accent: accent,
+          prominent: false,
+          action: onBlank
+        )
+        WelcomeChoice(
+          title: "Import a résumé",
+          subtitle: "Bring in a PDF, DOCX or LinkedIn export",
+          systemImage: "square.and.arrow.down",
+          accent: accent,
+          prominent: false,
+          action: onImport
+        )
+      }
+      .padding(.top, 26)
+
+      Spacer(minLength: 0)
+    }
+    .padding(24)
+    .presentationDetents([.medium, .large])
+    .presentationDragIndicator(.visible)
+  }
+}
+
+private struct WelcomeChoice: View {
+  let title: String
+  let subtitle: String
+  let systemImage: String
+  let accent: Color
+  let prominent: Bool
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      HStack(spacing: 14) {
+        ZStack {
+          RoundedRectangle(cornerRadius: 13, style: .continuous)
+            .fill(prominent ? Color.white.opacity(0.18) : accent.opacity(0.14))
+          Image(systemName: systemImage)
+            .font(.system(size: 17, weight: .semibold))
+            .foregroundStyle(prominent ? .white : accent)
+        }
+        .frame(width: 44, height: 44)
+
+        VStack(alignment: .leading, spacing: 3) {
+          Text(title)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(prominent ? .white : Theme.ink)
+          Text(subtitle)
+            .font(.caption)
+            .foregroundStyle(prominent ? .white.opacity(0.85) : Theme.mutedInk)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        Spacer(minLength: 8)
+        Image(systemName: "arrow.right")
+          .font(.subheadline.weight(.semibold))
+          .foregroundStyle(prominent ? .white : accent)
+      }
+      .padding(16)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(
+        prominent ? AnyShapeStyle(accent) : AnyShapeStyle(Theme.card),
+        in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+      )
+    }
+    .buttonStyle(.plain)
+  }
 }
 
 private struct WorkspaceCard: View {

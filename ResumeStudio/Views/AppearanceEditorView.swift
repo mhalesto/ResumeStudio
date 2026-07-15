@@ -10,6 +10,10 @@ struct AppearanceEditorView: View {
   /// hundred-odd rows down. This switch keeps both one tap away.
   @State private var section = ExportSection.template
 
+  /// Search over the (now 120-plus) templates, so a specific look is reachable
+  /// without scrolling the whole list.
+  @State private var templateQuery = ""
+
   private enum ExportSection: String, CaseIterable, Identifiable {
     case template
     case colour
@@ -73,36 +77,68 @@ struct AppearanceEditorView: View {
     .navigationBarTitleDisplayMode(.inline)
   }
 
+  private var filteredTemplates: [ResumeTemplate] {
+    let query = templateQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !query.isEmpty else { return ResumeTemplate.allCases }
+    return ResumeTemplate.allCases.filter { option in
+      ([option.title, option.subtitle] + option.styleTags.map(\.title))
+        .joined(separator: " ")
+        .localizedCaseInsensitiveContains(query)
+    }
+  }
+
   private var templateSection: some View {
     Section {
-        ForEach(ResumeTemplate.allCases) { option in
-          let unlocked = purchases.canUse(option)
+      HStack(spacing: 8) {
+        Image(systemName: "magnifyingglass")
+          .foregroundStyle(.secondary)
+        TextField("Search templates", text: $templateQuery)
+          .textInputAutocapitalization(.never)
+          .autocorrectionDisabled()
+        if !templateQuery.isEmpty {
           Button {
-            guard unlocked else {
-              purchases.requestPlans()
-              return
-            }
-            template = option
+            templateQuery = ""
           } label: {
-            HStack(spacing: 10) {
-              TemplateOptionRow(
-                option: option,
-                accent: accent,
-                isSelected: template == option
-              )
-              if !unlocked { PlanLockBadge() }
-            }
+            Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
           }
           .buttonStyle(.plain)
-          .accessibilityHint(unlocked ? "" : "Available with Go, Pro, or the Design Pack")
+          .accessibilityLabel("Clear search")
         }
-      } header: {
-        Text("PDF Template")
-      } footer: {
-        Text(
-          "Templates change the typography, header, section styling, and reference cards in the exported PDF."
-        )
       }
+
+      ForEach(filteredTemplates) { option in
+        let unlocked = purchases.canUse(option)
+        Button {
+          guard unlocked else {
+            purchases.requestPlans()
+            return
+          }
+          template = option
+        } label: {
+          HStack(spacing: 10) {
+            TemplateOptionRow(
+              option: option,
+              accent: accent,
+              isSelected: template == option
+            )
+            if !unlocked { PlanLockBadge() }
+          }
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint(unlocked ? "" : "Available with Go, Pro, or the Design Pack")
+      }
+
+      if filteredTemplates.isEmpty {
+        Text("No templates match “\(templateQuery)”.")
+          .foregroundStyle(.secondary)
+      }
+    } header: {
+      Text("PDF Template")
+    } footer: {
+      Text(
+        "Templates change the typography, header, section styling, and reference cards in the exported PDF."
+      )
+    }
   }
 
   private var accentSection: some View {
