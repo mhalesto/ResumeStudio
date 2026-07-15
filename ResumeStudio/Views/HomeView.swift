@@ -45,6 +45,9 @@ struct HomeView: View {
   @State private var pendingStart: StartChoice?
   @State private var showWelcome = false
   @AppStorage("hasSeenWelcome") private var hasSeenWelcome = false
+  // Scales the serif display headline with the reader's text-size setting instead
+  // of pinning it at 38pt.
+  @ScaledMetric(relativeTo: .largeTitle) private var heroTitleSize: CGFloat = 38
 
   var body: some View {
     NavigationStack(path: $path) {
@@ -243,7 +246,7 @@ struct HomeView: View {
 
       VStack(alignment: .leading, spacing: 12) {
         Text("Build a résumé\nthat feels like you.")
-          .font(Theme.display(38))
+          .font(Theme.display(heroTitleSize))
           .foregroundStyle(Theme.heroInk)
           .lineSpacing(2)
           .fixedSize(horizontal: false, vertical: true)
@@ -802,6 +805,7 @@ private enum StartChoice: String, Identifiable {
 /// start — rather than a multi-screen tour, so it gets out of the way fast.
 private struct WelcomeSheet: View {
   @Environment(\.dismiss) private var dismiss
+  @ScaledMetric(relativeTo: .title) private var titleSize: CGFloat = 28
   let accent: Color
   let templateCount: Int
   let onExample: () -> Void
@@ -838,7 +842,7 @@ private struct WelcomeSheet: View {
           .frame(width: 58, height: 58)
 
           Text("Welcome to Resume Studio")
-            .font(Theme.display(28))
+            .font(Theme.display(titleSize))
             .foregroundStyle(Theme.ink)
             .fixedSize(horizontal: false, vertical: true)
           Text("\(templateCount) templates, private on-device drafts, and a polished PDF in minutes. How would you like to start?")
@@ -1017,15 +1021,22 @@ private struct WorkspaceCard: View {
 private struct HeroStat: View {
   let value: String
   let label: String
+  // Scales with Dynamic Type; the shrink guards keep three across from clipping
+  // at the largest accessibility sizes.
+  @ScaledMetric(relativeTo: .title3) private var valueSize: CGFloat = 20
 
   var body: some View {
     VStack(spacing: 3) {
       Text(value)
-        .font(.system(size: 20, weight: .bold))
+        .font(.system(size: valueSize, weight: .bold))
         .foregroundStyle(Theme.heroInk)
+        .lineLimit(1)
+        .minimumScaleFactor(0.6)
       Text(label)
         .eyebrow()
         .foregroundStyle(Theme.heroMutedInk)
+        .lineLimit(1)
+        .minimumScaleFactor(0.6)
     }
     .frame(maxWidth: .infinity)
   }

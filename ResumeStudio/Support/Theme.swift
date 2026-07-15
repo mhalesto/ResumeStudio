@@ -102,9 +102,10 @@ extension View {
   }
 
   /// Small uppercase label with wide tracking, as used for the greeting and the
-  /// hero's stat captions.
+  /// hero's stat captions. Uses a text style rather than a fixed size so it grows
+  /// with the reader's Dynamic Type setting.
   func eyebrow() -> some View {
-    font(.system(size: 11, weight: .semibold))
+    font(.caption2.weight(.semibold))
       .textCase(.uppercase)
       .tracking(1.4)
   }
