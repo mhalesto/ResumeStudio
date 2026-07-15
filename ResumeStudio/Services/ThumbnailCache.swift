@@ -29,8 +29,39 @@ enum ThumbnailDiskCache {
         try? fileManager.removeItem(at: url)
       }
     }
+    prune(directory)
     return directory
   }()
+
+  /// The most thumbnails to keep on disk within a build. Every template × accent ×
+  /// photo-crop is its own file, so without a ceiling a user who tries many looks
+  /// could accumulate thousands. Caches is purgeable, but a bound keeps it tidy.
+  private static let maxCachedFiles = 400
+
+  /// Trims the current build's directory to `maxCachedFiles`, deleting the
+  /// least-recently-modified files first. Runs once per launch, before the
+  /// session writes any new thumbnails.
+  private static func prune(_ directory: URL) {
+    let fileManager = FileManager.default
+    guard
+      let files = try? fileManager.contentsOfDirectory(
+        at: directory,
+        includingPropertiesForKeys: [.contentModificationDateKey],
+        options: .skipsHiddenFiles),
+      files.count > maxCachedFiles
+    else { return }
+
+    let sorted = files.sorted { lhs, rhs in
+      let l = (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]))?
+        .contentModificationDate ?? .distantPast
+      let r = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]))?
+        .contentModificationDate ?? .distantPast
+      return l < r
+    }
+    for url in sorted.prefix(files.count - maxCachedFiles) {
+      try? fileManager.removeItem(at: url)
+    }
+  }
 
   private static func fileURL(for name: String) -> URL? {
     directory?.appendingPathComponent(name).appendingPathExtension("png")

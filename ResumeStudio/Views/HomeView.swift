@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 /// Where the home screen can take you.
 enum HomeRoute: Hashable {
@@ -44,7 +43,6 @@ struct HomeView: View {
   @EnvironmentObject private var purchases: PurchaseManager
   @State private var path: [HomeRoute] = []
   @State private var pendingStart: StartChoice?
-  @State private var sharePreview: PreviewShareItem?
   @State private var showWelcome = false
   @AppStorage("hasSeenWelcome") private var hasSeenWelcome = false
 
@@ -149,9 +147,6 @@ struct HomeView: View {
           PrivacyCenterView()
         }
       }
-      .sheet(item: $sharePreview) { item in
-        ShareSheet(activityItems: [item.image])
-      }
       .sheet(isPresented: $showWelcome, onDismiss: { hasSeenWelcome = true }) {
         WelcomeSheet(
           accent: accent,
@@ -210,63 +205,27 @@ struct HomeView: View {
   /// first launch. Re-runs when the accent changes so the quick-pick swatches
   /// preview instantly. The gate keeps this from competing with visible cards.
   private func warmThumbnails() async {
+    // Just beyond what the carousels show at rest — enough that a first scroll or
+    // an accent change lands on warm cards, without speculatively rendering the
+    // whole catalogue on every accent tap.
     let doc = store.document
     await TemplateThumbnailRenderer.prewarm(
-      templates: Array(ResumeTemplate.allCases.prefix(16)),
+      templates: Array(ResumeTemplate.allCases.prefix(8)),
       accent: doc.accent, photo: doc.photo, crop: doc.photoCrop)
     await CoverLetterThumbnailRenderer.prewarm(
-      templates: Array(CoverLetterTemplate.allCases.prefix(10)),
+      templates: Array(CoverLetterTemplate.allCases.prefix(6)),
       accent: doc.accent)
   }
 
   /// A row of accent swatches under the template header. Colour lived only in the
   /// editor's Template & Colour screen; here it recolours the preview cards live
-  /// while you browse looks. Each swatch is the true export colour.
+  /// while you browse looks. Shared with the full gallery.
   private var accentQuickPick: some View {
-    ScrollView(.horizontal, showsIndicators: false) {
-      HStack(spacing: 12) {
-        ForEach(ResumeAccent.allCases) { option in
-          let selected = store.document.accent == option
-          let unlocked = purchases.canUse(option)
-          Button {
-            guard unlocked else {
-              purchases.requestPlans()
-              return
-            }
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.72)) {
-              store.document.accent = option
-            }
-          } label: {
-            ZStack {
-              if selected {
-                Circle()
-                  .strokeBorder(option.color, lineWidth: 2)
-                  .frame(width: 38, height: 38)
-              }
-              Circle()
-                .fill(option.color)
-                .frame(width: 26, height: 26)
-                .overlay { Circle().strokeBorder(Color.primary.opacity(0.10), lineWidth: 1) }
-                .overlay {
-                  if !unlocked {
-                    Image(systemName: "lock.fill")
-                      .font(.system(size: 10, weight: .bold))
-                      .foregroundStyle(.white)
-                      .shadow(color: .black.opacity(0.35), radius: 1)
-                  }
-                }
-            }
-            .frame(width: 40, height: 40)
-          }
-          .buttonStyle(.plain)
-          .accessibilityLabel("\(option.title) accent\(option.isPremium ? ", premium" : "")")
-          .accessibilityAddTraits(selected ? .isSelected : [])
-        }
-      }
-      .padding(.horizontal, 1)
-    }
-    .contentMargins(.horizontal, 1, for: .scrollContent)
-    .sensoryFeedback(.selection, trigger: store.document.accent)
+    AccentQuickPickRow(
+      selection: $store.document.accent,
+      canUse: { purchases.canUse($0) },
+      onLocked: { purchases.requestPlans() }
+    )
   }
 
   // MARK: - Hero
@@ -624,13 +583,12 @@ struct HomeView: View {
               }
             }
             .buttonStyle(.plain)
-            .contextMenu {
-              Button {
-                shareTemplatePreview(template)
-              } label: {
-                Label("Share preview", systemImage: "square.and.arrow.up")
-              }
-            }
+            .templatePreviewShareMenu(
+              template: template,
+              accent: store.document.accent,
+              photo: store.document.photo,
+              crop: store.document.photoCrop
+            )
           }
         }
         .padding(.vertical, 6)
@@ -714,18 +672,6 @@ struct HomeView: View {
           .background(accent, in: Capsule())
       }
       .buttonStyle(.plain)
-    }
-  }
-
-  /// Renders a shareable, higher-resolution image of the template preview and
-  /// hands it to the system share sheet.
-  private func shareTemplatePreview(_ template: ResumeTemplate) {
-    let doc = store.document
-    Task {
-      if let image = await TemplateThumbnailRenderer.shareImage(
-        template: template, accent: doc.accent, photo: doc.photo, crop: doc.photoCrop) {
-        sharePreview = PreviewShareItem(image: image)
-      }
     }
   }
 
@@ -850,12 +796,6 @@ private enum StartChoice: String, Identifiable {
   case blank
 
   var id: String { rawValue }
-}
-
-/// A rendered template preview on its way to the share sheet.
-private struct PreviewShareItem: Identifiable {
-  let id = UUID()
-  let image: UIImage
 }
 
 /// The first-run welcome. Deliberately a single decision — how do you want to

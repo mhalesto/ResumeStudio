@@ -40,6 +40,11 @@ struct TemplateGalleryView: View {
         searchField
         if documentKind == .resume { discoveryTools }
         tagFilters
+        AccentQuickPickRow(
+          selection: $store.document.accent,
+          canUse: { purchases.canUse($0) },
+          onLocked: { purchases.requestPlans() }
+        )
 
         if documentKind == .resume {
           resumeGrid
@@ -202,6 +207,12 @@ struct TemplateGalleryView: View {
                 }
               }
               .buttonStyle(.plain)
+              .templatePreviewShareMenu(
+                template: template,
+                accent: store.document.accent,
+                photo: store.document.photo,
+                crop: store.document.photoCrop
+              )
 
               if store.document.template == template {
                 Button {
