@@ -142,7 +142,9 @@ private final class CoverLetterLayout {
     case .vantage:
       drawVantageHeader()
     case .zenith, .aperture, .sovereign, .blueprint, .spectrum, .halo, .volta, .obsidian, .radiant,
-      .verge, .datum, .pinnacle, .emblem, .cadence, .citadel, .stratus, .mirage:
+      .verge, .datum, .pinnacle, .emblem, .cadence, .citadel, .stratus, .mirage,
+      .salute, .couture, .medallion, .sable, .terracotta, .lozenge, .circlet, .vogue, .signet,
+      .almanac:
       if let ordinal = document.template.advancedOrdinal {
         drawAdvancedHeader(ordinal)
       }
@@ -558,6 +560,12 @@ private final class CoverLetterLayout {
   /// hierarchy, geometry and type while the correspondence stays searchable.
   private func drawAdvancedHeader(_ ordinal: Int) {
     let width = bounds.width - margin * 2
+    // The Showcase Collection letterheads (17-26) are self-contained, echoing the
+    // matching Showcase résumé mastheads; the original seventeen stay untouched.
+    if ordinal >= 17 {
+      drawShowcaseLetterhead(ordinal)
+      return
+    }
     switch ordinal {
     case 0: // Zenith — crowned executive hero
       let height: CGFloat = 164
@@ -887,6 +895,214 @@ private final class CoverLetterLayout {
     }
   }
 
+  // MARK: - Showcase Collection letterheads (ordinals 17-26)
+
+  private func drawShowcaseLetterhead(_ ordinal: Int) {
+    let cg = context.cgContext
+    let w = bounds.width
+    let name = document.senderName
+    let headline = document.senderHeadline
+    let warm = UIColor(red: 0.905, green: 0.865, blue: 0.795, alpha: 1)
+
+    switch ordinal {
+    case 17:  // Salute — warm hello and a round monogram
+      accent.setFill()
+      cg.fill(CGRect(x: margin, y: 34, width: 6, height: 6))
+      accent.withAlphaComponent(0.45).setFill()
+      cg.fill(CGRect(x: margin + 8, y: 34, width: 6, height: 6))
+      cg.fill(CGRect(x: margin, y: 42, width: 6, height: 6))
+      drawLetterMonogram(centre: CGPoint(x: w - margin - 34, y: 62), radius: 34, filled: true)
+      drawText("HELLO", x: margin, y: 60, width: 200, height: 12, font: .systemFont(ofSize: 8, weight: .semibold), color: accent)
+      drawText("Hi, I'm \(name).", x: margin, y: 74, width: w - margin * 2 - 90, height: 40, font: .systemFont(ofSize: 25, weight: .bold), color: ink)
+      drawText(headline, x: margin, y: 114, width: 340, height: 16, font: .systemFont(ofSize: 10, weight: .medium), color: muted)
+      drawContact(alignment: .left, y: 138, x: margin, width: 340)
+      accent.setFill(); cg.fill(CGRect(x: margin, y: 166, width: 42, height: 3))
+      cursorY = 190
+
+    case 18:  // Couture — vertical name echo with a machine-readable byline
+      accent.setFill(); cg.fill(CGRect(x: margin, y: 26, width: 3, height: 128))
+      drawVerticalLetterText(name.uppercased(), x: margin + 26, bottom: 154, length: 128, font: .systemFont(ofSize: 20, weight: .bold), color: ink)
+      drawVerticalLetterText("APPLICATION", x: margin + 10, bottom: 154, length: 112, font: .systemFont(ofSize: 7.5, weight: .semibold), color: accent)
+      drawText(name, x: margin + 44, y: 40, width: w - margin * 2 - 44, height: 24, font: .systemFont(ofSize: 15, weight: .semibold), color: ink)
+      drawText(headline, x: margin + 44, y: 62, width: 300, height: 16, font: .systemFont(ofSize: 10, weight: .medium), color: muted)
+      drawContact(alignment: .left, y: 88, x: margin + 44, width: 300)
+      cursorY = 178
+
+    case 19:  // Medallion — a monogram seal beside the name
+      drawText(name, x: margin, y: 54, width: w - margin * 2 - 96, height: 60, font: .systemFont(ofSize: 28, weight: .bold), color: ink)
+      drawText(headline, x: margin, y: 116, width: 320, height: 16, font: .systemFont(ofSize: 9.6, weight: .medium), color: accent)
+      drawLetterMonogram(centre: CGPoint(x: w - margin - 40, y: 62), radius: 32, filled: false)
+      drawContact(alignment: .left, y: 140, x: margin, width: 320)
+      accent.setFill(); cg.fill(CGRect(x: margin, y: 168, width: 40, height: 3))
+      cursorY = 190
+
+    case 20:  // Sable — a dark banner
+      let h: CGFloat = 150
+      navy.setFill(); cg.fill(CGRect(x: 0, y: 0, width: w, height: h))
+      accent.setFill(); cg.fill(CGRect(x: 0, y: h - 4, width: w, height: 4))
+      drawText("APPLICATION", x: margin, y: 30, width: 200, height: 12, font: .systemFont(ofSize: 8, weight: .bold), color: accent)
+      drawText(name, x: margin, y: 48, width: w - margin * 2, height: 44, font: .systemFont(ofSize: 27, weight: .bold), color: .white)
+      drawText(headline.uppercased(), x: margin, y: 92, width: w - margin * 2, height: 14, font: .systemFont(ofSize: 8.4, weight: .semibold), color: accent)
+      drawContact(alignment: .left, y: 118, x: margin, width: 340, color: UIColor.white.withAlphaComponent(0.8))
+      cursorY = h + 30
+
+    case 21:  // Terracotta — an earthen band and a bold profile circle
+      let h: CGFloat = 176
+      warm.setFill(); cg.fill(CGRect(x: 0, y: 0, width: w, height: h))
+      navy.setFill(); cg.fillEllipse(in: CGRect(x: -50, y: 26, width: 128, height: 128))
+      drawText(document.initials, x: -50, y: 72, width: 128, height: 40, font: .systemFont(ofSize: 26, weight: .bold), color: warm, alignment: .center)
+      let tx: CGFloat = 96
+      drawText("Hello, I'm", x: tx, y: 50, width: w - tx - margin, height: 24, font: serif(19, bold: false), color: navy)
+      drawText(name, x: tx, y: 74, width: w - tx - margin, height: 40, font: serif(28, bold: true), color: navy)
+      drawText(headline.uppercased(), x: tx, y: 118, width: w - tx - margin, height: 14, font: .systemFont(ofSize: 8, weight: .semibold), color: accent)
+      drawContact(alignment: .left, y: 140, x: tx, width: 300, color: navy.withAlphaComponent(0.72))
+      cursorY = h + 26
+
+    case 22:  // Lozenge — airy with capsule contact labels
+      drawText(name, x: margin, y: 44, width: w - margin * 2, height: 42, font: .systemFont(ofSize: 29, weight: .bold), color: ink)
+      drawText(headline.uppercased(), x: margin, y: 88, width: w - margin * 2, height: 14, font: .systemFont(ofSize: 8.4, weight: .semibold), color: accent)
+      drawLetterContactPills(x: margin, y: 110)
+      accent.withAlphaComponent(0.2).setFill(); cg.fill(CGRect(x: margin, y: 148, width: w - margin * 2, height: 1.4))
+      cursorY = 172
+
+    case 23:  // Circlet — a ringed monogram with orbiting dots
+      let pc = CGPoint(x: bounds.midX, y: 60)
+      let orbit: CGFloat = 46
+      for i in 0..<12 {
+        let a = CGFloat(i) / 12 * .pi * 2 - .pi / 2
+        let filled = i < 7
+        (filled ? accent : accent.withAlphaComponent(0.28)).setFill()
+        let d: CGFloat = filled ? 5 : 3.4
+        cg.fillEllipse(in: CGRect(x: pc.x + cos(a) * orbit - d / 2, y: pc.y + sin(a) * orbit - d / 2, width: d, height: d))
+      }
+      drawLetterMonogram(centre: pc, radius: 27, filled: true)
+      drawText(name, x: margin, y: 116, width: w - margin * 2, height: 30, font: .systemFont(ofSize: 24, weight: .bold), color: ink, alignment: .center)
+      drawText(headline.uppercased(), x: margin, y: 146, width: w - margin * 2, height: 14, font: .systemFont(ofSize: 8.2, weight: .semibold), color: accent, alignment: .center)
+      drawContact(alignment: .center, y: 166, x: margin, width: w - margin * 2)
+      cursorY = 196
+
+    case 24:  // Vogue — an oversized serif editorial
+      ink.withAlphaComponent(0.82).setFill(); cg.fill(CGRect(x: margin, y: 30, width: w - margin * 2, height: 1))
+      drawText("CORRESPONDENCE", x: margin, y: 36, width: 300, height: 12, font: .systemFont(ofSize: 7.6, weight: .semibold), color: accent)
+      drawText(name, x: margin, y: 52, width: w - margin * 2, height: 60, font: serif(42, bold: true), color: ink)
+      drawText(headline, x: margin, y: 120, width: w - margin * 2, height: 16, font: .systemFont(ofSize: 10, weight: .medium), color: muted)
+      ink.withAlphaComponent(0.82).setFill(); cg.fill(CGRect(x: margin, y: 148, width: w - margin * 2, height: 1))
+      drawContact(alignment: .left, y: 156, x: margin, width: 340)
+      cursorY = 184
+
+    case 25:  // Signet — a pressed wax seal over a centred serif
+      drawLetterSeal(centre: CGPoint(x: bounds.midX, y: 44), radius: 25)
+      drawText(name, x: margin, y: 82, width: w - margin * 2, height: 34, font: serif(26, bold: true), color: ink, alignment: .center)
+      drawText(headline.uppercased(), x: margin, y: 116, width: w - margin * 2, height: 14, font: .systemFont(ofSize: 8.2, weight: .semibold), color: accent, alignment: .center)
+      ink.withAlphaComponent(0.7).setFill(); cg.fill(CGRect(x: bounds.midX - 56, y: 138, width: 112, height: 1))
+      drawContact(alignment: .center, y: 150, x: margin, width: w - margin * 2)
+      cursorY = 180
+
+    default:  // 26 Almanac — an icon-led fact strip
+      drawText(name, x: margin, y: 40, width: w - margin * 2, height: 40, font: .systemFont(ofSize: 27, weight: .bold), color: ink)
+      drawText(headline, x: margin, y: 79, width: w - margin * 2, height: 16, font: .systemFont(ofSize: 9.6, weight: .medium), color: accent)
+      drawLetterFactStrip(y: 104)
+      accent.setFill(); cg.fill(CGRect(x: margin, y: 150, width: 44, height: 3))
+      cursorY = 174
+    }
+  }
+
+  /// A concentric-ring monogram, filled or hollow, for the Showcase letterheads.
+  private func drawLetterMonogram(centre: CGPoint, radius: CGFloat, filled: Bool) {
+    let cg = context.cgContext
+    let box = CGRect(x: centre.x - radius, y: centre.y - radius, width: radius * 2, height: radius * 2)
+    if filled {
+      accent.setFill()
+      cg.fillEllipse(in: box)
+      UIColor.white.withAlphaComponent(0.9).setStroke()
+      let ring = UIBezierPath(ovalIn: box.insetBy(dx: 4, dy: 4))
+      ring.lineWidth = 0.8
+      ring.stroke()
+      drawText(document.initials, x: box.minX, y: centre.y - 9, width: radius * 2, height: 20, font: .systemFont(ofSize: radius * 0.5, weight: .bold), color: .white, alignment: .center)
+    } else {
+      UIColor.white.setFill()
+      cg.fillEllipse(in: box)
+      accent.setStroke()
+      let outer = UIBezierPath(ovalIn: box)
+      outer.lineWidth = 1.4
+      outer.stroke()
+      accent.withAlphaComponent(0.5).setStroke()
+      let inner = UIBezierPath(ovalIn: box.insetBy(dx: 5, dy: 5))
+      inner.lineWidth = 0.6
+      inner.stroke()
+      drawText(document.initials, x: box.minX, y: centre.y - 9, width: radius * 2, height: 20, font: .systemFont(ofSize: radius * 0.5, weight: .bold), color: accent, alignment: .center)
+      accent.setFill()
+      cg.fillEllipse(in: CGRect(x: centre.x - 2, y: centre.y - radius - 2, width: 4, height: 4))
+    }
+  }
+
+  /// A scalloped wax-seal monogram, for Signet.
+  private func drawLetterSeal(centre: CGPoint, radius: CGFloat) {
+    let cg = context.cgContext
+    accent.withAlphaComponent(0.55).setFill()
+    let scallops = 20
+    for i in 0..<scallops {
+      let a = CGFloat(i) / CGFloat(scallops) * .pi * 2
+      let r = radius + 3
+      cg.fillEllipse(in: CGRect(x: centre.x + cos(a) * r - 1.6, y: centre.y + sin(a) * r - 1.6, width: 3.2, height: 3.2))
+    }
+    accent.setFill()
+    cg.fillEllipse(in: CGRect(x: centre.x - radius, y: centre.y - radius, width: radius * 2, height: radius * 2))
+    UIColor.white.withAlphaComponent(0.9).setStroke()
+    let ring = UIBezierPath(ovalIn: CGRect(x: centre.x - radius + 4, y: centre.y - radius + 4, width: (radius - 4) * 2, height: (radius - 4) * 2))
+    ring.lineWidth = 0.8
+    ring.stroke()
+    drawText(document.initials, x: centre.x - radius, y: centre.y - 8, width: radius * 2, height: 18, font: .systemFont(ofSize: 13, weight: .bold), color: .white, alignment: .center)
+  }
+
+  /// Capsule contact labels, for Lozenge.
+  private func drawLetterContactPills(x: CGFloat, y: CGFloat) {
+    let cg = context.cgContext
+    var cx = x
+    let font = UIFont.systemFont(ofSize: 8.5, weight: .medium)
+    for value in [document.senderPhone, document.senderEmail] where !value.isBlank {
+      let textWidth = (value as NSString).size(withAttributes: [.font: font]).width
+      let pillWidth = textWidth + 22
+      let pill = UIBezierPath(roundedRect: CGRect(x: cx, y: y, width: pillWidth, height: 20), cornerRadius: 10)
+      accent.withAlphaComponent(0.1).setFill()
+      pill.fill()
+      drawText(value, x: cx + 11, y: y + 5, width: textWidth + 4, height: 12, font: font, color: ink)
+      cx += pillWidth + 8
+    }
+  }
+
+  /// An icon-tile fact strip, for Almanac.
+  private func drawLetterFactStrip(y: CGFloat) {
+    let cg = context.cgContext
+    let facts = [document.senderPhone, document.senderEmail, document.senderHeadline]
+      .filter { !$0.isBlank }
+    guard !facts.isEmpty else { return }
+    let count = CGFloat(facts.count)
+    let tileWidth = (bounds.width - margin * 2 - (count - 1) * 8) / count
+    var tx = margin
+    for value in facts {
+      let tile = UIBezierPath(roundedRect: CGRect(x: tx, y: y, width: tileWidth, height: 32), cornerRadius: 7)
+      accent.withAlphaComponent(0.08).setFill()
+      tile.fill()
+      accent.setFill()
+      cg.fill(CGRect(x: tx + 10, y: y + 10, width: 12, height: 3))
+      drawText(value, x: tx + 10, y: y + 15, width: tileWidth - 16, height: 14, font: .systemFont(ofSize: 7.2), color: ink)
+      tx += tileWidth + 8
+    }
+  }
+
+  /// Text rotated a quarter turn, running up the page — Couture's vertical name.
+  private func drawVerticalLetterText(
+    _ text: String, x: CGFloat, bottom: CGFloat, length: CGFloat, font: UIFont, color: UIColor
+  ) {
+    let cg = context.cgContext
+    cg.saveGState()
+    cg.translateBy(x: x, y: bottom)
+    cg.rotate(by: -.pi / 2)
+    drawText(text, x: 0, y: 0, width: length, height: font.pointSize + 4, font: font, color: color)
+    cg.restoreGState()
+  }
+
   private func drawSidebarHeader() {
     ink.setFill()
     context.cgContext.fill(CGRect(x: 0, y: 0, width: 168, height: bounds.height))
@@ -1140,7 +1356,7 @@ private final class CoverLetterLayout {
 
   private func drawContinuationHeader() {
     if let ordinal = document.template.advancedOrdinal {
-      let dark = [0, 4, 6, 7, 9, 14].contains(ordinal)
+      let dark = [0, 4, 6, 7, 9, 14, 20].contains(ordinal)
       (dark ? ink : accent.withAlphaComponent(0.08)).setFill()
       context.cgContext.fill(CGRect(x: 0, y: 0, width: bounds.width, height: 70))
       accent.setFill()

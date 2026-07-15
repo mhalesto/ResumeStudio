@@ -76,6 +76,8 @@ enum MonetizationCatalog {
     // correspondence designs are part of the product rather than an upsell.
     .obsidian, .radiant, .verge, .datum, .pinnacle,
     .emblem, .cadence, .citadel, .stratus, .mirage,
+    // A taste of the Showcase Collection, mirroring the free Showcase résumés.
+    .salute, .lozenge,
   ]
 
   /// The original four accent colours are free; the five jewel tones are gated

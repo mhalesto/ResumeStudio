@@ -119,12 +119,12 @@ struct CoverLetterTemplateCard: View {
   /// The letterheads whose name sits on a dark ground, and so is set in white.
   private var hasDarkLetterhead: Bool {
     [.executive, .gradient, .noir, .nova, .nocturne, .vantage, .zenith, .spectrum, .volta,
-     .obsidian, .verge, .citadel].contains(template)
+     .obsidian, .verge, .citadel, .sable].contains(template)
   }
 
   private var isCentred: Bool {
-    [.classic, .letterpress, .ivy, .laureate, .aurelia, .nocturne, .sovereign, .halo, .pinnacle]
-      .contains(template)
+    [.classic, .letterpress, .ivy, .laureate, .aurelia, .nocturne, .sovereign, .halo, .pinnacle,
+     .circlet, .signet].contains(template)
   }
 
   private var headerInset: CGFloat {
@@ -375,7 +375,9 @@ struct CoverLetterTemplateCard: View {
         accent.color.frame(height: 3).padding(.top, 78)
       }
     case .zenith, .aperture, .sovereign, .blueprint, .spectrum, .halo, .volta, .obsidian, .radiant,
-      .verge, .datum, .pinnacle, .emblem, .cadence, .citadel, .stratus, .mirage:
+      .verge, .datum, .pinnacle, .emblem, .cadence, .citadel, .stratus, .mirage,
+      .salute, .couture, .medallion, .sable, .terracotta, .lozenge, .circlet, .vogue, .signet,
+      .almanac:
       if let ordinal = template.advancedOrdinal {
         AdvancedLetterDecoration(ordinal: ordinal, accent: accent.color)
       }

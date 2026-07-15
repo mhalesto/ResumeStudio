@@ -140,6 +140,17 @@ enum CoverLetterTemplate: String, CaseIterable, Codable, Identifiable {
   case citadel
   case stratus
   case mirage
+  // The Showcase Collection: letterheads that echo the ten Showcase résumés.
+  case salute
+  case couture
+  case medallion
+  case sable
+  case terracotta
+  case lozenge
+  case circlet
+  case vogue
+  case signet
+  case almanac
 
   var id: String { rawValue }
 
@@ -180,6 +191,16 @@ enum CoverLetterTemplate: String, CaseIterable, Codable, Identifiable {
     case .citadel: .citadel
     case .stratus: .stratus
     case .mirage: .mirage
+    case .salute: .salute
+    case .couture: .couture
+    case .medallion: .medallion
+    case .sable: .sable
+    case .terracotta: .terracotta
+    case .lozenge: .lozenge
+    case .circlet: .circlet
+    case .vogue: .vogue
+    case .signet: .signet
+    case .almanac: .almanac
     default: nil
     }
   }
@@ -214,6 +235,16 @@ enum CoverLetterTemplate: String, CaseIterable, Codable, Identifiable {
     case .nocturne: "Nocturne Serif"
     case .eclipse: "Eclipse Letter"
     case .vantage: "Vantage Statement"
+    case .salute: "Salute Greeting Letter"
+    case .couture: "Couture Vertical Letter"
+    case .medallion: "Medallion Seal Letter"
+    case .sable: "Sable Sidebar Letter"
+    case .terracotta: "Terracotta Circle Letter"
+    case .lozenge: "Lozenge Pill Letter"
+    case .circlet: "Circlet Orbit Letter"
+    case .vogue: "Vogue Editorial Letter"
+    case .signet: "Signet Seal Letter"
+    case .almanac: "Almanac Brief Letter"
     case .zenith: "Zenith Dispatch"
     case .aperture: "Aperture Letter"
     case .sovereign: "Sovereign Letterhead"
@@ -264,6 +295,16 @@ enum CoverLetterTemplate: String, CaseIterable, Codable, Identifiable {
     case .nocturne: "A serif letter on the dark page, to match Nocturne"
     case .eclipse: "Orbiting colour and a monogram halo, to match Eclipse"
     case .vantage: "Editorial hero masthead with commanding contrast"
+    case .salute: "A warm hello and a round monogram, to match Salute"
+    case .couture: "The name set up the page, to match Couture"
+    case .medallion: "A circular monogram seal, to match Medallion"
+    case .sable: "A dark banner header, to match Sable"
+    case .terracotta: "An earthen band and profile circle, to match Terracotta"
+    case .lozenge: "Capsule contact labels, to match Lozenge"
+    case .circlet: "A ringed monogram with orbiting dots, to match Circlet"
+    case .vogue: "An oversized serif masthead, to match Vogue"
+    case .signet: "A pressed wax-seal monogram, to match Signet"
+    case .almanac: "An icon-led fact strip, to match Almanac"
     case .zenith: "Crowned portrait hero and executive hierarchy, to match Zenith"
     case .aperture: "Cinematic portrait window and focused details, to match Aperture"
     case .sovereign: "Regal editorial rules and date-led authority, to match Sovereign"
@@ -314,6 +355,16 @@ enum CoverLetterTemplate: String, CaseIterable, Codable, Identifiable {
     case .nocturne: "moon.stars.fill"
     case .eclipse: "circle.circle.fill"
     case .vantage: "rectangle.tophalf.inset.filled"
+    case .salute: "hand.wave.fill"
+    case .couture: "textformat.abc.dottedunderline"
+    case .medallion: "seal.fill"
+    case .sable: "sidebar.left"
+    case .terracotta: "circle.circle.fill"
+    case .lozenge: "capsule.portrait.fill"
+    case .circlet: "circle.dashed.inset.filled"
+    case .vogue: "textformat.size.larger"
+    case .signet: "checkmark.seal.fill"
+    case .almanac: "chart.bar.xaxis"
     case .zenith: "crown.fill"
     case .aperture: "camera.aperture"
     case .sovereign: "seal.fill"
@@ -364,6 +415,16 @@ enum CoverLetterTemplate: String, CaseIterable, Codable, Identifiable {
     case .nocturne: [.bold, .classic, .creative]
     case .eclipse: [.bold, .creative, .modern]
     case .vantage: [.bold, .modern, .creative]
+    case .salute: [.showcase, .modern, .clean]
+    case .couture: [.showcase, .creative, .bold]
+    case .medallion: [.showcase, .creative, .modern]
+    case .sable: [.showcase, .bold, .modern]
+    case .terracotta: [.showcase, .creative, .classic]
+    case .lozenge: [.showcase, .clean, .modern]
+    case .circlet: [.showcase, .creative, .modern]
+    case .vogue: [.showcase, .creative, .classic, .bold]
+    case .signet: [.showcase, .classic, .clean]
+    case .almanac: [.showcase, .modern, .creative, .bold]
     case .zenith: [.bold, .modern, .creative]
     case .aperture: [.structured, .modern, .creative]
     case .sovereign: [.classic, .bold, .clean]
@@ -406,6 +467,16 @@ enum CoverLetterTemplate: String, CaseIterable, Codable, Identifiable {
     case .citadel: 14
     case .stratus: 15
     case .mirage: 16
+    case .salute: 17
+    case .couture: 18
+    case .medallion: 19
+    case .sable: 20
+    case .terracotta: 21
+    case .lozenge: 22
+    case .circlet: 23
+    case .vogue: 24
+    case .signet: 25
+    case .almanac: 26
     default: nil
     }
   }

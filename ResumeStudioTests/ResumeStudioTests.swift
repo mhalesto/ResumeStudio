@@ -15,7 +15,7 @@ final class ResumeStudioTests: XCTestCase {
     XCTAssertEqual(ResumeStudioPlan.pro.hostedReviewRoomLimit, 10)
 
     XCTAssertEqual(MonetizationCatalog.freeResumeTemplates.count, 34)
-    XCTAssertEqual(MonetizationCatalog.freeCoverLetterTemplates.count, 14)
+    XCTAssertEqual(MonetizationCatalog.freeCoverLetterTemplates.count, 16)
     XCTAssertTrue(MonetizationCatalog.freeResumeTemplates.isSubset(of: Set(ResumeTemplate.allCases)))
     XCTAssertTrue(MonetizationCatalog.freeCoverLetterTemplates.isSubset(of: Set(CoverLetterTemplate.allCases)))
 
@@ -280,19 +280,37 @@ final class ResumeStudioTests: XCTestCase {
       let page = try XCTUnwrap(pdf.page(at: 0))
       return (template.title, page.thumbnail(of: CGSize(width: 357, height: 505), for: .mediaBox))
     }
-    let sheet = contactSheet(
+    let letterTemplates: [CoverLetterTemplate] = [
+      .salute, .couture, .medallion, .sable, .terracotta,
+      .lozenge, .circlet, .vogue, .signet, .almanac,
+    ]
+    let letterItems = try letterTemplates.map { template in
+      var document = CoverLetterDocument.example
+      document.template = template
+      let pdf = try XCTUnwrap(PDFDocument(data: CoverLetterPDFRenderer.render(document: document)))
+      let page = try XCTUnwrap(pdf.page(at: 0))
+      return (template.title, page.thumbnail(of: CGSize(width: 357, height: 505), for: .mediaBox))
+    }
+
+    let resumeSheet = contactSheet(
       items: resumeItems, columns: 5, pageSize: CGSize(width: 357, height: 505))
+    let letterSheet = contactSheet(
+      items: letterItems, columns: 5, pageSize: CGSize(width: 357, height: 505))
     let outputDirectory = FileManager.default.temporaryDirectory
       .appendingPathComponent("ResumeStudioContactSheets", isDirectory: true)
     try FileManager.default.createDirectory(
       at: outputDirectory, withIntermediateDirectories: true)
-    let data = try XCTUnwrap(sheet.pngData())
-    try data.write(
-      to: outputDirectory.appendingPathComponent("showcase-resume-templates.png"), options: .atomic)
-    let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.png")
-    attachment.name = "showcase-resume-templates.png"
-    attachment.lifetime = .keepAlways
-    add(attachment)
+    for (name, image) in [
+      ("showcase-resume-templates.png", resumeSheet),
+      ("showcase-cover-letter-templates.png", letterSheet),
+    ] {
+      let data = try XCTUnwrap(image.pngData())
+      try data.write(to: outputDirectory.appendingPathComponent(name), options: .atomic)
+      let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.png")
+      attachment.name = name
+      attachment.lifetime = .keepAlways
+      add(attachment)
+    }
   }
 
   /// Focused visual-review artifacts for the art-led release: five résumé
@@ -558,7 +576,7 @@ final class ResumeStudioTests: XCTestCase {
   }
 
   func testCoverLetterCatalogueIsDistinct() {
-    XCTAssertEqual(CoverLetterTemplate.allCases.count, 45)
+    XCTAssertEqual(CoverLetterTemplate.allCases.count, 55)
 
     // The matched letters name the résumé they were drawn to sit beside.
     XCTAssertEqual(
@@ -570,9 +588,11 @@ final class ResumeStudioTests: XCTestCase {
         .volta,
         .obsidian, .radiant, .verge, .datum, .pinnacle, .emblem, .cadence, .citadel, .stratus,
         .mirage,
+        .salute, .couture, .medallion, .sable, .terracotta, .lozenge, .circlet, .vogue, .signet,
+        .almanac,
       ]
     )
-    XCTAssertEqual(CoverLetterTemplate.allCases.compactMap(\.advancedOrdinal), Array(0..<17))
+    XCTAssertEqual(CoverLetterTemplate.allCases.compactMap(\.advancedOrdinal), Array(0..<27))
     XCTAssertEqual(
       Set(CoverLetterTemplate.allCases.map(\.title)).count,
       CoverLetterTemplate.allCases.count
