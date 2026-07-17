@@ -13,6 +13,8 @@ struct ResumePreviewView: View {
   @State private var showCopied = false
   @State private var shareItem: ShareItem?
   @State private var atsSafe = false
+  @State private var showRecruiterScan = false
+  @State private var showCreateLink = false
 
   /// What actually gets rendered and exported: the chosen design, or an
   /// ATS-safe transform of it when the toggle is on.
@@ -70,6 +72,14 @@ struct ResumePreviewView: View {
       }
       ToolbarItemGroup(placement: .topBarTrailing) {
         Button {
+          showRecruiterScan = true
+        } label: {
+          Image(systemName: "eye")
+        }
+        .accessibilityLabel("Recruiter scan")
+        .disabled(pdfData == nil)
+
+        Button {
           prepareShare()
         } label: {
           Image(systemName: "square.and.arrow.up")
@@ -91,6 +101,13 @@ struct ResumePreviewView: View {
         Menu {
           Toggle(isOn: $atsSafe.animation(.easeInOut(duration: 0.2))) {
             Label("ATS-safe layout", systemImage: "checkmark.shield")
+          }
+          Section {
+            Button {
+              showCreateLink = true
+            } label: {
+              Label("Send as trackable link", systemImage: "link.badge.plus")
+            }
           }
           Section {
             Button {
@@ -139,6 +156,16 @@ struct ResumePreviewView: View {
     ) { _ in }
     .sheet(item: $shareItem) { item in
       ShareSheet(activityItems: [item.url])
+    }
+    .sheet(isPresented: $showRecruiterScan) {
+      NavigationStack {
+        RecruiterScanView(
+          document: renderDocument, pdfData: pdfData, showsDone: true,
+          fixRouting: .dismissToHome)
+      }
+    }
+    .sheet(isPresented: $showCreateLink) {
+      NavigationStack { CreateSmartLinkSheet() }
     }
   }
 

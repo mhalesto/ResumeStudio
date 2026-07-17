@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { Environment, SignedDataVerifier } from "@apple/app-store-server-library";
@@ -10,6 +10,14 @@ import { getStorage } from "firebase-admin/storage";
 import { onRequest } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
 import { logger } from "firebase-functions";
+import { dailyImportDecision, dayKey } from "./import-policy.js";
+import {
+  dwellDecision,
+  linkExpiryDecision,
+  linkLimit,
+  openDecision,
+  viewerHint,
+} from "./link-policy.js";
 
 if (getApps().length === 0) initializeApp();
 
@@ -23,6 +31,7 @@ const REVIEW_BUCKET = "resumestudio-4addf-review-rooms";
 const REVIEW_MAX_BYTES = 7_500_000;
 const BUNDLE_ID = "com.halalisanimbanjwa.ResumeStudio";
 const PUBLIC_API_BASE = "https://europe-west1-resumestudio-4addf.cloudfunctions.net/api";
+const PUBLIC_BASE_PATH = new URL(PUBLIC_API_BASE).pathname;
 const PRODUCT_GO_MONTHLY = "com.halalisanimbanjwa.ResumeStudio.go.monthly";
 const PRODUCT_PRO_MONTHLY = "com.halalisanimbanjwa.ResumeStudio.pro.monthly";
 const PRODUCT_DESIGN_FOREVER = "com.halalisanimbanjwa.ResumeStudio.designpack.forever";
@@ -34,7 +43,8 @@ const REFERRAL_DAILY_LIMIT = 3;
 const REFERRAL_ROLLING_LIMIT = 20;
 const REFERRAL_WINDOW_DAYS = 90;
 const ACTION_CREDITS = {
-  importResume: 5,
+  // Résumé import has a separate daily allowance and never spends monthly AI credits.
+  importResume: 0,
   improveBullet: 1,
   writeProfile: 1,
   suggestCompetencies: 1,
@@ -473,8 +483,13 @@ export const api = onRequest(
   },
   async (request, response) => {
     let creditReservation = null;
+    let importReservation = null;
+    const accountRouteHandled = await handleAccountRoutes(request, response);
+    if (accountRouteHandled) return;
     const reviewRouteHandled = await handleReviewRoutes(request, response);
     if (reviewRouteHandled) return;
+    const linkRouteHandled = await handleLinkRoutes(request, response);
+    if (linkRouteHandled) return;
     const referralRouteHandled = await handleReferralRoutes(request, response);
     if (referralRouteHandled) return;
 
@@ -534,15 +549,28 @@ export const api = onRequest(
 
       const authUser = await optionalAuthenticatedUser(request);
       const access = await resolveMonetizationAccess(clientID, entitlement, authUser?.uid);
-      creditReservation = await reserveAICredits(access, ACTION_CREDITS[action]);
-      if (!creditReservation.allowed) {
-        response.status(402).json({
-          error: `This action needs ${ACTION_CREDITS[action]} AI credits. Choose Go or Pro for a larger monthly allowance.`,
-          code: "insufficient_credits",
-          usage: creditReservation.usage,
-        });
-        creditReservation = null;
-        return;
+      if (action === "importResume") {
+        importReservation = await reserveDailyImport(access);
+        if (!importReservation.allowed) {
+          response.status(429).json({
+            error: `You have used today's ${importReservation.allowance.importsLimit} AI-assisted résumé imports. You can still import locally, replace an existing version, or try again tomorrow.`,
+            code: "daily_import_limit",
+            importAllowance: importReservation.allowance,
+          });
+          importReservation = null;
+          return;
+        }
+      } else {
+        creditReservation = await reserveAICredits(access, ACTION_CREDITS[action]);
+        if (!creditReservation.allowed) {
+          response.status(402).json({
+            error: `This action needs ${ACTION_CREDITS[action]} AI credits. Choose Go or Pro for a larger monthly allowance.`,
+            code: "insufficient_credits",
+            usage: creditReservation.usage,
+          });
+          creditReservation = null;
+          return;
+        }
       }
 
       const upstream = await fetch("https://api.openai.com/v1/responses", {
@@ -579,7 +607,9 @@ export const api = onRequest(
           code: upstreamBody?.error?.code,
         });
         await refundAICredits(creditReservation);
+        await refundDailyImport(importReservation);
         creditReservation = null;
+        importReservation = null;
         response.status(502).json({ error: "The writing service is temporarily unavailable." });
         return;
       }
@@ -591,11 +621,14 @@ export const api = onRequest(
 
       response.status(200).json({
         result: JSON.parse(outputText),
-        usage: creditReservation.usage,
+        usage: creditReservation?.usage,
+        importAllowance: importReservation?.allowance,
       });
       creditReservation = null;
+      importReservation = null;
     } catch (error) {
       if (creditReservation) await refundAICredits(creditReservation);
+      if (importReservation) await refundDailyImport(importReservation);
       logger.error("ResumeStudio AI request failed", {
         name: error?.name,
         message: error?.message,
@@ -719,9 +752,80 @@ async function optionalAuthenticatedUser(request) {
 async function requiredAuthenticatedUser(request) {
   const user = await optionalAuthenticatedUser(request);
   if (user) return user;
-  const error = new Error("Sign in to use referrals.");
+  const error = new Error("Sign in to continue.");
   error.statusCode = 401;
   throw error;
+}
+
+async function handleAccountRoutes(request, response) {
+  if (request.path !== "/v1/account") return false;
+  if (request.method !== "DELETE") {
+    response.status(405).json({ error: "Method not allowed." });
+    return true;
+  }
+  try {
+    if (!(await verifyAppCheck(request, response))) return true;
+    const user = await requiredAuthenticatedUser(request);
+    await deleteAccountData(user.uid);
+    await getAuth().deleteUser(user.uid);
+    response.status(200).json({ deleted: true });
+  } catch (error) {
+    const status = Number(error?.statusCode || 500);
+    if (status >= 500) logger.error("Account deletion failed", { message: error?.message });
+    response.status(status).json({ error: error?.message || "Unable to delete this account." });
+  }
+  return true;
+}
+
+async function deleteAccountData(uid) {
+  const userSubjectHash = createHash("sha256").update(`user:${uid}`).digest("hex");
+  const profileRef = db.collection("referralProfiles").doc(uid);
+  const profile = await profileRef.get();
+  const referralCodeValue = profile.data()?.code;
+
+  const [ownedRooms, ownedLinks, ownedReferrals, usage, importUsage] = await Promise.all([
+    db.collection("reviewRooms").where("ownerUID", "==", uid).get(),
+    db.collection("resumeLinks").where("ownerUID", "==", uid).get(),
+    db.collection("referrals").where("ownerUID", "==", uid).get(),
+    db.collection("aiUsage").where("subjectHash", "==", userSubjectHash).get(),
+    db.collection("aiImportUsage").where("subjectHash", "==", userSubjectHash).get(),
+  ]);
+
+  for (const room of ownedRooms.docs) await deleteReviewRoom(room.ref, room.data());
+  for (const link of ownedLinks.docs) await deleteResumeLink(link.ref, link.data());
+  await deleteCollection(db.collection("users").doc(uid).collection("aiArtifacts"));
+
+  const directRefs = [
+    db.collection("users").doc(uid),
+    profileRef,
+    db.collection("referrals").doc(uid),
+    db.collection("aiCreditBonuses").doc(uid),
+    db.collection("aiUsers").doc(userSubjectHash),
+    ...ownedReferrals.docs.map((value) => value.ref),
+    ...usage.docs.map((value) => value.ref),
+    ...importUsage.docs.map((value) => value.ref),
+  ];
+  if (referralCodeValue) directRefs.push(db.collection("referralCodes").doc(referralCodeValue));
+  await deleteDocuments(directRefs);
+}
+
+async function deleteDocuments(refs, pageSize = 450) {
+  for (let index = 0; index < refs.length; index += pageSize) {
+    const batch = db.batch();
+    refs.slice(index, index + pageSize).forEach((ref) => batch.delete(ref));
+    await batch.commit();
+  }
+}
+
+async function deleteCollection(collectionRef, pageSize = 100) {
+  while (true) {
+    const snapshot = await collectionRef.limit(pageSize).get();
+    if (snapshot.empty) return;
+    const batch = db.batch();
+    snapshot.docs.forEach((document) => batch.delete(document.ref));
+    await batch.commit();
+    if (snapshot.size < pageSize) return;
+  }
 }
 
 function referralCode(uid) {
@@ -861,7 +965,9 @@ async function resolveMonetizationAccess(clientID, proof, firebaseUID = null) {
         productId = transaction.productId;
         if (productId === PRODUCT_PRO_MONTHLY) tier = "pro";
         else if (productId === PRODUCT_GO_MONTHLY) tier = "go";
-        subject = `purchase:${transaction.originalTransactionId || transaction.transactionId}`;
+        if (!firebaseUID) {
+          subject = `purchase:${transaction.originalTransactionId || transaction.transactionId}`;
+        }
         periodStart = String(transaction.purchaseDate || monthKey(new Date()));
         resetAt = transaction.expiresDate
           ? new Date(Number(transaction.expiresDate)) : startOfNextUTCMonth();
@@ -950,6 +1056,51 @@ async function reserveAICredits(access, cost) {
   return { ...outcome, usageRef, bonusRef, cost };
 }
 
+async function reserveDailyImport(access) {
+  const now = new Date();
+  const day = dayKey(now);
+  const periodID = createHash("sha256")
+    .update(`${access.subjectHash}:${access.tier}:${day}`)
+    .digest("hex");
+  const usageRef = db.collection("aiImportUsage").doc(periodID);
+
+  const outcome = await db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(usageRef);
+    const used = Number(snapshot.data()?.used || 0);
+    const decision = dailyImportDecision({ tier: access.tier, used, now });
+    const { allowed, updatedUsed, allowance } = decision;
+    if (allowed) {
+      transaction.set(usageRef, {
+        subjectHash: access.subjectHash,
+        tier: access.tier,
+        day,
+        used: updatedUsed,
+        limit: allowance.importsLimit,
+        resetAt: allowance.resetAt,
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }
+    return {
+      allowed,
+      allowance,
+    };
+  });
+
+  return { ...outcome, usageRef };
+}
+
+async function refundDailyImport(reservation) {
+  if (!reservation?.allowed || !reservation.usageRef) return;
+  await db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(reservation.usageRef);
+    if (!snapshot.exists) return;
+    transaction.update(reservation.usageRef, {
+      used: Math.max(0, Number(snapshot.data()?.used || 0) - 1),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
+}
+
 async function refundAICredits(reservation) {
   if (!reservation?.allowed || !reservation.usageRef) return;
   await db.runTransaction(async (transaction) => {
@@ -986,15 +1137,18 @@ function startOfNextUTCMonth() {
 async function handleReviewRoutes(request, response) {
   const createMatch = request.path === "/v1/reviews";
   const commentsMatch = request.path.match(/^\/v1\/reviews\/([A-Za-z0-9-]{24,80})\/comments$/);
+  const lifecycleMatch = request.path.match(/^\/v1\/reviews\/([A-Za-z0-9-]{24,80})$/);
   const publicMatch = request.path.match(/^\/review\/([A-Za-z0-9-]{24,80})$/);
   const unlockMatch = request.path.match(/^\/review\/([A-Za-z0-9-]{24,80})\/unlock$/);
   const pdfMatch = request.path.match(/^\/review\/([A-Za-z0-9-]{24,80})\/pdf$/);
+  const pageMatch = request.path.match(/^\/review\/([A-Za-z0-9-]{24,80})\/page\/(\d+)$/);
   const submitMatch = request.path.match(/^\/review\/([A-Za-z0-9-]{24,80})\/comments$/);
-  if (!createMatch && !commentsMatch && !publicMatch && !unlockMatch && !pdfMatch && !submitMatch) return false;
+  if (!createMatch && !commentsMatch && !lifecycleMatch && !publicMatch && !unlockMatch && !pdfMatch && !pageMatch && !submitMatch) return false;
 
   try {
     if (createMatch && request.method === "POST") {
       if (!(await verifyAppCheck(request, response))) return true;
+      const authUser = await optionalAuthenticatedUser(request);
       const rawLength = Math.max(
         Number(request.header("content-length") || 0),
         Buffer.byteLength(JSON.stringify(request.body || {}))
@@ -1022,8 +1176,9 @@ async function handleReviewRoutes(request, response) {
         response.status(400).json({ error: "The uploaded review document is not a valid PDF." });
         return true;
       }
+      const pageImages = linkPageImages(request.body?.pageImages);
       const id = reviewID(token);
-      const access = await resolveMonetizationAccess(clientID, entitlement);
+      const access = await resolveMonetizationAccess(clientID, entitlement, authUser?.uid);
       const reviewLimit = REVIEW_LIMITS[access.tier];
       if (reviewLimit < 1) {
         response.status(402).json({
@@ -1053,8 +1208,15 @@ async function handleReviewRoutes(request, response) {
         resumable: false,
         metadata: { contentType: "application/pdf", cacheControl: "private, max-age=300" },
       });
+      await Promise.all(pageImages.map((image, index) =>
+        storage.bucket(REVIEW_BUCKET).file(`review-rooms/${id}/page-${index}.png`).save(image, {
+          resumable: false,
+          metadata: { contentType: "image/png", cacheControl: "private, max-age=300" },
+        })
+      ));
       await db.collection("reviewRooms").doc(id).set({
         ownerSubjectHash: access.subjectHash,
+        ownerUID: authUser?.uid || null,
         ownerTier: access.tier,
         accessCodeHash: createHash("sha256").update(String(accessCode || "")).digest("hex"),
         expiresAt: expiry,
@@ -1062,11 +1224,37 @@ async function handleReviewRoutes(request, response) {
         message: cleanText(message, 2_000),
         resumeTitle: cleanText(resumeTitle, 200) || "Résumé review",
         filePath,
+        pageCount: pageImages.length,
         createdAt: FieldValue.serverTimestamp(),
         status: "open",
       });
-      const hostedURL = `${request.protocol}://${request.get("host")}/review/${token}`;
+      const hostedURL = `${publicOrigin(request)}/review/${token}`;
       response.status(201).json({ hostedURL });
+      return true;
+    }
+
+    if (lifecycleMatch && (request.method === "PATCH" || request.method === "DELETE")) {
+      if (!(await verifyAppCheck(request, response))) return true;
+      const user = await requiredAuthenticatedUser(request);
+      const ref = db.collection("reviewRooms").doc(reviewID(lifecycleMatch[1]));
+      const snapshot = await ref.get();
+      if (!snapshot.exists) {
+        response.status(404).json({ error: "Review room not found." });
+        return true;
+      }
+      const room = snapshot.data();
+      if (room.ownerUID !== user.uid) {
+        response.status(403).json({ error: "Only the owner can change this Review Room." });
+        return true;
+      }
+      if (request.method === "DELETE") {
+        await deleteReviewRoom(ref, room);
+        response.status(200).json({ deleted: true });
+      } else {
+        await deleteReviewAssets(ref.id, room.filePath);
+        await ref.set({ status: "revoked", revokedAt: FieldValue.serverTimestamp() }, { merge: true });
+        response.status(200).json({ status: "revoked" });
+      }
       return true;
     }
 
@@ -1102,13 +1290,17 @@ async function handleReviewRoutes(request, response) {
       const room = await activeReviewRoom(unlockMatch[1]);
       if (!room) { response.status(410).send(reviewUnavailablePage()); return true; }
       const submittedHash = createHash("sha256").update(cleanText(request.body?.code, 40).toUpperCase()).digest("hex");
+      const base = publicBasePath(request);
       if (!room.data.accessCodeHash || submittedHash !== room.data.accessCodeHash) {
-        response.redirect(303, `/review/${unlockMatch[1]}?error=code`);
+        response.redirect(303, `${base}/review/${unlockMatch[1]}?error=code`);
         return true;
       }
       const secondsRemaining = Math.max(60, Math.floor((room.data.expiresAt.toDate().getTime() - Date.now()) / 1000));
-      response.set("Set-Cookie", `${reviewAccessCookie(unlockMatch[1], room.data)}; Path=/review/${unlockMatch[1]}; Max-Age=${Math.min(secondsRemaining, 604800)}; HttpOnly; Secure; SameSite=Strict`);
-      response.redirect(303, `/review/${unlockMatch[1]}`);
+      // The cookie path must carry the public /api prefix (or the emulator path)
+      // or the browser never sends the access cookie back and unlocking loops.
+      const secure = process.env.FUNCTIONS_EMULATOR === "true" ? "" : " Secure;";
+      response.set("Set-Cookie", `${reviewAccessCookie(unlockMatch[1], room.data)}; Path=${base}/review/${unlockMatch[1]}; Max-Age=${Math.min(secondsRemaining, 604800)}; HttpOnly;${secure} SameSite=Strict`);
+      response.redirect(303, `${base}/review/${unlockMatch[1]}`);
       return true;
     }
 
@@ -1120,6 +1312,23 @@ async function handleReviewRoutes(request, response) {
       response.set("Content-Type", "application/pdf");
       response.set("Cache-Control", "private, max-age=300");
       response.send(pdf);
+      return true;
+    }
+
+    if (pageMatch && request.method === "GET") {
+      const room = await activeReviewRoom(pageMatch[1]);
+      if (!room) { response.status(410).end(); return true; }
+      if (!hasReviewAccess(request, pageMatch[1], room.data)) { response.status(401).end(); return true; }
+      const index = Number(pageMatch[2]);
+      if (!Number.isInteger(index) || index < 0 || index >= Number(room.data.pageCount || 0)) {
+        response.status(404).end();
+        return true;
+      }
+      const file = storage.bucket(REVIEW_BUCKET).file(`review-rooms/${reviewID(pageMatch[1])}/page-${index}.png`);
+      const [image] = await file.download();
+      response.set("Content-Type", "image/png");
+      response.set("Cache-Control", "private, max-age=300");
+      response.send(image);
       return true;
     }
 
@@ -1135,7 +1344,7 @@ async function handleReviewRoutes(request, response) {
       const comment = cleanText(request.body?.comment, 2_500);
       if (!comment) { response.status(400).send("Please enter a comment."); return true; }
       await room.ref.collection("comments").add({ section, author, comment, createdAt: FieldValue.serverTimestamp() });
-      response.redirect(303, `/review/${submitMatch[1]}#feedback`);
+      response.redirect(303, `${publicBasePath(request)}/review/${submitMatch[1]}#feedback`);
       return true;
     }
 
@@ -1146,6 +1355,396 @@ async function handleReviewRoutes(request, response) {
     response.status(500).json({ error: "Unable to complete the review request." });
     return true;
   }
+}
+
+async function deleteReviewRoom(ref, room) {
+  await deleteCollection(ref.collection("comments"));
+  await deleteReviewAssets(ref.id, room?.filePath);
+  await ref.delete();
+}
+
+/** Removes a review room's hosted PDF and every pre-rendered page image. */
+async function deleteReviewAssets(id, filePath) {
+  const bucket = storage.bucket(REVIEW_BUCKET);
+  if (filePath) await bucket.file(filePath).delete({ ignoreNotFound: true });
+  await bucket.deleteFiles({ prefix: `review-rooms/${id}/` }).catch(() => {});
+}
+
+// ---------------------------------------------------------------------------
+// Trackable résumé links: a hosted résumé the owner can send instead of an
+// attachment, with open and reading-time telemetry fed back to the app. The
+// viewer page says out loud that opens are visible to the sender.
+// ---------------------------------------------------------------------------
+
+async function handleLinkRoutes(request, response) {
+  const createMatch = request.path === "/v1/links";
+  const activityMatch = request.path.match(/^\/v1\/links\/([A-Za-z0-9-]{24,80})\/activity$/);
+  const lifecycleMatch = request.path.match(/^\/v1\/links\/([A-Za-z0-9-]{24,80})$/);
+  const publicMatch = request.path.match(/^\/cv\/([A-Za-z0-9-]{24,80})$/);
+  const beatMatch = request.path.match(/^\/cv\/([A-Za-z0-9-]{24,80})\/beat$/);
+  const pdfMatch = request.path.match(/^\/cv\/([A-Za-z0-9-]{24,80})\/pdf$/);
+  const pageMatch = request.path.match(/^\/cv\/([A-Za-z0-9-]{24,80})\/page\/(\d+)$/);
+  if (!createMatch && !activityMatch && !lifecycleMatch && !publicMatch && !beatMatch && !pdfMatch && !pageMatch) {
+    return false;
+  }
+
+  try {
+    if (createMatch && request.method === "POST") {
+      if (!(await verifyAppCheck(request, response))) return true;
+      const authUser = await optionalAuthenticatedUser(request);
+      const rawLength = Math.max(
+        Number(request.header("content-length") || 0),
+        Buffer.byteLength(JSON.stringify(request.body || {}))
+      );
+      if (rawLength > REVIEW_MAX_BYTES) {
+        response.status(413).json({ error: "The résumé PDF is too large to host." });
+        return true;
+      }
+      const { clientID, entitlement, token, expiresAt, resumeTitle, company, pdfBase64 } =
+        request.body || {};
+      if (typeof clientID !== "string" || !validReviewToken(token) || typeof pdfBase64 !== "string" || !pdfBase64) {
+        response.status(400).json({ error: "Invalid link request." });
+        return true;
+      }
+      const expiryDecision = linkExpiryDecision(expiresAt);
+      if (!expiryDecision.valid) {
+        response.status(400).json({ error: "Link expiry must fall within the next 92 days." });
+        return true;
+      }
+      const pdf = Buffer.from(pdfBase64, "base64");
+      if (!pdf.length || pdf.length > 5_000_000 || pdf.subarray(0, 4).toString() !== "%PDF") {
+        response.status(400).json({ error: "The uploaded document is not a valid PDF." });
+        return true;
+      }
+      // Pre-rendered page images power a fit-to-width preview on phones, where an
+      // inline PDF is drawn at native page width and clips off the right edge.
+      const pageImages = linkPageImages(request.body?.pageImages);
+      const id = linkID(token);
+      const access = await resolveMonetizationAccess(clientID, entitlement, authUser?.uid);
+      const limit = linkLimit(access.tier);
+      const ownedLinks = await db.collection("resumeLinks")
+        .where("ownerSubjectHash", "==", access.subjectHash)
+        .limit(50)
+        .get();
+      const activeOwnedCount = ownedLinks.docs.filter((document) => {
+        if (document.id === id) return false;
+        const value = document.data();
+        return value.status === "open" && value.expiresAt?.toDate?.() > new Date();
+      }).length;
+      if (activeOwnedCount >= limit) {
+        response.status(402).json({
+          error: access.tier === "free"
+            ? "Free hosts one active trackable link. Revoke it first, or upgrade to Go for five."
+            : `${access.tier === "go" ? "Go" : "Pro"} supports ${limit} active trackable links. Revoke one before creating another.`,
+          code: "link_limit",
+        });
+        return true;
+      }
+      const filePath = `resume-links/${id}.pdf`;
+      await storage.bucket(REVIEW_BUCKET).file(filePath).save(pdf, {
+        resumable: false,
+        metadata: { contentType: "application/pdf", cacheControl: "private, max-age=300" },
+      });
+      await Promise.all(pageImages.map((image, index) =>
+        storage.bucket(REVIEW_BUCKET).file(`resume-links/${id}/page-${index}.png`).save(image, {
+          resumable: false,
+          metadata: { contentType: "image/png", cacheControl: "private, max-age=300" },
+        })
+      ));
+      await db.collection("resumeLinks").doc(id).set({
+        ownerSubjectHash: access.subjectHash,
+        ownerUID: authUser?.uid || null,
+        ownerTier: access.tier,
+        resumeTitle: cleanText(resumeTitle, 200) || "Résumé",
+        company: cleanText(company, 160),
+        filePath,
+        pageCount: pageImages.length,
+        expiresAt: expiryDecision.expiry,
+        createdAt: FieldValue.serverTimestamp(),
+        status: "open",
+      });
+      const hostedURL = `${publicOrigin(request)}/cv/${token}`;
+      response.status(201).json({ hostedURL });
+      return true;
+    }
+
+    if (activityMatch && request.method === "GET") {
+      if (!(await verifyAppCheck(request, response))) return true;
+      const snapshot = await db.collection("resumeLinks").doc(linkID(activityMatch[1])).get();
+      if (!snapshot.exists) {
+        response.status(404).json({ error: "Link not found." });
+        return true;
+      }
+      const link = snapshot.data();
+      const expired = link.expiresAt?.toDate?.() < new Date();
+      const views = await snapshot.ref.collection("views")
+        .orderBy("lastSeenAt", "desc").limit(50).get();
+      response.json({
+        status: link.status === "open" && expired ? "expired" : link.status,
+        expiresAt: link.expiresAt?.toDate?.()?.toISOString?.() || null,
+        views: views.docs.map((doc) => {
+          const value = doc.data();
+          return {
+            id: doc.id,
+            firstOpenedAt: value.firstOpenedAt?.toDate?.()?.toISOString?.() || null,
+            lastSeenAt: value.lastSeenAt?.toDate?.()?.toISOString?.() || null,
+            opens: value.opens || 0,
+            seconds: value.seconds || 0,
+            viewer: value.viewer || "Unknown device",
+            downloadedPDF: Boolean(value.downloadedPDF),
+          };
+        }),
+      });
+      return true;
+    }
+
+    if (lifecycleMatch && (request.method === "PATCH" || request.method === "DELETE")) {
+      if (!(await verifyAppCheck(request, response))) return true;
+      const user = await requiredAuthenticatedUser(request);
+      const ref = db.collection("resumeLinks").doc(linkID(lifecycleMatch[1]));
+      const snapshot = await ref.get();
+      if (!snapshot.exists) {
+        response.status(404).json({ error: "Link not found." });
+        return true;
+      }
+      const link = snapshot.data();
+      if (link.ownerUID !== user.uid) {
+        response.status(403).json({ error: "Only the owner can change this link." });
+        return true;
+      }
+      if (request.method === "DELETE") {
+        await deleteResumeLink(ref, link);
+        response.status(200).json({ deleted: true });
+      } else {
+        await deleteLinkAssets(ref.id, link.filePath);
+        await ref.set({ status: "revoked", revokedAt: FieldValue.serverTimestamp() }, { merge: true });
+        response.status(200).json({ status: "revoked" });
+      }
+      return true;
+    }
+
+    if (publicMatch && request.method === "GET") {
+      const link = await activeResumeLink(publicMatch[1]);
+      if (!link) { response.status(410).send(linkUnavailablePage()); return true; }
+      const visitor = ensureVisitorCookie(request, response, publicMatch[1], link.data);
+      const viewRef = link.ref.collection("views").doc(visitor);
+      const existing = await viewRef.get();
+      const decision = openDecision({ lastSeenAt: existing.data()?.lastSeenAt?.toDate?.() });
+      await viewRef.set({
+        firstOpenedAt: existing.data()?.firstOpenedAt || FieldValue.serverTimestamp(),
+        lastSeenAt: FieldValue.serverTimestamp(),
+        opens: FieldValue.increment(decision.freshOpen ? 1 : 0),
+        seconds: FieldValue.increment(0),
+        viewer: viewerHint(request.header("user-agent")),
+      }, { merge: true });
+      response.set("Content-Type", "text/html; charset=utf-8");
+      response.set("Content-Security-Policy", "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; frame-src 'self'; base-uri 'none'");
+      response.set("Referrer-Policy", "no-referrer");
+      response.set("X-Robots-Tag", "noindex, nofollow");
+      response.send(linkViewerPage(publicMatch[1], link.data));
+      return true;
+    }
+
+    if (beatMatch && request.method === "POST") {
+      const link = await activeResumeLink(beatMatch[1]);
+      if (!link) { response.status(410).end(); return true; }
+      const visitor = existingVisitor(request, beatMatch[1], link.data);
+      if (!visitor) { response.status(204).end(); return true; }
+      const viewRef = link.ref.collection("views").doc(visitor);
+      const existing = await viewRef.get();
+      if (!existing.exists) { response.status(204).end(); return true; }
+      const dwell = dwellDecision({
+        currentSeconds: existing.data()?.seconds || 0,
+        lastSeenAt: existing.data()?.lastSeenAt?.toDate?.(),
+      });
+      await viewRef.set({
+        lastSeenAt: FieldValue.serverTimestamp(),
+        seconds: FieldValue.increment(dwell.addedSeconds),
+      }, { merge: true });
+      response.status(204).end();
+      return true;
+    }
+
+    if (pdfMatch && request.method === "GET") {
+      const link = await activeResumeLink(pdfMatch[1]);
+      if (!link) { response.status(410).send("This résumé link is unavailable or expired."); return true; }
+      if (request.query?.download === "1") {
+        const visitor = existingVisitor(request, pdfMatch[1], link.data);
+        if (visitor) {
+          await link.ref.collection("views").doc(visitor)
+            .set({ downloadedPDF: true, lastSeenAt: FieldValue.serverTimestamp() }, { merge: true });
+        }
+        response.set("Content-Disposition", `attachment; filename="${(link.data.resumeTitle || "Resume").replace(/[^A-Za-z0-9 _.-]/g, "")}.pdf"`);
+      }
+      const [pdf] = await storage.bucket(REVIEW_BUCKET).file(link.data.filePath).download();
+      response.set("Content-Type", "application/pdf");
+      response.set("Cache-Control", "private, max-age=300");
+      response.send(pdf);
+      return true;
+    }
+
+    if (pageMatch && request.method === "GET") {
+      const link = await activeResumeLink(pageMatch[1]);
+      if (!link) { response.status(410).end(); return true; }
+      const index = Number(pageMatch[2]);
+      if (!Number.isInteger(index) || index < 0 || index >= Number(link.data.pageCount || 0)) {
+        response.status(404).end();
+        return true;
+      }
+      const file = storage.bucket(REVIEW_BUCKET).file(`resume-links/${linkID(pageMatch[1])}/page-${index}.png`);
+      const [image] = await file.download();
+      response.set("Content-Type", "image/png");
+      response.set("Cache-Control", "private, max-age=300");
+      response.send(image);
+      return true;
+    }
+
+    response.status(405).json({ error: "Method not allowed." });
+    return true;
+  } catch (error) {
+    logger.error("Resume link request failed", { name: error?.name, message: error?.message });
+    const status = Number.isInteger(error?.statusCode) ? error.statusCode : 500;
+    response.status(status).json({
+      error: status === 401 ? error.message : "Unable to complete the link request.",
+    });
+    return true;
+  }
+}
+
+async function deleteResumeLink(ref, link) {
+  await deleteCollection(ref.collection("views"));
+  await deleteLinkAssets(ref.id, link?.filePath);
+  await ref.delete();
+}
+
+/**
+ * Removes a link's hosted PDF and every pre-rendered page image. The images
+ * live under resume-links/<id>/, a prefix distinct from the <id>.pdf object.
+ */
+async function deleteLinkAssets(id, filePath) {
+  const bucket = storage.bucket(REVIEW_BUCKET);
+  if (filePath) await bucket.file(filePath).delete({ ignoreNotFound: true });
+  await bucket.deleteFiles({ prefix: `resume-links/${id}/` }).catch(() => {});
+}
+
+/**
+ * Validated page images from a publish request: PNG-signed, size-capped, and
+ * limited in number, so a hostile client cannot fill storage. Anything invalid
+ * is dropped and the preview falls back to the inline PDF.
+ */
+function linkPageImages(value) {
+  if (!Array.isArray(value)) return [];
+  const images = [];
+  for (const entry of value.slice(0, 8)) {
+    if (typeof entry !== "string") continue;
+    const buffer = Buffer.from(entry, "base64");
+    const isPNG = buffer.length > 8 &&
+      buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
+    if (isPNG && buffer.length <= 3_000_000) images.push(buffer);
+  }
+  return images;
+}
+
+async function activeResumeLink(token) {
+  if (!validReviewToken(token)) return null;
+  const ref = db.collection("resumeLinks").doc(linkID(token));
+  const snapshot = await ref.get();
+  if (!snapshot.exists) return null;
+  const data = snapshot.data();
+  if (data.status !== "open" || !data.expiresAt || data.expiresAt.toDate() < new Date()) return null;
+  return { ref, data };
+}
+
+function linkID(token) {
+  return createHash("sha256").update(`link:${token}`).digest("hex");
+}
+
+/**
+ * A random per-link visitor identity kept in a cookie so refreshes do not
+ * inflate the open count. Deliberately contains nothing about the person.
+ */
+function ensureVisitorCookie(request, response, token, link) {
+  const existing = existingVisitor(request, token, link);
+  if (existing) return existing;
+  const visitor = randomBytes(12).toString("hex");
+  const name = visitorCookieName(token);
+  const secondsRemaining = Math.max(
+    3600, Math.floor((link.expiresAt.toDate().getTime() - Date.now()) / 1000)
+  );
+  // The emulator serves plain http, where a Secure cookie would never come
+  // back and every reload would look like a new visitor.
+  const secure = process.env.FUNCTIONS_EMULATOR === "true" ? "" : " Secure;";
+  // The cookie path has to match the URL the viewer actually opened, which in
+  // production is the fixed /api base and in the emulator is the project path.
+  const path = `${publicBasePath(request)}/cv/${token}`;
+  response.append("Set-Cookie", `${name}=${visitor}; Path=${path}; Max-Age=${Math.min(secondsRemaining, 7_776_000)}; HttpOnly;${secure} SameSite=Lax`);
+  return visitor;
+}
+
+/**
+ * The canonical public origin for a shareable link. Production always uses the
+ * fixed cloudfunctions.net/api base the app is configured to call — it is never
+ * reconstructed from request headers. The function name is stripped before the
+ * handler sees request.path, and the host header differs between the
+ * cloudfunctions.net alias and the underlying run.app service, so guessing the
+ * prefix from the request produced /cv links that 404'd for every recipient.
+ * The emulator serves the function under a project/region path, so links opened
+ * during local testing keep pointing at the emulator instead of production.
+ */
+function publicOrigin(request) {
+  if (process.env.FUNCTIONS_EMULATOR === "true") {
+    return `${request.protocol}://${request.get("host")}${emulatorBasePath()}`;
+  }
+  return PUBLIC_API_BASE;
+}
+
+/**
+ * The path prefix the public origin carries, so a cookie's Path attribute
+ * matches the URL the viewer actually opened.
+ */
+function publicBasePath(request) {
+  return process.env.FUNCTIONS_EMULATOR === "true" ? emulatorBasePath() : PUBLIC_BASE_PATH;
+}
+
+function emulatorBasePath() {
+  const project = process.env.GCLOUD_PROJECT || "resumestudio-4addf";
+  const service = process.env.K_SERVICE || "api";
+  return `/${project}/europe-west1/${service}`;
+}
+
+function existingVisitor(request, token, _link) {
+  const name = visitorCookieName(token);
+  const cookie = String(request.header("cookie") || "")
+    .split(";")
+    .map((value) => value.trim())
+    .find((value) => value.startsWith(`${name}=`));
+  const visitor = cookie?.slice(name.length + 1) || "";
+  return /^[a-f0-9]{24}$/.test(visitor) ? visitor : null;
+}
+
+function visitorCookieName(token) {
+  return `cvv_${linkID(token).slice(0, 12)}`;
+}
+
+function linkUnavailablePage() {
+  return "<!doctype html><meta name=viewport content='width=device-width'><title>Résumé unavailable</title><style>body{font-family:system-ui;background:#08111f;color:#fff;display:grid;place-items:center;min-height:100vh;margin:0}main{max-width:32rem;padding:2rem;text-align:center}p{color:#aab2c0}</style><main><h1>This résumé link is unavailable</h1><p>The link may have expired or been withdrawn by its owner.</p></main>";
+}
+
+function linkViewerPage(token, link) {
+  const heading = escapeHTML(link.resumeTitle || "Résumé");
+  const company = link.company
+    ? `<p class=muted>Prepared for ${escapeHTML(link.company)}</p>`
+    : "";
+  // Asset URLs are relative to the page ("/cv/<token>"), so they stay correct
+  // whether the function is mounted at the domain root or under a prefix.
+  // Pre-rendered page images scale to the screen width, so nothing is clipped;
+  // links published before this existed fall back to the inline PDF.
+  const pages = Number(link.pageCount || 0);
+  const preview = pages > 0
+    ? Array.from({ length: pages }, (_, index) =>
+      `<img class=page loading=lazy alt="Résumé page ${index + 1}" src="${token}/page/${index}">`).join("")
+    : `<iframe title="Résumé PDF" src="${token}/pdf"></iframe>`;
+  return `<!doctype html><html><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=robots content="noindex,nofollow"><title>${heading}</title><style>body{margin:0;background:#f4f1ea;color:#0a1220;font:16px system-ui,-apple-system,sans-serif;display:flex;flex-direction:column;min-height:100vh}header{max-width:820px;width:100%;margin:0 auto;box-sizing:border-box;padding:22px 20px 10px;display:flex;flex-wrap:wrap;align-items:center;gap:12px;justify-content:space-between}h1{font-size:22px;margin:0}.muted{color:#5d6675;margin:2px 0 0;font-size:14px}a.download{background:#e94b00;color:#fff;text-decoration:none;font-weight:700;padding:11px 20px;border-radius:999px;font-size:15px}main{flex:1;max-width:820px;width:100%;margin:0 auto;box-sizing:border-box;padding:8px 16px 20px}.page{display:block;width:100%;height:auto;margin:0 auto 14px;border:1px solid #d8d2c6;border-radius:12px;background:#fff;box-shadow:0 1px 6px rgba(10,18,32,.08)}iframe{width:100%;min-height:82vh;border:1px solid #d8d2c6;border-radius:14px;background:#fff}footer{text-align:center;color:#8a92a1;font-size:12px;padding:14px 20px 22px}</style></head><body><header><div><h1>${heading}</h1>${company}</div><a class=download href="${token}/pdf?download=1">Download PDF</a></header><main>${preview}</main><footer>Shared privately via Resume Studio. The sender can see when this link is opened and for how long it is read.</footer><script>setInterval(function(){if(!document.hidden&&navigator.sendBeacon)navigator.sendBeacon("${token}/beat");},12000);</script></body></html>`;
 }
 
 async function verifyAppCheck(request, response) {
@@ -1186,12 +1785,20 @@ function reviewUnavailablePage() {
 
 function reviewUnlockPage(token, room, hasError) {
   const error = hasError ? "<p class=error>That access code did not match. Please try again.</p>" : "";
-  return `<!doctype html><html><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>Open ${escapeHTML(room.resumeTitle)}</title><style>body{margin:0;background:radial-gradient(circle at 75% 20%,#352030 0,#08111f 42%,#050b14 100%);color:#f8f5ef;font:16px system-ui,-apple-system,sans-serif;display:grid;place-items:center;min-height:100vh}.card{box-sizing:border-box;width:min(92vw,460px);padding:32px;border-radius:28px;background:#111a27;border:1px solid #354052;box-shadow:0 24px 80px #0008}.eyebrow{color:#f05a13;font-size:12px;font-weight:800;letter-spacing:.15em}.muted{color:#aab2c0;line-height:1.5}.error{color:#ff9470}input{box-sizing:border-box;width:100%;padding:14px;margin:8px 0 14px;border-radius:12px;border:1px solid #485569;background:#08111f;color:#fff;font-size:18px;text-transform:uppercase;letter-spacing:.12em}button{width:100%;padding:14px;border:0;border-radius:999px;background:#e94b00;color:#fff;font-weight:800;font-size:16px}</style></head><body><main class=card><div class=eyebrow>PRIVATE REVIEW ROOM</div><h1>${escapeHTML(room.resumeTitle)}</h1><p class=muted>This résumé was shared for private feedback. Enter the access code from your invitation to continue.</p>${error}<form method=post action="/review/${token}/unlock"><label>Access code<input name=code maxlength=40 autocomplete=one-time-code required autofocus></label><button>Open review room</button></form></main></body></html>`;
+  return `<!doctype html><html><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>Open ${escapeHTML(room.resumeTitle)}</title><style>body{margin:0;background:radial-gradient(circle at 75% 20%,#352030 0,#08111f 42%,#050b14 100%);color:#f8f5ef;font:16px system-ui,-apple-system,sans-serif;display:grid;place-items:center;min-height:100vh}.card{box-sizing:border-box;width:min(92vw,460px);padding:32px;border-radius:28px;background:#111a27;border:1px solid #354052;box-shadow:0 24px 80px #0008}.eyebrow{color:#f05a13;font-size:12px;font-weight:800;letter-spacing:.15em}.muted{color:#aab2c0;line-height:1.5}.error{color:#ff9470}input{box-sizing:border-box;width:100%;padding:14px;margin:8px 0 14px;border-radius:12px;border:1px solid #485569;background:#08111f;color:#fff;font-size:18px;text-transform:uppercase;letter-spacing:.12em}button{width:100%;padding:14px;border:0;border-radius:999px;background:#e94b00;color:#fff;font-weight:800;font-size:16px}</style></head><body><main class=card><div class=eyebrow>PRIVATE REVIEW ROOM</div><h1>${escapeHTML(room.resumeTitle)}</h1><p class=muted>This résumé was shared for private feedback. Enter the access code from your invitation to continue.</p>${error}<form method=post action="${token}/unlock"><label>Access code<input name=code maxlength=40 autocomplete=one-time-code required autofocus></label><button>Open review room</button></form></main></body></html>`;
 }
 
 function reviewPage(token, room, comments) {
   const renderedComments = comments.map((item) => `<article><b>${escapeHTML(item.section || "General")}</b><p>${escapeHTML(item.comment)}</p><small>${escapeHTML(item.author || "Reviewer")}</small></article>`).join("") || "<p class=muted>No feedback has been added yet.</p>";
-  return `<!doctype html><html><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>${escapeHTML(room.resumeTitle)}</title><style>body{margin:0;background:#07101d;color:#f8f5ef;font:16px system-ui,-apple-system,sans-serif}header,main{max-width:1100px;margin:auto;padding:24px}.hero{background:linear-gradient(135deg,#141d2c,#2a1720);border:1px solid #2f3948;border-radius:28px;padding:28px}.accent{color:#f05a13}.grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(280px,.7fr);gap:20px;margin-top:20px}iframe,.panel{width:100%;min-height:75vh;border:1px solid #2f3948;border-radius:20px;background:#fff}.panel{box-sizing:border-box;background:#111a27;padding:20px}.panel input,.panel select,.panel textarea{box-sizing:border-box;width:100%;margin:7px 0 14px;padding:12px;border-radius:10px;border:1px solid #3c4655;background:#08111f;color:#fff}.panel button{width:100%;padding:13px;border:0;border-radius:999px;background:#e94b00;color:#fff;font-weight:700}article{border-top:1px solid #303a49;padding:14px 0}article p{white-space:pre-wrap}.muted,small{color:#aab2c0}@media(max-width:760px){.grid{grid-template-columns:1fr}iframe{min-height:65vh}}</style></head><body><header><div class=hero><div class=accent>PRIVATE REVIEW ROOM</div><h1>${escapeHTML(room.resumeTitle)}</h1><p class=muted>${escapeHTML(room.message)}</p></div></header><main><div class=grid><iframe title="Résumé PDF" src="/review/${token}/pdf"></iframe><section id=feedback class=panel><h2>Section feedback</h2>${renderedComments}<form method=post action="/review/${token}/comments"><label>Your name<input name=author maxlength=120 value="${escapeHTML(room.reviewerName)}"></label><label>Section<select name=section><option>General</option><option>Professional profile</option><option>Experience</option><option>Skills</option><option>Education</option><option>Formatting</option></select></label><label>Comment<textarea name=comment maxlength=2500 rows=6 required></textarea></label><button>Add feedback</button></form><p class=muted>Only the résumé owner receives these comments.</p></section></div></main></body></html>`;
+  // Page images scale to the column width so the résumé is never clipped on a
+  // phone; rooms published before this fall back to the inline PDF. Asset paths
+  // are relative to the page so they inherit the public /api prefix.
+  const pages = Number(room.pageCount || 0);
+  const preview = pages > 0
+    ? Array.from({ length: pages }, (_, index) =>
+      `<img class=page loading=lazy alt="Résumé page ${index + 1}" src="${token}/page/${index}">`).join("")
+    : `<iframe title="Résumé PDF" src="${token}/pdf"></iframe>`;
+  return `<!doctype html><html><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>${escapeHTML(room.resumeTitle)}</title><style>body{margin:0;background:#07101d;color:#f8f5ef;font:16px system-ui,-apple-system,sans-serif}header,main{max-width:1100px;margin:auto;padding:24px}.hero{background:linear-gradient(135deg,#141d2c,#2a1720);border:1px solid #2f3948;border-radius:28px;padding:28px}.accent{color:#f05a13}.grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(280px,.7fr);gap:20px;margin-top:20px}.doc{min-width:0}.page{display:block;width:100%;height:auto;margin:0 0 12px;border:1px solid #2f3948;border-radius:14px;background:#fff}iframe,.panel{width:100%;min-height:75vh;border:1px solid #2f3948;border-radius:20px;background:#fff}.panel{box-sizing:border-box;background:#111a27;padding:20px}.panel input,.panel select,.panel textarea{box-sizing:border-box;width:100%;margin:7px 0 14px;padding:12px;border-radius:10px;border:1px solid #3c4655;background:#08111f;color:#fff}.panel button{width:100%;padding:13px;border:0;border-radius:999px;background:#e94b00;color:#fff;font-weight:700}article{border-top:1px solid #303a49;padding:14px 0}article p{white-space:pre-wrap}.muted,small{color:#aab2c0}@media(max-width:760px){.grid{grid-template-columns:1fr}iframe{min-height:65vh}}</style></head><body><header><div class=hero><div class=accent>PRIVATE REVIEW ROOM</div><h1>${escapeHTML(room.resumeTitle)}</h1><p class=muted>${escapeHTML(room.message)}</p></div></header><main><div class=grid><div class=doc>${preview}</div><section id=feedback class=panel><h2>Section feedback</h2>${renderedComments}<form method=post action="${token}/comments"><label>Your name<input name=author maxlength=120 value="${escapeHTML(room.reviewerName)}"></label><label>Section<select name=section><option>General</option><option>Professional profile</option><option>Experience</option><option>Skills</option><option>Education</option><option>Formatting</option></select></label><label>Comment<textarea name=comment maxlength=2500 rows=6 required></textarea></label><button>Add feedback</button></form><p class=muted>Only the résumé owner receives these comments.</p></section></div></main></body></html>`;
 }
 
 function allowRequest(clientID) {

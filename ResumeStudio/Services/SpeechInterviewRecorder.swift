@@ -9,6 +9,8 @@ final class SpeechInterviewRecorder: ObservableObject {
   @Published private(set) var errorMessage: String?
   @Published private(set) var durationSeconds: Double = 0
   @Published private(set) var lastRecordingURL: URL?
+  @Published private(set) var pauseCount = 0
+  @Published private(set) var longestPauseSeconds: Double = 0
 
   private let audioEngine = AVAudioEngine()
   private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
@@ -16,6 +18,7 @@ final class SpeechInterviewRecorder: ObservableObject {
   private var startedAt: Date?
   private var timer: Timer?
   private var audioFile: AVAudioFile?
+  private var timeLimitSeconds: Double?
 
   func requestAccess() async -> Bool {
     let speechStatus = await withCheckedContinuation { continuation in
@@ -30,12 +33,15 @@ final class SpeechInterviewRecorder: ObservableObject {
     return microphoneAllowed
   }
 
-  func start() async {
+  func start(timeLimitSeconds: Double? = nil) async {
     guard await requestAccess() else { return }
     stop()
     transcript = ""
     lastRecordingURL = nil
     errorMessage = nil
+    pauseCount = 0
+    longestPauseSeconds = 0
+    self.timeLimitSeconds = timeLimitSeconds
 
     guard let recognizer = SFSpeechRecognizer(), recognizer.isAvailable else {
       errorMessage = "Speech recognition is currently unavailable."
@@ -54,7 +60,10 @@ final class SpeechInterviewRecorder: ObservableObject {
 
       recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
         Task { @MainActor in
-          if let result { self?.transcript = result.bestTranscription.formattedString }
+          if let result {
+            self?.transcript = result.bestTranscription.formattedString
+            self?.updatePauseMetrics(result.bestTranscription.segments)
+          }
           if error != nil || result?.isFinal == true { self?.stop() }
         }
       }
@@ -81,6 +90,9 @@ final class SpeechInterviewRecorder: ObservableObject {
         Task { @MainActor in
           guard let start = self?.startedAt else { return }
           self?.durationSeconds = Date().timeIntervalSince(start)
+          if let limit = self?.timeLimitSeconds, self?.durationSeconds ?? 0 >= limit {
+            self?.stop()
+          }
         }
       }
     } catch {
@@ -103,11 +115,21 @@ final class SpeechInterviewRecorder: ObservableObject {
     timer = nil
     if let startedAt { durationSeconds = max(durationSeconds, Date().timeIntervalSince(startedAt)) }
     startedAt = nil
+    timeLimitSeconds = nil
     isRecording = false
     try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
   }
 
   func replaceTranscript(_ value: String) { transcript = value }
+
+  private func updatePauseMetrics(_ segments: [SFTranscriptionSegment]) {
+    guard segments.count > 1 else { pauseCount = 0; longestPauseSeconds = 0; return }
+    let gaps = zip(segments, segments.dropFirst()).map { current, next in
+      max(0, next.timestamp - (current.timestamp + current.duration))
+    }
+    pauseCount = gaps.count { $0 >= 0.8 }
+    longestPauseSeconds = gaps.max() ?? 0
+  }
 }
 
 @MainActor

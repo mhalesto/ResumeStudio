@@ -12,6 +12,9 @@ struct VoiceInterviewStudioView: View {
   @State private var isEvaluating = false
   @State private var errorMessage: String?
   @State private var seniority = "Mid-level"
+  @State private var adaptiveQuestions: [String] = []
+  @State private var panelMode = false
+  @State private var timeLimitSeconds = 120.0
 
   private var application: JobApplication? {
     applicationID.flatMap { id in applicationStore.applications.first { $0.id == id } }
@@ -19,7 +22,7 @@ struct VoiceInterviewStudioView: View {
 
   private var questions: [String] {
     let generated = application?.interviewPlan?.questions.map(\.question) ?? []
-    if !generated.isEmpty { return generated }
+    if !generated.isEmpty { return adaptiveQuestions + generated }
     var values = [
         "Tell me about yourself and why this role is the right next step.",
         "Describe a difficult problem you solved and the result.",
@@ -34,7 +37,7 @@ struct VoiceInterviewStudioView: View {
     if role.contains("manager") || role.contains("lead") { values.append("Tell me about a team you developed and how you measured progress.") }
     if role.contains("sales") { values.append("Walk me through how you built and converted a difficult pipeline.") }
     if role.contains("engineer") || role.contains("developer") { values.append("Explain a technical trade-off you made and its impact.") }
-    return values
+    return adaptiveQuestions + values
   }
 
   var body: some View {
@@ -64,10 +67,24 @@ struct VoiceInterviewStudioView: View {
             ForEach(questions, id: \.self) { Text($0).tag($0) }
           }
           .pickerStyle(.menu)
+          Toggle("Timed panel-interview mode", isOn: $panelMode)
+          if panelMode {
+            Picker("Answer time", selection: $timeLimitSeconds) {
+              Text("60 seconds").tag(60.0)
+              Text("90 seconds").tag(90.0)
+              Text("2 minutes").tag(120.0)
+            }
+            .pickerStyle(.segmented)
+            Label("Recording stops automatically; follow-ups adapt to the answer you just gave.", systemImage: "timer")
+              .font(.caption).foregroundStyle(Theme.mutedInk)
+          }
           Text(selectedQuestion).font(.title3.weight(.semibold)).foregroundStyle(Theme.ink).padding(.top, 4)
         }.padding(18).cardSurface()
 
-        VoiceRecorderCard(recorder: recorder, accent: resumeStore.document.accent.color)
+        VoiceRecorderCard(
+          recorder: recorder,
+          accent: resumeStore.document.accent.color,
+          timeLimitSeconds: panelMode ? timeLimitSeconds : nil)
 
         if !recorder.transcript.isBlank {
           VStack(alignment: .leading, spacing: 10) {
@@ -84,6 +101,12 @@ struct VoiceInterviewStudioView: View {
             if !fillerWords.isEmpty {
               Text("Filler words: \(fillerWords.joined(separator: ", "))")
                 .font(.caption).foregroundStyle(.orange)
+            }
+            HStack(spacing: 8) {
+              deliveryMetric("\(wordsPerMinute)", "WPM")
+              deliveryMetric("\(recorder.pauseCount)", "Long pauses")
+              deliveryMetric(String(format: "%.1fs", recorder.longestPauseSeconds), "Longest")
+              deliveryMetric("\(Int(recorder.durationSeconds))s", "Length")
             }
             if let url = recorder.lastRecordingURL {
               Button(audioPlayer.isPlaying ? "Stop playback" : "Play my answer", systemImage: audioPlayer.isPlaying ? "stop.fill" : "play.fill") {
@@ -179,8 +202,14 @@ struct VoiceInterviewStudioView: View {
         suggestedAnswerShape: result.suggestedAnswerShape,
         claimsRequiringConfirmation: result.claimsRequiringConfirmation,
         deliveryScore: deliveryScore(result: result),
-        audioFilename: recorder.lastRecordingURL?.path
+        audioFilename: recorder.lastRecordingURL?.path,
+        pauseCount: recorder.pauseCount,
+        longestPauseSeconds: recorder.longestPauseSeconds
       ))
+      let followUp = adaptiveFollowUp(from: result)
+      adaptiveQuestions.removeAll { $0 == followUp }
+      adaptiveQuestions.insert(followUp, at: 0)
+      if panelMode { selectedQuestion = followUp }
     } catch { errorMessage = error.localizedDescription }
     isEvaluating = false
   }
@@ -192,6 +221,25 @@ struct VoiceInterviewStudioView: View {
     })
     let structureBonus = min(20, result.starCoverage.count * 5)
     return max(0, min(100, 80 - pacePenalty - fillerPenalty + structureBonus))
+  }
+
+  private func adaptiveFollowUp(from feedback: AIVoiceInterviewFeedback) -> String {
+    if let improvement = feedback.improvements.first {
+      return "You mentioned that answer could strengthen \(improvement.lowercased()). What specific example would you add?"
+    }
+    if feedback.starCoverage.count < 3 {
+      return "What was the measurable result, and what did you personally do to achieve it?"
+    }
+    return "What did you learn from that experience, and what would you do differently now?"
+  }
+
+  private func deliveryMetric(_ value: String, _ label: String) -> some View {
+    VStack(spacing: 2) {
+      Text(value).font(.caption.bold()).monospacedDigit()
+      Text(label).font(.system(size: 9)).foregroundStyle(Theme.mutedInk)
+    }
+    .frame(maxWidth: .infinity).padding(.vertical, 7)
+    .background(Theme.muted, in: RoundedRectangle(cornerRadius: 9))
   }
 }
 
@@ -215,6 +263,7 @@ private struct PracticeTrendView: View {
 private struct VoiceRecorderCard: View {
   @ObservedObject var recorder: SpeechInterviewRecorder
   let accent: Color
+  let timeLimitSeconds: Double?
   @State private var pulses = false
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   var body: some View {
@@ -239,7 +288,7 @@ private struct VoiceRecorderCard: View {
       Text(recorder.isRecording ? "Listening · \(Int(recorder.durationSeconds)) sec" : "Tap to answer")
         .font(.headline).foregroundStyle(Theme.ink)
       Button {
-        if recorder.isRecording { recorder.stop() } else { Task { await recorder.start() } }
+        if recorder.isRecording { recorder.stop() } else { Task { await recorder.start(timeLimitSeconds: timeLimitSeconds) } }
       } label: {
         Text(recorder.isRecording ? "Finish answer" : "Start recording")
           .font(.headline).foregroundStyle(recorder.isRecording ? .red : accent)

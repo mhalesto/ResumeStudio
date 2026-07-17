@@ -7,6 +7,7 @@ enum HomeRoute: Hashable {
   case preview
   case gallery
   case jobTargeting
+  case jobTargetingApplication(UUID)
   case coverLetterEditor
   case coverLetterPreview
   case resumeLibrary
@@ -34,13 +35,17 @@ enum HomeRoute: Hashable {
   case versionComparison
   case integrations
   case privacyCenter
+  case recruiterScan
+  case smartLinks
 }
 
 struct HomeView: View {
   @EnvironmentObject private var store: ResumeStore
   @EnvironmentObject private var coverLetterStore: CoverLetterStore
   @EnvironmentObject private var applicationStore: ApplicationStore
+  @EnvironmentObject private var careerStore: CareerIntelligenceStore
   @EnvironmentObject private var purchases: PurchaseManager
+  @EnvironmentObject private var smartLinks: SmartLinkStore
   @State private var path: [HomeRoute] = []
   @State private var pendingStart: StartChoice?
   @State private var showWelcome = false
@@ -48,15 +53,27 @@ struct HomeView: View {
   // Scales the serif display headline with the reader's text-size setting instead
   // of pinning it at 38pt.
   @ScaledMetric(relativeTo: .largeTitle) private var heroTitleSize: CGFloat = 38
+  private let allowsWelcome: Bool
+  private let acceptsExternalRoutes: Bool
+
+  init(
+    initialRoute: HomeRoute? = nil,
+    allowsWelcome: Bool = true,
+    acceptsExternalRoutes: Bool = true
+  ) {
+    _path = State(initialValue: initialRoute.map { [$0] } ?? [])
+    self.allowsWelcome = allowsWelcome
+    self.acceptsExternalRoutes = acceptsExternalRoutes
+  }
 
   var body: some View {
     NavigationStack(path: $path) {
       ScrollView {
         VStack(alignment: .leading, spacing: 30) {
           hero
+          today
           quickStart
           workspace
-          aiCareerTools
           templates
           coverLetters
           recentlyEdited
@@ -71,7 +88,12 @@ struct HomeView: View {
         .frame(maxWidth: .infinity)
       }
       .background(Theme.paper)
-      .task(id: store.document.accent) { await warmThumbnails() }
+      .task(id: ResumeThumbnailWarmKey(
+        accent: store.document.accent,
+        photo: store.document.photo,
+        crop: store.document.photoCrop,
+        isPhotoVisible: store.document.isPhotoVisible
+      )) { await warmThumbnails() }
       .navigationTitle("Resume Studio")
       .navigationBarTitleDisplayMode(.inline)
       .toolbarBackground(Theme.paper, for: .navigationBar)
@@ -94,6 +116,8 @@ struct HomeView: View {
           TemplateGalleryView()
         case .jobTargeting:
           JobTargetingView()
+        case .jobTargetingApplication(let id):
+          JobTargetingView(applicationID: id)
         case .coverLetterEditor:
           CoverLetterEditorView()
         case .coverLetterPreview:
@@ -148,6 +172,10 @@ struct HomeView: View {
           PlatformIntegrationsView()
         case .privacyCenter:
           PrivacyCenterView()
+        case .recruiterScan:
+          RecruiterScanView(document: store.document)
+        case .smartLinks:
+          SmartLinksView()
         }
       }
       .sheet(isPresented: $showWelcome, onDismiss: { hasSeenWelcome = true }) {
@@ -173,7 +201,7 @@ struct HomeView: View {
         // First launch only: point people at a starting move before they face
         // the full home screen. The flag is set when the sheet is dismissed, so
         // a launch where presentation is pre-empted doesn't burn the one chance.
-        if !hasSeenWelcome { showWelcome = true }
+        if allowsWelcome && !hasSeenWelcome { showWelcome = true }
       }
       .alert(item: $pendingStart) { choice in
         Alert(
@@ -194,14 +222,118 @@ struct HomeView: View {
       }
     }
     .onReceive(NotificationCenter.default.publisher(for: .openSharedJobCapture)) { _ in
+      guard acceptsExternalRoutes else { return }
       path = [.jobCapture]
     }
     .onReceive(NotificationCenter.default.publisher(for: .openHomeRoute)) { notification in
+      guard acceptsExternalRoutes else { return }
       if let route = notification.object as? HomeRoute { path = [route] }
     }
   }
 
   private var accent: Color { store.document.accent.color }
+
+  private struct TodayAction: Identifiable {
+    let id: String
+    let title: String
+    let detail: String
+    let systemImage: String
+    let route: HomeRoute
+  }
+
+  private var todayActions: [TodayAction] {
+    var actions: [TodayAction] = []
+    if let read = smartLinks.mostRecentUnseenLink {
+      let who = read.company.nilIfBlank ?? "Someone"
+      actions.append(TodayAction(
+        id: "smart-link-\(read.id)", title: "\(who) read your résumé",
+        detail: read.lastSeenAt.map { "Opened \($0.formatted(.relative(presentation: .named))). Follow up while you're on their mind." }
+          ?? "Your trackable link has new opens.",
+        systemImage: "eye.fill", route: .smartLinks))
+    }
+    let tomorrow = Calendar.current.date(byAdding: .day, value: 2, to: Date()) ?? Date()
+    if let interview = applicationStore.upcomingInterviews.first(where: { $0.scheduledAt <= tomorrow }) {
+      actions.append(TodayAction(
+        id: "interview-\(interview.id)", title: "Prepare for \(interview.company)",
+        detail: "Your \(interview.format.title.lowercased()) interview is \(interview.scheduledAt.formatted(.relative(presentation: .named))).",
+        systemImage: "person.2.wave.2.fill", route: .interviewPrep(interview.applicationID)))
+    }
+    if let application = applicationStore.applications.first(where: {
+      $0.status == .applied && Date().timeIntervalSince($0.updatedAt) >= 6 * 86_400
+    }) {
+      actions.append(TodayAction(
+        id: "follow-up-\(application.id)", title: "Follow up with \(application.company.nilIfBlank ?? "the employer")",
+        detail: "This application has been waiting for about a week.", systemImage: "paperplane.circle.fill",
+        route: .applicationPacket(application.id)))
+    }
+    if let application = applicationStore.applications.first(where: { $0.status == .saved && $0.matchAnalysis == nil }) {
+      actions.append(TodayAction(
+        id: "match-\(application.id)", title: "Finish \(application.role.nilIfBlank ?? "your application")",
+        detail: "Analyse the match, tailor the résumé and prepare the application pack.",
+        systemImage: "wand.and.stars", route: .applicationPacket(application.id)))
+    }
+    let soon = Calendar.current.date(byAdding: .day, value: 2, to: Date()) ?? Date()
+    if let review = careerStore.reviewRequests.first(where: {
+      $0.hostedURL != nil && $0.status != .closed && $0.status != .revoked && $0.expiresAt <= soon
+    }) {
+      actions.append(TodayAction(
+        id: "review-\(review.id)", title: "Close or refresh a Review Room",
+        detail: "The link for \(review.reviewerName.nilIfBlank ?? "your reviewer") expires soon.",
+        systemImage: "person.2.badge.gearshape.fill", route: .reviewRoom))
+    }
+    let atsReport = ATSReadinessService.analyze(document: store.document, jobDescription: "")
+    if atsReport.actionCount > 0 {
+      actions.append(TodayAction(
+        id: "ats-evidence", title: "Resolve missing ATS evidence",
+        detail: "\(atsReport.actionCount) readiness item\(atsReport.actionCount == 1 ? " needs" : "s need") your attention.",
+        systemImage: "checkmark.shield", route: .atsChecker))
+    }
+    if !store.document.incompleteSections.isEmpty {
+      actions.append(TodayAction(
+        id: "resume-incomplete", title: "Complete your résumé",
+        detail: "Add \(store.document.incompleteSections.count) missing section\(store.document.incompleteSections.count == 1 ? "" : "s") before applying.",
+        systemImage: "doc.badge.ellipsis", route: .editor(store.document.incompleteSections.first)))
+    }
+    if actions.isEmpty {
+      actions.append(TodayAction(
+        id: "capture", title: "Capture your next opportunity",
+        detail: "Start one guided workflow from job advert to interview plan.",
+        systemImage: "scope", route: .jobCapture))
+    }
+    return Array(actions.prefix(3))
+  }
+
+  private var today: some View {
+    VStack(alignment: .leading, spacing: 14) {
+      HStack {
+        VStack(alignment: .leading, spacing: 3) {
+          Text("TODAY").eyebrow().foregroundStyle(accent)
+          Text("What should I do next?").font(.title2.bold()).foregroundStyle(Theme.ink)
+        }
+        Spacer()
+        Button("Applications") { path.append(.applications) }
+          .font(.subheadline.bold()).foregroundStyle(accent)
+      }
+      ForEach(todayActions) { action in
+        Button { path.append(action.route) } label: {
+          HStack(spacing: 14) {
+            Image(systemName: action.systemImage)
+              .font(.title3).foregroundStyle(accent)
+              .frame(width: 46, height: 46)
+              .background(accent.opacity(0.11), in: RoundedRectangle(cornerRadius: 14))
+            VStack(alignment: .leading, spacing: 4) {
+              Text(action.title).font(.headline).foregroundStyle(Theme.ink)
+              Text(action.detail).font(.caption).foregroundStyle(Theme.mutedInk).multilineTextAlignment(.leading)
+            }
+            Spacer()
+            Image(systemName: "chevron.right").foregroundStyle(Theme.mutedInk)
+          }
+          .padding(15).cardSurface(radius: 19)
+        }
+        .buttonStyle(.plain)
+      }
+    }
+  }
 
   /// Render the first stretch of template and cover-letter previews ahead of
   /// being scrolled to, so the carousels and gallery are warm even on the very
@@ -214,7 +346,9 @@ struct HomeView: View {
     let doc = store.document
     await TemplateThumbnailRenderer.prewarm(
       templates: Array(ResumeTemplate.allCases.prefix(8)),
-      accent: doc.accent, photo: doc.photo, crop: doc.photoCrop)
+      accent: doc.accent, photo: doc.photo, crop: doc.photoCrop,
+      isPhotoVisible: doc.isPhotoVisible
+    )
     await CoverLetterThumbnailRenderer.prewarm(
       templates: Array(CoverLetterTemplate.allCases.prefix(6)),
       accent: doc.accent)
@@ -475,6 +609,54 @@ struct HomeView: View {
           ) { path.append(.atsChecker) }
         }
 
+        Button {
+          path.append(.smartLinks)
+        } label: {
+          HStack(spacing: 16) {
+            ZStack {
+              RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(accent.opacity(0.14))
+              Image(systemName: "link")
+                .font(.system(size: 21, weight: .semibold))
+                .foregroundStyle(accent)
+            }
+            .frame(width: 54, height: 54)
+
+            VStack(alignment: .leading, spacing: 4) {
+              Text("Trackable links")
+                .font(.headline)
+                .foregroundStyle(Theme.ink)
+              Text(smartLinks.links.isEmpty
+                ? "Know when a recruiter reads your résumé"
+                : "\(smartLinks.activeCount) live · know when you're read")
+                .font(.caption)
+                .foregroundStyle(Theme.mutedInk)
+            }
+
+            Spacer()
+
+            if smartLinks.unseenOpens > 0 {
+              Text("\(smartLinks.unseenOpens) new")
+                .font(.caption2.bold())
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(accent, in: Capsule())
+                .foregroundStyle(.white)
+            }
+            Image(systemName: "chevron.right")
+              .font(.footnote.weight(.semibold))
+              .foregroundStyle(Theme.mutedInk)
+          }
+          .padding(14)
+          .cardSurface(radius: Theme.tileRadius)
+          // Pin the tap target to the visible card. Without this the adjacent
+          // Import card's hit frame (its artwork fills past its bounds) bleeds
+          // up over this row and steals the tap — routing "Trackable links"
+          // into the importer.
+          .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+
         WorkspaceCard(
           title: "Import résumé",
           detail: "PDF, DOCX or LinkedIn",
@@ -580,7 +762,8 @@ struct HomeView: View {
                   accent: store.document.accent,
                   isSelected: store.document.template == template,
                   photo: store.document.photo,
-                  photoCrop: store.document.photoCrop
+                  photoCrop: store.document.photoCrop,
+                  isPhotoVisible: store.document.isPhotoVisible
                 )
                 if !purchases.canUse(template) { PlanLockBadge().padding(8) }
               }
@@ -590,7 +773,8 @@ struct HomeView: View {
               template: template,
               accent: store.document.accent,
               photo: store.document.photo,
-              crop: store.document.photoCrop
+              crop: store.document.photoCrop,
+              isPhotoVisible: store.document.isPhotoVisible
             )
           }
         }
@@ -952,6 +1136,7 @@ private struct WorkspaceCard: View {
               .resizable()
               .scaledToFill()
               .frame(maxWidth: .infinity, maxHeight: 82, alignment: .trailing)
+              .clipped()
               .mask {
                 LinearGradient(
                   colors: [.clear, .clear, .black.opacity(0.92)],
@@ -1011,12 +1196,20 @@ private struct WorkspaceCard: View {
       }
       .padding(14)
       .cardSurface(radius: 24)
+      .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
   }
 }
 
 // MARK: - Pieces
+
+private struct ResumeThumbnailWarmKey: Hashable {
+  let accent: ResumeAccent
+  let photo: Data?
+  let crop: PhotoCrop?
+  let isPhotoVisible: Bool
+}
 
 private struct HeroStat: View {
   let value: String

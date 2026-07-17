@@ -286,11 +286,11 @@ private final class ResumePDFLayout {
     case .concise: 100
     case .pivot: 140
     case .portrait: 172
-    case .spotlight: 222
-    case .beacon: 172
-    case .harbor: 236
+    case .spotlight: showsPortrait ? 222 : 158
+    case .beacon: showsPortrait ? 172 : 148
+    case .harbor: showsPortrait ? 236 : 206
     case .bloom: 190
-    case .atelier: 214
+    case .atelier: showsPortrait ? 214 : 174
     case .canvas: 186
     case .modern: 145
     case .aurora: 158
@@ -1846,8 +1846,8 @@ private final class ResumePDFLayout {
     }
   }
 
-  /// Whether this résumé prints a portrait at all: always for the photo-led
-  /// templates, and only once a photo exists for every other one.
+  /// Whether this résumé prints a portrait at all. The document also carries a
+  /// per-version visibility switch, which closes up portrait space when hidden.
   private var showsPortrait: Bool { document.showsPortrait }
 
   /// The room a centred letterhead gives up to the portrait sitting above it.
@@ -1910,6 +1910,9 @@ private final class ResumePDFLayout {
     outerRing: UIColor? = nil,
     outerRingWidth: CGFloat = 1.5
   ) {
+    // Final privacy boundary: even if a new template forgets to guard its call,
+    // a hidden portrait can never be painted into a preview or export.
+    guard showsPortrait else { return }
     let context = rendererContext.cgContext
     let portrait = document.croppedPhotoImage
 
@@ -1991,20 +1994,21 @@ private final class ResumePDFLayout {
   /// hanging off its bottom edge.
   private func drawAtelierPrimaryHeader() {
     let blockHeight: CGFloat = 150
+    let textWidth: CGFloat = showsPortrait ? 380 : contentWidth
     accent.setFill()
     rendererContext.cgContext.fill(
       CGRect(x: 0, y: 0, width: pageBounds.width, height: blockHeight))
 
     drawText(
       displayName,
-      rect: CGRect(x: margin, y: 34, width: 380, height: 40),
+      rect: CGRect(x: margin, y: 34, width: textWidth, height: 40),
       font: boldFont(30),
       color: .white,
       lineHeight: 34
     )
     drawText(
       document.personal.headline.uppercased(),
-      rect: CGRect(x: margin, y: 78, width: 380, height: 16),
+      rect: CGRect(x: margin, y: 78, width: textWidth, height: 16),
       font: mediumFont(9),
       color: UIColor.white.withAlphaComponent(0.88),
       lineHeight: 12
@@ -2013,7 +2017,7 @@ private final class ResumePDFLayout {
     rendererContext.cgContext.fill(CGRect(x: margin, y: 100, width: 46, height: 1.5))
     drawText(
       contactLine,
-      rect: CGRect(x: margin, y: 110, width: 380, height: 13),
+      rect: CGRect(x: margin, y: 110, width: textWidth, height: 13),
       font: regularFont(8.2),
       color: UIColor.white.withAlphaComponent(0.92),
       lineHeight: 10
@@ -2021,20 +2025,22 @@ private final class ResumePDFLayout {
 
     // Straddles the block's bottom edge — half on the colour, half on the page.
     let diameter: CGFloat = 96
-    drawPortrait(
-      in: CGRect(
-        x: pageBounds.width - margin - diameter,
-        y: blockHeight - diameter / 2,
-        width: diameter,
-        height: diameter
-      ),
-      ring: .white,
-      ringWidth: 5,
-      emptyFill: navy,
-      emptyText: .white,
-      outerRing: navy.withAlphaComponent(0.14),
-      outerRingWidth: 1
-    )
+    if showsPortrait {
+      drawPortrait(
+        in: CGRect(
+          x: pageBounds.width - margin - diameter,
+          y: blockHeight - diameter / 2,
+          width: diameter,
+          height: diameter
+        ),
+        ring: .white,
+        ringWidth: 5,
+        emptyFill: navy,
+        emptyText: .white,
+        outerRing: navy.withAlphaComponent(0.14),
+        outerRingWidth: 1
+      )
+    }
   }
 
   /// Two-tone: an accent panel butted against the page, portrait sitting on the seam.
@@ -2049,20 +2055,22 @@ private final class ResumePDFLayout {
       CGRect(x: seam, y: 0, width: pageBounds.width - seam, height: headerHeight))
 
     let diameter: CGFloat = 92
-    drawPortrait(
-      in: CGRect(
-        x: seam - diameter / 2, y: (headerHeight - diameter) / 2,
-        width: diameter, height: diameter
-      ),
-      ring: .white,
-      ringWidth: 4,
-      emptyFill: navy,
-      emptyText: .white,
-      outerRing: accent,
-      outerRingWidth: 1.5
-    )
+    if showsPortrait {
+      drawPortrait(
+        in: CGRect(
+          x: seam - diameter / 2, y: (headerHeight - diameter) / 2,
+          width: diameter, height: diameter
+        ),
+        ring: .white,
+        ringWidth: 4,
+        emptyFill: navy,
+        emptyText: .white,
+        outerRing: accent,
+        outerRingWidth: 1.5
+      )
+    }
 
-    let textX = seam + diameter / 2 + 26
+    let textX = seam + (showsPortrait ? diameter / 2 : 0) + 26
     let textWidth = pageBounds.width - textX - margin
 
     drawText(
@@ -2092,15 +2100,17 @@ private final class ResumePDFLayout {
     navy.setFill()
     rendererContext.cgContext.fill(CGRect(x: 0, y: 0, width: pageBounds.width, height: 150))
 
-    drawPortrait(
-      in: CGRect(x: margin, y: 32, width: 86, height: 86),
-      ring: accent,
-      ringWidth: 3,
-      emptyFill: accent.withAlphaComponent(0.22),
-      emptyText: .white
-    )
+    if showsPortrait {
+      drawPortrait(
+        in: CGRect(x: margin, y: 32, width: 86, height: 86),
+        ring: accent,
+        ringWidth: 3,
+        emptyFill: accent.withAlphaComponent(0.22),
+        emptyText: .white
+      )
+    }
 
-    let textX = margin + 86 + 24
+    let textX = margin + (showsPortrait ? 86 + 24 : 0)
 
     drawText(
       displayName,
@@ -2129,29 +2139,35 @@ private final class ResumePDFLayout {
   }
 
   private func drawSpotlightPrimaryHeader() {
+    let headerHeight: CGFloat = showsPortrait ? 205 : 138
     accent.withAlphaComponent(0.07).setFill()
-    rendererContext.cgContext.fill(CGRect(x: 0, y: 0, width: pageBounds.width, height: 205))
+    rendererContext.cgContext.fill(
+      CGRect(x: 0, y: 0, width: pageBounds.width, height: headerHeight))
 
     let diameter: CGFloat = 84
     let photoRect = CGRect(
       x: (pageBounds.width - diameter) / 2, y: 26, width: diameter, height: diameter)
 
-    // A soft outer halo, then the ring itself — the "double frame" look.
-    accent.withAlphaComponent(0.28).setStroke()
-    rendererContext.cgContext.setLineWidth(1)
-    rendererContext.cgContext.strokeEllipse(in: photoRect.insetBy(dx: -8, dy: -8))
+    if showsPortrait {
+      // A soft outer halo, then the ring itself — the "double frame" look.
+      accent.withAlphaComponent(0.28).setStroke()
+      rendererContext.cgContext.setLineWidth(1)
+      rendererContext.cgContext.strokeEllipse(in: photoRect.insetBy(dx: -8, dy: -8))
 
-    drawPortrait(
-      in: photoRect,
-      ring: accent,
-      ringWidth: 3,
-      emptyFill: accent.withAlphaComponent(0.16),
-      emptyText: accent
-    )
+      drawPortrait(
+        in: photoRect,
+        ring: accent,
+        ringWidth: 3,
+        emptyFill: accent.withAlphaComponent(0.16),
+        emptyText: accent
+      )
+    }
+
+    let nameY: CGFloat = showsPortrait ? 126 : 48
 
     drawText(
       displayName,
-      rect: CGRect(x: margin, y: 126, width: contentWidth, height: 32),
+      rect: CGRect(x: margin, y: nameY, width: contentWidth, height: 32),
       font: boldFont(25),
       color: navy,
       lineHeight: 29,
@@ -2159,7 +2175,7 @@ private final class ResumePDFLayout {
     )
     drawText(
       document.personal.headline.uppercased(),
-      rect: CGRect(x: margin, y: 158, width: contentWidth, height: 15),
+      rect: CGRect(x: margin, y: nameY + 32, width: contentWidth, height: 15),
       font: mediumFont(8.8),
       color: accent,
       lineHeight: 11,
@@ -2167,7 +2183,7 @@ private final class ResumePDFLayout {
     )
     drawText(
       contactLine,
-      rect: CGRect(x: margin, y: 177, width: contentWidth, height: 13),
+      rect: CGRect(x: margin, y: nameY + 51, width: contentWidth, height: 13),
       font: regularFont(8.2),
       color: gray,
       lineHeight: 10,
@@ -2176,7 +2192,7 @@ private final class ResumePDFLayout {
 
     accent.setFill()
     rendererContext.cgContext.fill(
-      CGRect(x: (pageBounds.width - 54) / 2, y: 194, width: 54, height: 2))
+      CGRect(x: (pageBounds.width - 54) / 2, y: nameY + 68, width: 54, height: 2))
   }
 
   private func drawModernPrimaryHeader() {
@@ -3193,15 +3209,17 @@ private final class ResumePDFLayout {
   /// Photo-led: an oversized accent badge holds the portrait, and the letterhead
   /// hangs off it.
   private func drawBeaconPrimaryHeader() {
-    drawPortrait(
-      in: CGRect(x: margin, y: 22, width: 104, height: 104),
-      ring: accent.withAlphaComponent(0.25),
-      ringWidth: 6,
-      emptyFill: accent,
-      emptyText: .white
-    )
+    if showsPortrait {
+      drawPortrait(
+        in: CGRect(x: margin, y: 22, width: 104, height: 104),
+        ring: accent.withAlphaComponent(0.25),
+        ringWidth: 6,
+        emptyFill: accent,
+        emptyText: .white
+      )
+    }
 
-    let textX = margin + 104 + 26
+    let textX = margin + (showsPortrait ? 104 + 26 : 0)
     let textWidth = pageBounds.width - textX - margin
 
     drawText(
@@ -3237,24 +3255,28 @@ private final class ResumePDFLayout {
       CGRect(x: 0, y: 0, width: pageBounds.width, height: horizon))
 
     let diameter: CGFloat = 92
-    drawPortrait(
-      in: CGRect(
-        x: (pageBounds.width - diameter) / 2,
-        y: horizon - diameter / 2,
-        width: diameter,
-        height: diameter
-      ),
-      ring: .white,
-      ringWidth: 4,
-      emptyFill: navy,
-      emptyText: .white,
-      outerRing: accent.withAlphaComponent(0.35),
-      outerRingWidth: 1.5
-    )
+    if showsPortrait {
+      drawPortrait(
+        in: CGRect(
+          x: (pageBounds.width - diameter) / 2,
+          y: horizon - diameter / 2,
+          width: diameter,
+          height: diameter
+        ),
+        ring: .white,
+        ringWidth: 4,
+        emptyFill: navy,
+        emptyText: .white,
+        outerRing: accent.withAlphaComponent(0.35),
+        outerRingWidth: 1.5
+      )
+    }
+
+    let nameY: CGFloat = showsPortrait ? 152 : 116
 
     drawText(
       displayName,
-      rect: CGRect(x: margin, y: 152, width: contentWidth, height: 32),
+      rect: CGRect(x: margin, y: nameY, width: contentWidth, height: 32),
       font: boldFont(25),
       color: navy,
       lineHeight: 29,
@@ -3262,7 +3284,7 @@ private final class ResumePDFLayout {
     )
     drawText(
       document.personal.headline.uppercased(),
-      rect: CGRect(x: margin, y: 184, width: contentWidth, height: 15),
+      rect: CGRect(x: margin, y: nameY + 32, width: contentWidth, height: 15),
       font: mediumFont(8.8),
       color: accent,
       lineHeight: 11,
@@ -3270,7 +3292,7 @@ private final class ResumePDFLayout {
     )
     drawText(
       contactLine,
-      rect: CGRect(x: margin, y: 203, width: contentWidth, height: 13),
+      rect: CGRect(x: margin, y: nameY + 51, width: contentWidth, height: 13),
       font: regularFont(8.2),
       color: gray,
       lineHeight: 10,
@@ -3278,7 +3300,7 @@ private final class ResumePDFLayout {
     )
     accent.setFill()
     rendererContext.cgContext.fill(
-      CGRect(x: (pageBounds.width - 54) / 2, y: 220, width: 54, height: 2))
+      CGRect(x: (pageBounds.width - 54) / 2, y: nameY + 68, width: 54, height: 2))
   }
 
   /// Photo-led: a soft rounded card, friendlier than a hard colour band.
@@ -3291,17 +3313,19 @@ private final class ResumePDFLayout {
     cardPath.lineWidth = 1
     cardPath.stroke()
 
-    drawPortrait(
-      in: CGRect(x: 44, y: 50, width: 86, height: 86),
-      ring: .white,
-      ringWidth: 3,
-      emptyFill: accent.withAlphaComponent(0.22),
-      emptyText: accent,
-      outerRing: accent.withAlphaComponent(0.4),
-      outerRingWidth: 1
-    )
+    if showsPortrait {
+      drawPortrait(
+        in: CGRect(x: 44, y: 50, width: 86, height: 86),
+        ring: .white,
+        ringWidth: 3,
+        emptyFill: accent.withAlphaComponent(0.22),
+        emptyText: accent,
+        outerRing: accent.withAlphaComponent(0.4),
+        outerRingWidth: 1
+      )
+    }
 
-    let textX: CGFloat = 148
+    let textX: CGFloat = showsPortrait ? 148 : 44
     let textWidth = card.maxX - textX - 20
 
     drawText(
@@ -3973,16 +3997,18 @@ private final class ResumePDFLayout {
   /// The monogram as a logo: initials on a solid accent tile until a photo
   /// replaces them, the way the design sites brand a résumé's corner.
   private func drawInsigniaPrimaryHeader() {
-    drawPortrait(
-      in: CGRect(x: margin, y: 26, width: 76, height: 76),
-      ring: accent,
-      ringWidth: 2,
-      emptyFill: accent,
-      emptyText: .white,
-      shape: .rounded(14)
-    )
+    if showsPortrait {
+      drawPortrait(
+        in: CGRect(x: margin, y: 26, width: 76, height: 76),
+        ring: accent,
+        ringWidth: 2,
+        emptyFill: accent,
+        emptyText: .white,
+        shape: .rounded(14)
+      )
+    }
 
-    let textX = margin + 76 + 22
+    let textX = margin + (showsPortrait ? 76 + 22 : 0)
     let textWidth = pageBounds.width - textX - margin
 
     drawText(
@@ -4460,14 +4486,16 @@ private final class ResumePDFLayout {
     )
     drawContactStrip(x: margin, y: 96, color: .white, iconColor: navy)
 
-    drawPortrait(
-      in: CGRect(x: pageBounds.width - margin - 84, y: 19, width: 84, height: 84),
-      ring: .white,
-      ringWidth: 3,
-      emptyFill: UIColor.white.withAlphaComponent(0.18),
-      emptyText: .white,
-      shape: .rounded(10)
-    )
+    if showsPortrait {
+      drawPortrait(
+        in: CGRect(x: pageBounds.width - margin - 84, y: 19, width: 84, height: 84),
+        ring: .white,
+        ringWidth: 3,
+        emptyFill: UIColor.white.withAlphaComponent(0.18),
+        emptyText: .white,
+        shape: .rounded(10)
+      )
+    }
   }
 
   /// The accent panel's letterhead: the band is carrying the portrait, icons
@@ -4577,16 +4605,18 @@ private final class ResumePDFLayout {
     accent.setFill()
     rendererContext.cgContext.fill(CGRect(x: 0, y: 150, width: pageBounds.width, height: 3))
 
-    drawPortrait(
-      in: CGRect(x: margin, y: 28, width: 94, height: 94),
-      ring: accent,
-      ringWidth: 2.5,
-      emptyFill: accent,
-      emptyText: .white,
-      shape: .rounded(6)
-    )
+    if showsPortrait {
+      drawPortrait(
+        in: CGRect(x: margin, y: 28, width: 94, height: 94),
+        ring: accent,
+        ringWidth: 2.5,
+        emptyFill: accent,
+        emptyText: .white,
+        shape: .rounded(6)
+      )
+    }
 
-    let textX = margin + 94 + 24
+    let textX = margin + (showsPortrait ? 94 + 24 : 0)
     let textWidth = pageBounds.width - textX - margin
     drawText(
       displayName,
@@ -4628,15 +4658,17 @@ private final class ResumePDFLayout {
     // Tangent to the rim, so the portrait reads as sitting inside the colour
     // rather than clipped by it — and the initials, when there is no photo, are
     // set on the accent where white type carries.
-    drawPortrait(
-      in: CGRect(x: 462, y: 21, width: 104, height: 104),
-      ring: .white,
-      ringWidth: 3.5,
-      emptyFill: UIColor.white.withAlphaComponent(0.20),
-      emptyText: .white
-    )
+    if showsPortrait {
+      drawPortrait(
+        in: CGRect(x: 462, y: 21, width: 104, height: 104),
+        ring: .white,
+        ringWidth: 3.5,
+        emptyFill: UIColor.white.withAlphaComponent(0.20),
+        emptyText: .white
+      )
+    }
 
-    let nameWidth: CGFloat = 320
+    let nameWidth: CGFloat = showsPortrait ? 320 : contentWidth
     let nameHeight = measuredHeight(
       displayName, width: nameWidth, font: boldFont(30), lineHeight: 34)
     drawText(

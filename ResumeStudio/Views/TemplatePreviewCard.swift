@@ -15,6 +15,7 @@ struct TemplatePreviewCard: View {
   /// exactly as it will be cropped in the PDF.
   var photo: Data?
   var photoCrop: PhotoCrop?
+  var isPhotoVisible = true
   var width: CGFloat = 170
 
   /// A4 proportions. The card has to be page-shaped or the render gets cropped,
@@ -41,17 +42,24 @@ struct TemplatePreviewCard: View {
         }
       }
       .frame(width: width, height: height)
-      .task(id: TemplateKey(template: template, accent: accent, photo: photo, crop: photoCrop)) {
+      .task(id: TemplateKey(
+        template: template, accent: accent, photo: photo, crop: photoCrop,
+        isPhotoVisible: isPhotoVisible
+      )) {
         // Already rendered this session: show it instantly, no skeleton flash.
         if let ready = TemplateThumbnailRenderer.cached(
-          template: template, accent: accent, photo: photo, crop: photoCrop) {
+          template: template, accent: accent, photo: photo, crop: photoCrop,
+          isPhotoVisible: isPhotoVisible
+        ) {
           thumbnail = ready
           return
         }
         // Otherwise load from disk or render (off the main thread where possible,
         // serialised so a screenful of cards can't freeze the frame together).
         let image = await TemplateThumbnailRenderer.image(
-          template: template, accent: accent, photo: photo, crop: photoCrop)
+          template: template, accent: accent, photo: photo, crop: photoCrop,
+          isPhotoVisible: isPhotoVisible
+        )
         guard !Task.isCancelled else { return }
         withAnimation(.easeOut(duration: 0.25)) { thumbnail = image }
       }
@@ -1288,7 +1296,7 @@ struct TemplatePreviewCard: View {
           style: style,
           accent: accent.color,
           hasSideColumn: template.plan.hasSideColumn,
-          showsPortrait: template.isPhotoLed
+          showsPortrait: isPhotoVisible && template.isPhotoLed
         )
       }
     }
@@ -1643,6 +1651,7 @@ private struct TemplateKey: Hashable {
   let accent: ResumeAccent
   let photo: Data?
   let crop: PhotoCrop?
+  let isPhotoVisible: Bool
 }
 
 private struct MockCompactLines: View {

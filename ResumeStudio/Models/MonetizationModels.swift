@@ -30,6 +30,14 @@ enum ResumeStudioPlan: String, Codable, CaseIterable, Identifiable {
     case .pro: 10
     }
   }
+
+  var dailyAIImportLimit: Int {
+    switch self {
+    case .free: 5
+    case .go: 20
+    case .pro: 30
+    }
+  }
 }
 
 enum ResumeStudioProduct {
@@ -53,6 +61,14 @@ struct AIUsageSnapshot: Codable, Equatable {
   var creditsRemaining: Int
   var resetAt: Date?
   var bonusCreditsRemaining: Int? = nil
+}
+
+struct DailyImportAllowance: Codable, Equatable {
+  var tier: ResumeStudioPlan
+  var importsUsed: Int
+  var importsLimit: Int
+  var importsRemaining: Int
+  var resetAt: Date
 }
 
 enum MonetizationCatalog {
@@ -89,12 +105,14 @@ enum MonetizationCatalog {
 extension ResumeAIAction {
   var creditCost: Int {
     switch self {
+    case .importResume:
+      0
     case .improveBullet, .writeProfile, .suggestCompetencies, .careerCoach:
       1
     case .analyzeJob, .writeCoverLetter, .gradeInterviewAssessment,
       .captureJob, .evaluateInterviewAnswer, .careerToolkit:
       3
-    case .importResume, .tailorResume, .interviewPrep, .interviewAssessment, .translateResume:
+    case .tailorResume, .interviewPrep, .interviewAssessment, .translateResume:
       5
     }
   }

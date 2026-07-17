@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 import UIKit
 
 struct LinkedInStudioView: View {
@@ -425,10 +426,12 @@ struct ReviewRoomView: View {
   @EnvironmentObject private var resumeStore: ResumeStore
   @EnvironmentObject private var careerStore: CareerIntelligenceStore
   @EnvironmentObject private var purchases: PurchaseManager
+  @EnvironmentObject private var network: NetworkMonitor
   @State private var isCreating = false
   @State private var shareBundle: ReviewShareBundle?
   @State private var errorMessage: String?
   @State private var workingRequestID: UUID?
+  @State private var requestPendingDeletion: ResumeReviewRequest?
 
   var body: some View {
     ToolkitScroll(title: "Review Room") {
@@ -444,6 +447,10 @@ struct ReviewRoomView: View {
         else { purchases.requestPlans() }
       }
         .buttonStyle(.borderedProminent).tint(resumeStore.document.accent.color)
+      if !network.isOnline {
+        Label("Review Room publishing and refresh require a connection. Saved requests remain available.", systemImage: "wifi.slash")
+          .font(.caption).foregroundStyle(Theme.mutedInk)
+      }
 
       if careerStore.reviewRequests.isEmpty {
         PremiumEmptyState(
@@ -460,17 +467,31 @@ struct ReviewRoomView: View {
               Text("Code \(request.accessCode) · expires \(request.expiresAt.formatted(date: .abbreviated, time: .omitted))").font(.caption).foregroundStyle(Theme.mutedInk)
             }
             Spacer()
-            Text(request.isExpired ? "Expired" : request.status.title).font(.caption.bold()).foregroundStyle(request.isExpired ? .red : .green)
+            Text(request.isExpired ? "Expired" : request.status.title).font(.caption.bold())
+              .foregroundStyle(request.isExpired || request.status == .revoked ? .red : .green)
           }
           if !request.message.isBlank { Text(request.message).font(.subheadline).foregroundStyle(Theme.inkSoft) }
           HStack {
-            if request.hostedURL == nil {
+            if request.status == .revoked {
+              Label("Link disabled", systemImage: "link.badge.minus").foregroundStyle(.red)
+            } else if request.hostedURL == nil {
               Button(workingRequestID == request.id ? "Publishing…" : "Publish private link", systemImage: "link.badge.plus") {
                 Task { await publish(request) }
-              }.disabled(workingRequestID != nil)
+              }.disabled(workingRequestID != nil || !network.isOnline)
             } else {
               Button("Share review link", systemImage: "square.and.arrow.up") { prepareShare(request) }
               Button("Refresh", systemImage: "arrow.clockwise") { Task { await refresh(request) } }
+                .disabled(!network.isOnline)
+              Menu {
+                Button("Disable link now", systemImage: "link.badge.minus", role: .destructive) {
+                  Task { await revoke(request) }
+                }
+                Button("Delete room and comments", systemImage: "trash", role: .destructive) {
+                  requestPendingDeletion = request
+                }
+              } label: {
+                Image(systemName: "ellipsis.circle")
+              }
             }
             Spacer()
             Label("\(request.comments.count) comments", systemImage: "bubble.left.fill").font(.caption).foregroundStyle(Theme.mutedInk)
@@ -501,6 +522,35 @@ struct ReviewRoomView: View {
       ReviewRequestEditorView(resumeID: resumeStore.activeResumeID) { careerStore.upsert($0) }
     }
     .sheet(item: $shareBundle) { ShareSheet(activityItems: $0.items) }
+    .sheet(item: $requestPendingDeletion) { request in
+      PremiumConfirmationSheet(
+        title: "Delete this Review Room?",
+        message: "The hosted room and every remote review asset will be removed.",
+        systemImage: "person.2.slash.fill",
+        accent: resumeStore.document.accent.color,
+        rows: [
+          PremiumConfirmationRow(
+            eyebrow: "REVIEW ROOM",
+            title: request.reviewerName.nilIfBlank ?? "Unnamed reviewer",
+            detail: "\(request.comments.count) comment\(request.comments.count == 1 ? "" : "s") · expires \(request.expiresAt.formatted(date: .abbreviated, time: .omitted))",
+            systemImage: "person.2.fill",
+            tone: .destructive
+          ),
+          PremiumConfirmationRow(
+            eyebrow: "WILL BE REMOVED",
+            title: "Link, PDF and comments",
+            detail: "The disabled link cannot be restored",
+            systemImage: "link",
+            tone: .destructive
+          ),
+        ],
+        safetyNote: "Deleting is immediate and cannot be undone.",
+        confirmTitle: "Delete room and hosted PDF",
+        onConfirm: { Task { await delete(request) } },
+        onCancel: { requestPendingDeletion = nil }
+      )
+      .premiumConfirmationPresentation()
+    }
   }
 
   @MainActor private func prepareShare(_ request: ResumeReviewRequest) {
@@ -529,6 +579,7 @@ struct ReviewRoomView: View {
       published.status = .sent
       published.lastSyncedAt = Date()
       careerStore.upsert(published)
+      _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
     } catch { errorMessage = error.localizedDescription }
     workingRequestID = nil
   }
@@ -538,6 +589,8 @@ struct ReviewRoomView: View {
     workingRequestID = request.id; errorMessage = nil
     do {
       let remote = try await ReviewRoomService.shared.comments(token: token)
+      let existingRemoteIDs = Set(request.comments.compactMap(\.remoteID))
+      let newCommentCount = remote.count { !existingRemoteIDs.contains($0.id) }
       var updated = request
       updated.comments = remote.map { value in
         let existing = request.comments.first { $0.remoteID == value.id }
@@ -550,8 +603,41 @@ struct ReviewRoomView: View {
       updated.lastSyncedAt = Date()
       if !updated.comments.isEmpty { updated.status = .feedbackReceived }
       careerStore.upsert(updated)
+      if newCommentCount > 0 { notifyAboutComments(newCommentCount, reviewer: request.reviewerName) }
     } catch { errorMessage = error.localizedDescription }
     workingRequestID = nil
+  }
+
+  @MainActor private func revoke(_ request: ResumeReviewRequest) async {
+    guard let token = request.hostedToken else { return }
+    workingRequestID = request.id; errorMessage = nil
+    do {
+      try await ReviewRoomService.shared.revoke(token: token)
+      var updated = request
+      updated.status = .revoked
+      updated.lastSyncedAt = Date()
+      careerStore.upsert(updated)
+    } catch { errorMessage = error.localizedDescription }
+    workingRequestID = nil
+  }
+
+  @MainActor private func delete(_ request: ResumeReviewRequest) async {
+    requestPendingDeletion = nil
+    workingRequestID = request.id; errorMessage = nil
+    do {
+      if let token = request.hostedToken { try await ReviewRoomService.shared.delete(token: token) }
+      careerStore.deleteReviewRequest(request.id)
+    } catch { errorMessage = error.localizedDescription }
+    workingRequestID = nil
+  }
+
+  private func notifyAboutComments(_ count: Int, reviewer: String) {
+    let content = UNMutableNotificationContent()
+    content.title = "New résumé feedback"
+    content.body = "\(reviewer.nilIfBlank ?? "Your reviewer") left \(count) new comment\(count == 1 ? "" : "s")."
+    content.sound = .default
+    UNUserNotificationCenter.current().add(
+      UNNotificationRequest(identifier: "review-comments-\(UUID().uuidString)", content: content, trigger: nil))
   }
 
   @MainActor private func toggleResolved(_ commentID: UUID, in request: ResumeReviewRequest) {
@@ -565,7 +651,7 @@ struct ReviewRoomView: View {
 
   private var canCreateHostedRoom: Bool {
     let activeCount = careerStore.reviewRequests.filter {
-      !$0.isExpired && $0.status != .closed && $0.hostedURL != nil
+      !$0.isExpired && $0.status != .closed && $0.status != .revoked && $0.hostedURL != nil
     }.count
     return purchases.hostedReviewRoomLimit > activeCount
   }

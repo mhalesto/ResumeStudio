@@ -79,6 +79,16 @@ final class ResumeStore: ObservableObject {
     document = .blank
   }
 
+  func resetLibrary() {
+    let draft = ResumeDraft(title: "My Résumé", document: .blank)
+    isSwitchingDocument = true
+    resumes = [draft]
+    activeResumeID = draft.id
+    document = .blank
+    isSwitchingDocument = false
+    save()
+  }
+
   @discardableResult
   func createResume(title: String? = nil, from source: ResumeDocument = .blank) -> UUID {
     synchronizeActiveDraft()
@@ -142,6 +152,72 @@ final class ResumeStore: ObservableObject {
     save()
   }
 
+  func updateResume(_ id: UUID, document replacement: ResumeDocument) {
+    guard let index = resumes.firstIndex(where: { $0.id == id }) else { return }
+    resumes[index].document = replacement
+    resumes[index].updatedAt = Date()
+    if activeResumeID == id {
+      isSwitchingDocument = true
+      document = replacement
+      isSwitchingDocument = false
+    }
+    save()
+  }
+
+  /// Replaces a saved version and selects it as one transaction. Import flows
+  /// use this instead of separate update, rename and select saves so observers
+  /// (including iCloud sync) can never see a half-replaced résumé.
+  @discardableResult
+  func replaceResume(
+    _ id: UUID,
+    with replacement: ResumeDocument,
+    title: String,
+    selectAfterReplacement: Bool = true
+  ) -> Bool {
+    guard let index = resumes.firstIndex(where: { $0.id == id }) else { return false }
+    synchronizeActiveDraft()
+    let updatedAt = Date()
+    resumes[index].document = replacement
+    resumes[index].title = normalizedTitle(title, fallback: resumes[index].title)
+    resumes[index].updatedAt = updatedAt
+
+    if selectAfterReplacement {
+      isSwitchingDocument = true
+      activeResumeID = id
+      document = replacement
+      isSwitchingDocument = false
+      lastEditedAt = updatedAt
+    }
+
+    save()
+    return true
+  }
+
+  /// Removes a chosen slot and creates the imported version in its position,
+  /// committing the new library only once so the delete/import operation cannot
+  /// publish an intermediate archive.
+  @discardableResult
+  func createResume(
+    replacing id: UUID,
+    title: String,
+    from source: ResumeDocument
+  ) -> UUID? {
+    guard let index = resumes.firstIndex(where: { $0.id == id }) else { return nil }
+    synchronizeActiveDraft()
+    let draft = ResumeDraft(
+      title: normalizedTitle(title, fallback: Self.defaultTitle(for: source)),
+      document: source
+    )
+    resumes[index] = draft
+    isSwitchingDocument = true
+    activeResumeID = draft.id
+    document = source
+    isSwitchingDocument = false
+    lastEditedAt = draft.updatedAt
+    save()
+    return draft.id
+  }
+
   func save() {
     synchronizeActiveDraft()
     do {
@@ -153,7 +229,7 @@ final class ResumeStore: ObservableObject {
       try Self.encoder.encode(archive).write(to: fileURL, options: .atomic)
       lastEditedAt = Date()
       lastSaveError = nil
-      NotificationCenter.default.post(name: .resumeLibraryDidSave, object: nil)
+      NotificationCenter.default.post(name: .resumeLibraryDidSave, object: self)
     } catch {
       lastSaveError = error.localizedDescription
     }
@@ -169,6 +245,23 @@ final class ResumeStore: ObservableObject {
     guard !archive.resumes.isEmpty else { throw CocoaError(.fileReadCorruptFile) }
     resumes = archive.resumes
     let active = archive.resumes.first { $0.id == archive.activeResumeID } ?? archive.resumes[0]
+    activeResumeID = active.id
+    isSwitchingDocument = true
+    document = active.document
+    isSwitchingDocument = false
+    save()
+  }
+
+  func mergeLibraryData(_ data: Data) throws {
+    let incoming = try Self.decoder.decode(ResumeLibraryArchive.self, from: data)
+    var byID = Dictionary(uniqueKeysWithValues: resumes.map { ($0.id, $0) })
+    for draft in incoming.resumes {
+      if let existing = byID[draft.id], existing.updatedAt >= draft.updatedAt { continue }
+      byID[draft.id] = draft
+    }
+    resumes = byID.values.sorted { $0.updatedAt > $1.updatedAt }
+    guard !resumes.isEmpty else { throw CocoaError(.fileReadCorruptFile) }
+    let active = resumes.first(where: { $0.id == activeResumeID }) ?? resumes[0]
     activeResumeID = active.id
     isSwitchingDocument = true
     document = active.document

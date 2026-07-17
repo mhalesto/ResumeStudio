@@ -37,6 +37,10 @@ final class CoverLetterStore: ObservableObject {
     document = .example
   }
 
+  func resetDocument() {
+    document = .blank
+  }
+
   func syncContact(from resume: ResumeDocument) {
     document.senderName = resume.personal.fullName
     document.senderHeadline = resume.personal.headline

@@ -56,25 +56,59 @@ struct ResumeLibraryView: View {
         }
       } header: { Text("Résumé versions") }
 
+      Section {
+        NavigationLink {
+          TemplateGalleryView()
+        } label: {
+          LibraryPremiumActionCard(
+            title: "Browse templates",
+            subtitle: "\(ResumeTemplate.allCases.count) résumé and \(CoverLetterTemplate.allCases.count) cover-letter designs",
+            detail: "Preview every layout and colour",
+            systemImage: "rectangle.split.2x1.fill",
+            accent: store.document.accent.color,
+            artwork: .templates
+          )
+        }
+        .listRowBackground(
+          LibraryPremiumRowBackground(accent: store.document.accent.color)
+        )
+        .listRowSeparator(.hidden)
+      }
+
+      Section {
+        NavigationLink {
+          ResumeImportView()
+        } label: {
+          let allowance = purchases.currentImportAllowance
+          LibraryPremiumActionCard(
+            title: "Import résumé",
+            subtitle: "PDF, DOCX, text or LinkedIn export",
+            detail: "\(allowance.importsRemaining) AI-assisted imports left today · local previews unlimited",
+            systemImage: "square.and.arrow.down.fill",
+            accent: store.document.accent.color,
+            artwork: .importResume
+          )
+        }
+        .listRowBackground(
+          LibraryPremiumRowBackground(accent: store.document.accent.color)
+        )
+        .listRowSeparator(.hidden)
+      }
+
+      Section("Version tools") {
+        NavigationLink {
+          ResumeVersionComparisonView()
+        } label: {
+          Label("Compare résumé versions", systemImage: "arrow.left.arrow.right.square")
+        }
+      }
+
       Section("Sync") {
         Toggle("iCloud sync", isOn: $cloudSync.isEnabled)
         Button("Sync now", systemImage: "arrow.triangle.2.circlepath") {
           Task { await cloudSync.synchronize() }
         }
         cloudStatus
-      }
-
-      Section {
-        NavigationLink {
-          ResumeVersionComparisonView()
-        } label: {
-          Label("Compare résumé versions", systemImage: "arrow.left.arrow.right.square")
-        }
-        NavigationLink {
-          ResumeImportView()
-        } label: {
-          Label("Import résumé", systemImage: "square.and.arrow.down")
-        }
       }
     }
     .navigationTitle("My résumés")
@@ -107,8 +141,110 @@ struct ResumeLibraryView: View {
     case .notConfigured: Label("Sync paused", systemImage: "pause.circle")
     case .unavailable: Label("Sign into iCloud to sync", systemImage: "icloud.slash")
     case .syncing: ProgressView("Syncing…")
+    case .conflict: Label("Resolve this conflict in Settings", systemImage: "exclamationmark.arrow.triangle.2.circlepath").foregroundStyle(.orange)
     case .synced(let date): Label("Synced \(date.formatted(.relative(presentation: .named)))", systemImage: "checkmark.icloud")
     case .failed(let message): Label(message, systemImage: "exclamationmark.icloud").foregroundStyle(.red)
+    }
+  }
+}
+
+private struct LibraryPremiumRowBackground: View {
+  let accent: Color
+
+  var body: some View {
+    LinearGradient(
+      colors: [accent.opacity(0.20), Theme.card, Theme.card],
+      startPoint: .topLeading,
+      endPoint: .bottomTrailing
+    )
+    .overlay {
+      RoundedRectangle(cornerRadius: 20, style: .continuous)
+        .strokeBorder(accent.opacity(0.30), lineWidth: 1)
+    }
+  }
+}
+
+private struct LibraryPremiumActionCard: View {
+  enum Artwork { case templates, importResume }
+
+  let title: String
+  let subtitle: String
+  let detail: String
+  let systemImage: String
+  let accent: Color
+  let artwork: Artwork
+
+  var body: some View {
+    HStack(spacing: 15) {
+      ZStack {
+        RoundedRectangle(cornerRadius: 17, style: .continuous)
+          .fill(accent.opacity(0.18))
+        Image(systemName: systemImage)
+          .font(.system(size: 23, weight: .semibold))
+          .foregroundStyle(accent)
+      }
+      .frame(width: 58, height: 58)
+
+      VStack(alignment: .leading, spacing: 5) {
+        HStack(spacing: 7) {
+          Text(title)
+            .font(.headline)
+            .foregroundStyle(Theme.ink)
+          Text("FEATURED")
+            .font(.system(size: 8, weight: .black))
+            .tracking(0.7)
+            .foregroundStyle(accent)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .background(accent.opacity(0.14), in: Capsule())
+        }
+        Text(subtitle)
+          .font(.subheadline.weight(.medium))
+          .foregroundStyle(Theme.ink.opacity(0.78))
+          .lineLimit(2)
+        Text(detail)
+          .font(.caption)
+          .foregroundStyle(Theme.mutedInk)
+          .lineLimit(2)
+      }
+
+      Spacer(minLength: 4)
+      artworkView
+        .frame(width: 48, height: 62)
+    }
+    .padding(.vertical, 10)
+    .contentShape(Rectangle())
+  }
+
+  @ViewBuilder private var artworkView: some View {
+    switch artwork {
+    case .templates:
+      ZStack {
+        ForEach(0..<3, id: \.self) { index in
+          RoundedRectangle(cornerRadius: 4)
+            .fill(index == 2 ? accent.opacity(0.30) : Theme.paper)
+            .overlay(alignment: .topLeading) {
+              VStack(alignment: .leading, spacing: 3) {
+                Capsule().fill(accent.opacity(0.85)).frame(width: 15, height: 3)
+                Capsule().fill(Theme.mutedInk.opacity(0.45)).frame(width: 22, height: 2)
+                Capsule().fill(Theme.mutedInk.opacity(0.30)).frame(width: 18, height: 2)
+              }
+              .padding(5)
+            }
+            .frame(width: 34, height: 47)
+            .rotationEffect(.degrees(Double(index - 1) * 7))
+            .offset(x: CGFloat(index - 1) * 6, y: CGFloat(abs(index - 1)) * 3)
+            .shadow(color: .black.opacity(0.12), radius: 3, y: 2)
+        }
+      }
+    case .importResume:
+      ZStack {
+        Circle().fill(accent.opacity(0.13)).frame(width: 47, height: 47)
+        Circle().stroke(accent.opacity(0.30), lineWidth: 1).frame(width: 47, height: 47)
+        Image(systemName: "arrow.down.doc.fill")
+          .font(.system(size: 21, weight: .semibold))
+          .foregroundStyle(accent)
+      }
     }
   }
 }
@@ -187,6 +323,16 @@ struct ATSCheckerView: View {
         } label: {
           Label("View extracted text and reading order", systemImage: "text.viewfinder")
         }
+      }
+
+      Section {
+        NavigationLink(value: HomeRoute.recruiterScan) {
+          Label("Watch the 7.4-second recruiter scan", systemImage: "eye")
+        }
+      } header: {
+        Text("The human pass")
+      } footer: {
+        Text("The checks above are for the machine. This replays the recruiter's first look on your résumé, from published eye-tracking research.")
       }
     }
     .supportsKeyboardDismissal()
@@ -368,6 +514,7 @@ struct ApplicationDetailView: View {
 struct ResumeImportView: View {
   @EnvironmentObject private var store: ResumeStore
   @EnvironmentObject private var purchases: PurchaseManager
+  @EnvironmentObject private var network: NetworkMonitor
   @Environment(\.dismiss) private var dismiss
   @State private var isChoosingFiles = false
   @State private var imported: ResumeDocument?
@@ -375,6 +522,11 @@ struct ResumeImportView: View {
   @State private var errorMessage: String?
   @State private var importWarnings: [String] = []
   @State private var isStructuringWithAI = false
+  @State private var isAIEnhanced = false
+  @State private var importStatus = "Choose a file to create a private on-device preview."
+  @State private var versionChoice: ImportVersionChoice?
+  @State private var pendingVersionAction: PendingImportVersionAction?
+  @State private var queuedVersionAction: PendingImportVersionAction?
 
   private static let supportedTypes: [UTType] = [
     .pdf,
@@ -392,26 +544,31 @@ struct ResumeImportView: View {
         Text("Your file is opened on this iPhone, then its extracted text is sent securely to the AI service to identify experience, education, skills and other résumé sections. The original file is not uploaded.")
           .font(.footnote)
           .foregroundStyle(Theme.mutedInk)
+        let allowance = purchases.currentImportAllowance
+        Label(
+          "\(allowance.importsRemaining) of \(allowance.importsLimit) AI-assisted imports remaining today",
+          systemImage: "calendar.badge.checkmark"
+        )
+        .font(.footnote.weight(.semibold))
+        Text("AI-assisted imports have their own daily allowance and never use your general AI credits. Local extraction and previews remain available after the allowance is used or while offline.")
+          .font(.caption).foregroundStyle(Theme.mutedInk)
       }
 
       Section {
         Button {
-          if purchases.canCreateResume(currentCount: store.resumes.count) {
-            isChoosingFiles = true
-          } else {
-            purchases.requestPlans()
-          }
+          isChoosingFiles = true
         } label: {
           if isStructuringWithAI {
             HStack {
               ProgressView()
-              Text("AI is organizing your résumé…")
+              Text("Preparing your résumé…")
             }
           } else {
             Label("Choose files", systemImage: "folder.badge.plus")
           }
         }
         .disabled(isStructuringWithAI)
+        Text(importStatus).font(.caption).foregroundStyle(Theme.mutedInk)
       }
 
       if let imported {
@@ -426,17 +583,48 @@ struct ResumeImportView: View {
               .font(.caption)
               .foregroundStyle(.orange)
           }
-          Label("AI organized this import without rewriting it. Review the mapped fields before exporting.", systemImage: "checkmark.shield")
+          Label(
+            isAIEnhanced
+              ? "AI organized this import without rewriting it. Review the mapped fields before exporting."
+              : "This on-device preview is ready to save and edit. Review the mapped fields before exporting.",
+            systemImage: isAIEnhanced ? "checkmark.shield" : "iphone.and.arrow.forward"
+          )
             .font(.caption).foregroundStyle(.orange)
-          Button("Create résumé version", systemImage: "checkmark.circle.fill") {
-            if purchases.canCreateResume(currentCount: store.resumes.count) {
-              _ = store.createResume(title: title, from: imported)
-              dismiss()
-            } else {
+          if purchases.canCreateResume(currentCount: store.resumes.count) {
+            Button("Create résumé version", systemImage: "checkmark.circle.fill") {
+              createImportedVersion(imported)
+            }
+            .fontWeight(.semibold)
+          }
+        }
+
+        if !purchases.canCreateResume(currentCount: store.resumes.count) {
+          Section {
+            Label(
+              "Free keeps up to \(purchases.resumeVersionLimit ?? 3) saved résumé versions. Your imported preview is safe until you choose what to do.",
+              systemImage: "tray.full.fill"
+            )
+            .font(.footnote)
+
+            Button("Replace current résumé", systemImage: "arrow.triangle.2.circlepath") {
+              requestVersionAction(.replace, id: store.activeResumeID)
+            }
+            Button("Choose a version to replace", systemImage: "rectangle.2.swap") {
+              versionChoice = ImportVersionChoice(mode: .replace)
+            }
+            Button("Delete a version and import", systemImage: "trash") {
+              versionChoice = ImportVersionChoice(mode: .deleteAndImport)
+            }
+            .tint(.red)
+            Button("Upgrade for unlimited versions", systemImage: "sparkles") {
               purchases.requestPlans()
             }
+            .fontWeight(.semibold)
+          } header: {
+            Text("Your résumé library is full")
+          } footer: {
+            Text("Replacing or deleting affects only the version you choose. Your other résumés stay unchanged.")
           }
-          .fontWeight(.semibold)
         }
       }
 
@@ -460,39 +648,242 @@ struct ResumeImportView: View {
         errorMessage = error.localizedDescription
       }
     }
+    .sheet(item: $versionChoice, onDismiss: presentQueuedVersionAction) { choice in
+      ImportVersionChoiceView(
+        mode: choice.mode,
+        importedTitle: title,
+        onChoose: { id in
+          queueVersionAction(choice.mode, id: id)
+          versionChoice = nil
+        },
+        onUpgrade: {
+          versionChoice = nil
+          purchases.requestPlans()
+        }
+      )
+      .environmentObject(store)
+    }
+    .sheet(item: $pendingVersionAction) { action in
+      let source = store.resumes.first(where: { $0.id == action.id })
+      PremiumConfirmationSheet(
+        title: action.mode == .replace ? "Replace saved résumé?" : "Delete and save import?",
+        message: action.mode == .replace
+          ? "The imported preview will replace the selected version."
+          : "One saved version will be removed to make room for the import.",
+        systemImage: action.mode == .replace ? "arrow.triangle.2.circlepath" : "trash.fill",
+        accent: store.document.accent.color,
+        iconIsDestructive: action.mode == .deleteAndImport,
+        rows: [
+          PremiumConfirmationRow(
+            eyebrow: action.mode == .replace ? "SAVED VERSION" : "VERSION TO DELETE",
+            title: source?.title ?? "Selected résumé",
+            detail: source.map {
+              "\($0.document.personal.fullName.nilIfBlank ?? "Untitled") · \($0.document.template.title)"
+            } ?? "Saved version",
+            systemImage: action.mode == .replace ? "doc.text" : "trash",
+            tone: action.mode == .replace ? .neutral : .destructive
+          ),
+          PremiumConfirmationRow(
+            eyebrow: "IMPORTED PREVIEW",
+            title: action.importedTitle,
+            detail: {
+              let document = action.importedDocument
+              return "\(document.experience.count) role\(document.experience.count == 1 ? "" : "s") · \(document.competencies.count) skill\(document.competencies.count == 1 ? "" : "s")"
+            }(),
+            systemImage: "arrow.down.doc.fill",
+            tone: .accent
+          ),
+        ],
+        safetyNote: "Only this version changes. Your other saved résumés stay untouched.",
+        confirmTitle: action.mode == .replace ? "Replace saved version" : "Delete version and save import",
+        cancelTitle: "Keep my saved versions",
+        onConfirm: { performVersionAction(action) },
+        onCancel: { pendingVersionAction = nil }
+      )
+      .premiumConfirmationPresentation()
+    }
   }
 
   private func structureWithAI(_ urls: [URL]) {
     imported = nil
+    title = "Imported Résumé"
     errorMessage = nil
     importWarnings = []
+    isAIEnhanced = false
     isStructuringWithAI = true
+    importStatus = "Reading your file privately on this device…"
 
     Task {
       do {
-        let text = try await Task.detached(priority: .userInitiated) {
-          try ResumeImportService.extractText(from: urls)
-        }.value
-        let aiImport = try await ResumeAIService.shared.importResume(text: text)
-        let document = aiImport.document
-        guard !document.personal.fullName.isBlank
-          || !document.experience.isEmpty
-          || !document.education.isEmpty
-        else {
-          throw ResumeAIError.server(
-            message: aiImport.warnings.first ?? "AI could not identify résumé content in this file."
+        let local = try await Task.detached(priority: .userInitiated) {
+          (
+            text: try ResumeImportService.extractText(from: urls),
+            document: try ResumeImportService.importDocuments(from: urls)
           )
+        }.value
+        applyImportedDocument(local.document)
+        importStatus = "Local preview ready."
+
+        guard network.isOnline else {
+          importWarnings = ["You are offline, so this preview uses on-device import. Reconnect and choose the file again for AI-assisted structuring."]
+          isStructuringWithAI = false
+          return
         }
-        imported = document
-        importWarnings = aiImport.warnings
-        if !document.personal.fullName.isBlank {
-          title = "\(document.personal.fullName) Résumé"
+
+        let allowance = purchases.currentImportAllowance
+        guard allowance.importsRemaining > 0 else {
+          importWarnings = ["Your AI-assisted import allowance resets tomorrow. This local preview can still be saved, replaced or edited now."]
+          isStructuringWithAI = false
+          return
+        }
+
+        importStatus = "Local preview ready. AI is improving the section mapping…"
+        do {
+          let aiImport = try await ResumeAIService.shared.importResume(text: local.text)
+          let document = aiImport.document
+          guard !document.personal.fullName.isBlank
+            || !document.experience.isEmpty
+            || !document.education.isEmpty
+          else {
+            throw ResumeAIError.server(
+              message: aiImport.warnings.first ?? "AI could not identify résumé content in this file."
+            )
+          }
+          applyImportedDocument(document)
+          isAIEnhanced = true
+          importWarnings = aiImport.warnings
+          importStatus = "AI-assisted structure ready. Review it before saving."
+        } catch {
+          importWarnings = ["AI assistance was unavailable: \(error.localizedDescription) Your on-device preview is still ready to use."]
+          importStatus = "Local preview ready."
         }
         isStructuringWithAI = false
       } catch {
         imported = nil
         errorMessage = error.localizedDescription
         isStructuringWithAI = false
+      }
+    }
+  }
+
+  private func applyImportedDocument(_ document: ResumeDocument) {
+    imported = document
+    if !document.personal.fullName.isBlank {
+      title = "\(document.personal.fullName) Résumé"
+    }
+  }
+
+  private func createImportedVersion(_ document: ResumeDocument) {
+    _ = store.createResume(title: title, from: document)
+    dismiss()
+  }
+
+  private func requestVersionAction(_ mode: ImportVersionChoice.Mode, id: UUID) {
+    guard let imported else { return }
+    pendingVersionAction = PendingImportVersionAction(
+      mode: mode,
+      id: id,
+      importedDocument: imported,
+      importedTitle: title
+    )
+  }
+
+  private func queueVersionAction(_ mode: ImportVersionChoice.Mode, id: UUID) {
+    guard let imported else { return }
+    queuedVersionAction = PendingImportVersionAction(
+      mode: mode,
+      id: id,
+      importedDocument: imported,
+      importedTitle: title
+    )
+  }
+
+  private func presentQueuedVersionAction() {
+    guard let action = queuedVersionAction else { return }
+    queuedVersionAction = nil
+    pendingVersionAction = action
+  }
+
+  private func performVersionAction(_ action: PendingImportVersionAction) {
+    pendingVersionAction = nil
+    switch action.mode {
+    case .replace:
+      guard store.replaceResume(
+        action.id,
+        with: action.importedDocument,
+        title: action.importedTitle
+      ) else { return }
+      dismiss()
+    case .deleteAndImport:
+      guard store.createResume(
+        replacing: action.id,
+        title: action.importedTitle,
+        from: action.importedDocument
+      ) != nil else { return }
+      dismiss()
+    }
+  }
+}
+
+private struct ImportVersionChoice: Identifiable {
+  enum Mode: Equatable { case replace, deleteAndImport }
+  let id = UUID()
+  let mode: Mode
+}
+
+private struct PendingImportVersionAction: Identifiable {
+  let mode: ImportVersionChoice.Mode
+  let id: UUID
+  let importedDocument: ResumeDocument
+  let importedTitle: String
+}
+
+private struct ImportVersionChoiceView: View {
+  @Environment(\.dismiss) private var dismiss
+  @EnvironmentObject private var store: ResumeStore
+  let mode: ImportVersionChoice.Mode
+  let importedTitle: String
+  let onChoose: (UUID) -> Void
+  let onUpgrade: () -> Void
+
+  var body: some View {
+    NavigationStack {
+      List {
+        Section {
+          Text(mode == .replace
+            ? "Choose the saved version that should become “\(importedTitle)”."
+            : "Choose one version to delete. The imported résumé will immediately take its place.")
+            .font(.footnote).foregroundStyle(Theme.mutedInk)
+        }
+        Section(mode == .replace ? "Replace a version" : "Delete and import") {
+          ForEach(store.resumes) { draft in
+            Button(role: mode == .deleteAndImport ? .destructive : nil) {
+              onChoose(draft.id)
+            } label: {
+              HStack(spacing: 12) {
+                Image(systemName: mode == .replace ? "rectangle.2.swap" : "trash")
+                VStack(alignment: .leading, spacing: 3) {
+                  Text(draft.title).font(.headline)
+                  Text(draft.document.personal.fullName.nilIfBlank ?? "Untitled résumé")
+                    .font(.caption).foregroundStyle(Theme.mutedInk)
+                }
+                Spacer()
+                if draft.id == store.activeResumeID {
+                  Text("Current").font(.caption.bold()).foregroundStyle(Theme.mutedInk)
+                }
+              }
+            }
+          }
+        }
+        Section {
+          Button("Keep every version and upgrade", systemImage: "sparkles") { onUpgrade() }
+            .fontWeight(.semibold)
+        }
+      }
+      .navigationTitle(mode == .replace ? "Choose a version" : "Free up a slot")
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
       }
     }
   }

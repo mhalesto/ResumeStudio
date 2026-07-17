@@ -51,7 +51,15 @@ enum ATSReadinessService {
       weakStarts.contains { bullet.lowercased().hasPrefix($0) }
     }.count
     add("verbs", "Strong opening verbs", weakCount == 0 ? "No common weak openings found." : "Rewrite \(weakCount) bullet(s) that begin with passive wording.", weakCount == 0 ? .pass : .warning, .experience)
-    add("format", "ATS-safe structure", document.showsPortrait ? "Keep a version without a photo for conservative ATS portals — remove the photo, or pick a template that isn't photo-led." : "This résumé prints no profile photo.", document.showsPortrait ? .warning : .pass)
+    add(
+      "format",
+      "ATS-safe structure",
+      document.showsPortrait
+        ? "For conservative ATS portals, turn off Show in CV under Personal Details or use an ATS-safe preview. Your saved photo will not be deleted."
+        : "This résumé prints no profile photo.",
+      document.showsPortrait ? .warning : .pass,
+      .personal
+    )
     // Two columns of real text stay selectable and searchable, but some parsers
     // read them in the wrong order. Worth saying before an application vanishes.
     add("columns", "Single-column parsing", document.template.plan.hasSideColumn ? "This template puts contact details and skills in a second column. It stays selectable, but some applicant-tracking systems read columns out of order — keep a single-column version for the strictest portals." : "A single column of text, which every parser reads in order.", document.template.plan.hasSideColumn ? .warning : .pass)

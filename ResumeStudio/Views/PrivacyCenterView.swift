@@ -68,9 +68,37 @@ struct PrivacyCenterView: View {
     }
     .navigationTitle("Privacy Centre")
     .sheet(item: $shareBundle) { ShareSheet(activityItems: [$0.url]) }
-    .confirmationDialog("Erase all career intelligence?", isPresented: $confirmsReset, titleVisibility: .visible) {
-      Button("Erase career intelligence", role: .destructive) { careerStore.resetCareerIntelligence() }
-      Button("Cancel", role: .cancel) {}
+    .sheet(isPresented: $confirmsReset) {
+      PremiumConfirmationSheet(
+        title: "Erase career intelligence?",
+        message: "This clears the private career workspace stored by ResumeStudio.",
+        systemImage: "trash.fill",
+        accent: resumeStore.document.accent.color,
+        rows: [
+          PremiumConfirmationRow(
+            eyebrow: "WILL BE ERASED",
+            title: "Career intelligence",
+            detail: "Evidence, contacts, offers, reviews and practice history",
+            systemImage: "brain.head.profile",
+            tone: .destructive
+          ),
+          PremiumConfirmationRow(
+            eyebrow: "WILL BE KEPT",
+            title: "Résumé documents",
+            detail: "Your saved résumé versions remain available",
+            systemImage: "doc.text.fill",
+            tone: .accent
+          ),
+        ],
+        safetyNote: "Résumé documents are not affected. Erased career intelligence cannot be recovered.",
+        confirmTitle: "Erase career intelligence",
+        onConfirm: {
+          careerStore.resetCareerIntelligence()
+          confirmsReset = false
+        },
+        onCancel: { confirmsReset = false }
+      )
+      .premiumConfirmationPresentation()
     }
   }
 

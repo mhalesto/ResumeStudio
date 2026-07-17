@@ -29,14 +29,18 @@ enum TemplateThumbnailRenderer {
     let accent: ResumeAccent
     let photo: Data?
     let crop: PhotoCrop?
+    let isPhotoVisible: Bool
 
     /// A filename-safe, launch-stable identity for the disk cache.
     var diskName: String {
-      var name = "resume-\(template.rawValue)-\(accent.rawValue)"
+      // Bump this revision whenever PDF layout semantics change. This prevents
+      // an older visible-photo thumbnail surviving a same-build app update.
+      var name = "resume-r2-\(template.rawValue)-\(accent.rawValue)"
       if let photo { name += "-p\(ThumbnailDiskCache.digest(photo))" }
       if let crop {
         name += "-c\(Int(crop.centerX * 1000))x\(Int(crop.centerY * 1000))z\(Int(crop.zoom * 1000))"
       }
+      if !isPhotoVisible { name += "-hidden" }
       return name
     }
   }
@@ -46,22 +50,28 @@ enum TemplateThumbnailRenderer {
   /// for choosing a look. The portrait carries over so the photo templates show
   /// the real face once one is picked.
   private static func sample(
-    template: ResumeTemplate, accent: ResumeAccent, photo: Data?, crop: PhotoCrop?
+    template: ResumeTemplate, accent: ResumeAccent, photo: Data?, crop: PhotoCrop?,
+    isPhotoVisible: Bool
   ) -> ResumeDocument {
     var document = ResumeDocument.example
     document.template = template
     document.accent = accent
     document.photo = photo
     document.photoCrop = crop
+    document.isPhotoVisible = isPhotoVisible
     return document
   }
 
   /// A synchronous peek at the in-memory cache, so a card that has already been
   /// rendered this session shows instantly without a skeleton flash.
   static func cached(
-    template: ResumeTemplate, accent: ResumeAccent, photo: Data?, crop: PhotoCrop?
+    template: ResumeTemplate, accent: ResumeAccent, photo: Data?, crop: PhotoCrop?,
+    isPhotoVisible: Bool = true
   ) -> UIImage? {
-    cache[Key(template: template, accent: accent, photo: photo, crop: crop)]
+    cache[Key(
+      template: template, accent: accent, photo: photo, crop: crop,
+      isPhotoVisible: isPhotoVisible
+    )]
   }
 
   /// The full lookup: memory → disk → render. The render is serialised and
@@ -70,9 +80,13 @@ enum TemplateThumbnailRenderer {
     template: ResumeTemplate,
     accent: ResumeAccent,
     photo: Data?,
-    crop: PhotoCrop?
+    crop: PhotoCrop?,
+    isPhotoVisible: Bool = true
   ) async -> UIImage? {
-    let key = Key(template: template, accent: accent, photo: photo, crop: crop)
+    let key = Key(
+      template: template, accent: accent, photo: photo, crop: crop,
+      isPhotoVisible: isPhotoVisible
+    )
     if let cached = cache[key] { return cached }
 
     if let onDisk = await ThumbnailDiskCache.load(key.diskName) {
@@ -100,11 +114,15 @@ enum TemplateThumbnailRenderer {
   /// launches: each call is a memory or disk hit. Yields between templates and
   /// stops the moment its task is cancelled.
   static func prewarm(
-    templates: [ResumeTemplate], accent: ResumeAccent, photo: Data?, crop: PhotoCrop?
+    templates: [ResumeTemplate], accent: ResumeAccent, photo: Data?, crop: PhotoCrop?,
+    isPhotoVisible: Bool = true
   ) async {
     for template in templates {
       if Task.isCancelled { return }
-      _ = await image(template: template, accent: accent, photo: photo, crop: crop)
+      _ = await image(
+        template: template, accent: accent, photo: photo, crop: crop,
+        isPhotoVisible: isPhotoVisible
+      )
     }
   }
 
@@ -112,16 +130,22 @@ enum TemplateThumbnailRenderer {
   /// it is user-initiated and infrequent, and does not belong beside the small
   /// card thumbnails.
   static func shareImage(
-    template: ResumeTemplate, accent: ResumeAccent, photo: Data?, crop: PhotoCrop?
+    template: ResumeTemplate, accent: ResumeAccent, photo: Data?, crop: PhotoCrop?,
+    isPhotoVisible: Bool = true
   ) async -> UIImage? {
     if Task.isCancelled { return nil }
-    let key = Key(template: template, accent: accent, photo: photo, crop: crop)
+    let key = Key(
+      template: template, accent: accent, photo: photo, crop: crop,
+      isPhotoVisible: isPhotoVisible
+    )
     return render(key: key, width: 1000)
   }
 
   private static func render(key: Key, width: CGFloat) -> UIImage? {
     let document = sample(
-      template: key.template, accent: key.accent, photo: key.photo, crop: key.crop)
+      template: key.template, accent: key.accent, photo: key.photo, crop: key.crop,
+      isPhotoVisible: key.isPhotoVisible
+    )
     guard
       let data = try? ResumePDFRenderer.render(document: document),
       let page = PDFDocument(data: data)?.page(at: 0)

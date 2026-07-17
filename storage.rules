@@ -1,0 +1,12 @@
+rules_version = '2';
+
+// Storage is written and read exclusively by the Cloud Functions backend with
+// the Admin SDK, which bypasses these rules. No client ever talks to the
+// bucket directly, so everything below is denied.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

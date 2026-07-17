@@ -133,6 +133,12 @@ struct TemplateRecommendation: Identifiable, Equatable {
   var score: Int
   var reasons: [String]
   var id: ResumeTemplate { template }
+
+  init(template: ResumeTemplate, score: Int, reasons: [String]) {
+    self.template = template
+    self.score = min(100, max(0, score))
+    self.reasons = reasons
+  }
 }
 
 struct ApplicationPacket: Identifiable, Codable, Equatable {

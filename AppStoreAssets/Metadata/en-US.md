@@ -50,9 +50,9 @@ Resume Studio works without an account. Résumé versions, applications and cove
 
 CORE TOOLS STAY FREE
 
-Manual editing, ATS checks, application tracking, privacy controls and unwatermarked PDF, DOCX and text exports remain free. Free includes 10 AI credits in the first calendar month, then 5 credits every month. Verified members can also share a referral link: the new member receives 10 AI credits and the inviter receives 5. Optional Go and Pro subscriptions provide larger monthly AI allowances and hosted Review Rooms. Design Pack Forever is a separate one-time purchase for all current and future templates and unlimited local document versions.
+Manual editing, ATS checks, application tracking, privacy controls, unlimited on-device import previews and unwatermarked PDF, DOCX and text exports remain free. Free includes five AI-assisted résumé imports per day; these use a separate daily allowance and never consume monthly AI credits. Free also includes 10 AI credits in the first calendar month, then 5 credits every month. Verified members can share a referral link: the new member receives 10 AI credits and the inviter receives 5. Optional Go and Pro subscriptions provide larger monthly AI allowances and hosted Review Rooms. Design Pack Forever is a separate one-time purchase for all current and future templates and unlimited local document versions.
 
-Subscriptions renew monthly unless cancelled in App Store settings. AI allowances reset each billing period.
+Subscriptions renew monthly unless cancelled in App Store settings. Monthly AI credits reset each billing period; résumé-import allowances reset daily at 00:00 UTC.
 
 ## Keywords
 
@@ -68,8 +68,8 @@ Resume Studio does not require an account or sign-in. On first launch, reviewers
 
 To review the in-app purchases, open Settings > Plans and purchases > View plans:
 
-- Go Monthly unlocks all templates, unlimited document versions, 35 AI credits per billing period and one active hosted Review Room.
-- Pro Monthly includes 150 AI credits per billing period and up to ten active hosted Review Rooms.
+- Go Monthly unlocks all templates, unlimited document versions, 20 AI-assisted résumé imports per day, 35 AI credits per billing period and one active hosted Review Room.
+- Pro Monthly includes 30 AI-assisted résumé imports per day, 150 AI credits per billing period and up to ten active hosted Review Rooms.
 - Design Pack Forever is a one-time non-consumable purchase that unlocks all current and future templates and unlimited local document versions. It does not add subscription AI or hosted-service allowances.
 
 Each purchase uses StoreKit and the Plans screen includes Restore Purchases. Manual résumé editing, ATS checks, application tracking and unwatermarked PDF, DOCX and text exports remain available without payment.

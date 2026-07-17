@@ -15,6 +15,7 @@ struct ResumeStudioApp: App {
   @StateObject private var aiArtifacts = AIArtifactStore.shared
   @StateObject private var referrals = ReferralStore()
   @StateObject private var network = NetworkMonitor.shared
+  @StateObject private var smartLinks = SmartLinkStore()
 
   var body: some Scene {
     WindowGroup {
@@ -29,6 +30,7 @@ struct ResumeStudioApp: App {
         .environmentObject(aiArtifacts)
         .environmentObject(referrals)
         .environmentObject(network)
+        .environmentObject(smartLinks)
         .tint(store.document.accent.color)
         .task {
           // Yield the first frame to SplashView before Firebase performs its
@@ -36,9 +38,7 @@ struct ResumeStudioApp: App {
           // soon as the process owns the window, not after SDK configuration.
           await Task.yield()
           configureFirebaseIfNeeded()
-          await account.start()
           aiArtifacts.configureFirebase()
-          await purchases.start()
           cloudSync.configure(
             resumeStore: store,
             applicationStore: applicationStore,
@@ -46,7 +46,29 @@ struct ResumeStudioApp: App {
             careerIntelligenceStore: careerIntelligenceStore,
             aiArtifactStore: aiArtifacts
           )
+          // Remote identity and StoreKit refresh independently. Local editing
+          // and Free-tier access are already ready and never wait on either.
+          Task { await account.start() }
+          Task { await purchases.start() }
         }
+    }
+    .commands { ResumeStudioCommands(resumeStore: store) }
+
+    WindowGroup("Résumé Version", id: "resume-version", for: UUID.self) { $resumeID in
+      if let resumeID {
+        ResumeVersionWindow(resumeID: resumeID)
+          .environmentObject(store)
+          .environmentObject(coverLetterStore)
+          .environmentObject(applicationStore)
+          .environmentObject(careerIntelligenceStore)
+          .environmentObject(cloudSync)
+          .environmentObject(purchases)
+          .environmentObject(account)
+          .environmentObject(aiArtifacts)
+          .environmentObject(referrals)
+          .environmentObject(network)
+          .tint(store.document.accent.color)
+      }
     }
   }
 

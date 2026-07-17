@@ -115,6 +115,13 @@ final class ApplicationStore: ObservableObject {
     save()
   }
 
+  func resetWorkspace() {
+    interviews.forEach { InterviewReminderService.cancel(interviewID: $0.id) }
+    applications = []
+    interviews = []
+    save()
+  }
+
   func exportData() throws -> Data {
     try Self.encoder.encode(CareerWorkspaceArchive(applications: applications, interviews: interviews))
   }
@@ -128,6 +135,32 @@ final class ApplicationStore: ObservableObject {
       interviews = []
     }
     save()
+  }
+
+  func mergeData(_ data: Data) throws {
+    let incoming: CareerWorkspaceArchive
+    if let decoded = try? Self.decoder.decode(CareerWorkspaceArchive.self, from: data) {
+      incoming = decoded
+    } else {
+      incoming = CareerWorkspaceArchive(
+        applications: try Self.decoder.decode([JobApplication].self, from: data), interviews: [])
+    }
+    applications = Self.merged(applications, incoming.applications, date: \.updatedAt)
+      .sorted { $0.updatedAt > $1.updatedAt }
+    interviews = Self.merged(interviews, incoming.interviews, date: \.updatedAt)
+      .sorted { $0.scheduledAt < $1.scheduledAt }
+    save()
+  }
+
+  private static func merged<Value: Identifiable>(
+    _ local: [Value], _ remote: [Value], date: KeyPath<Value, Date>
+  ) -> [Value] where Value.ID: Hashable {
+    var values = Dictionary(uniqueKeysWithValues: local.map { ($0.id, $0) })
+    for value in remote {
+      if let existing = values[value.id], existing[keyPath: date] >= value[keyPath: date] { continue }
+      values[value.id] = value
+    }
+    return Array(values.values)
   }
 
   private func save() {

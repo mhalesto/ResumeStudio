@@ -13,17 +13,20 @@ final class ResumeStudioTests: XCTestCase {
     XCTAssertEqual(ResumeStudioPlan.free.hostedReviewRoomLimit, 0)
     XCTAssertEqual(ResumeStudioPlan.go.hostedReviewRoomLimit, 1)
     XCTAssertEqual(ResumeStudioPlan.pro.hostedReviewRoomLimit, 10)
+    XCTAssertEqual(ResumeStudioPlan.free.dailyAIImportLimit, 5)
+    XCTAssertEqual(ResumeStudioPlan.go.dailyAIImportLimit, 20)
+    XCTAssertEqual(ResumeStudioPlan.pro.dailyAIImportLimit, 30)
 
     XCTAssertEqual(MonetizationCatalog.freeResumeTemplates.count, 34)
     XCTAssertEqual(MonetizationCatalog.freeCoverLetterTemplates.count, 16)
     XCTAssertTrue(MonetizationCatalog.freeResumeTemplates.isSubset(of: Set(ResumeTemplate.allCases)))
     XCTAssertTrue(MonetizationCatalog.freeCoverLetterTemplates.isSubset(of: Set(CoverLetterTemplate.allCases)))
 
-    // The four original accents are free; the five jewel tones are subscription
-    // only, gated the same way the premium templates are.
+    // The four original accents are free; the ten Signature and Atelier tones
+    // are subscription only, gated the same way the premium templates are.
     XCTAssertEqual(MonetizationCatalog.freeAccents.count, 4)
     XCTAssertEqual(MonetizationCatalog.freeAccents, [.orange, .blue, .teal, .burgundy])
-    XCTAssertEqual(ResumeAccent.allCases.filter(\.isPremium).count, 5)
+    XCTAssertEqual(ResumeAccent.allCases.filter(\.isPremium).count, 10)
     for accent in ResumeAccent.allCases {
       XCTAssertEqual(accent.isPremium, !MonetizationCatalog.freeAccents.contains(accent))
     }
@@ -35,6 +38,7 @@ final class ResumeStudioTests: XCTestCase {
   }
 
   func testAIWeightsMatchThePublishedCreditExamples() {
+    XCTAssertEqual(ResumeAIAction.importResume.creditCost, 0)
     XCTAssertEqual(ResumeAIAction.improveBullet.creditCost, 1)
     XCTAssertEqual(ResumeAIAction.careerCoach.creditCost, 1)
     XCTAssertEqual(ResumeAIAction.writeCoverLetter.creditCost, 3)
@@ -42,6 +46,62 @@ final class ResumeStudioTests: XCTestCase {
     XCTAssertEqual(ResumeAIAction.tailorResume.creditCost, 5)
     XCTAssertEqual(ResumeAIAction.interviewPrep.creditCost, 5)
     XCTAssertEqual(ResumeAIAction.translateResume.creditCost, 5)
+  }
+
+  func testOfflineAccessNeverInventsOrExtendsPaidAccess() {
+    let now = Date(timeIntervalSince1970: 2_000_000_000)
+    XCTAssertEqual(
+      OfflineAccessPolicy.resolve(nil, now: now),
+      OfflineAccessDecision(plan: .free, hasDesignPack: false, subscriptionExpiry: nil))
+
+    let expired = OfflineEntitlements(
+      plan: .pro, subscriptionExpiry: now.addingTimeInterval(-1),
+      hasDesignPack: false, verifiedAt: now.addingTimeInterval(-86_400))
+    XCTAssertEqual(
+      OfflineAccessPolicy.resolve(expired, now: now),
+      OfflineAccessDecision(plan: .free, hasDesignPack: false, subscriptionExpiry: nil))
+
+    let expiry = now.addingTimeInterval(86_400)
+    let active = OfflineEntitlements(
+      plan: .go, subscriptionExpiry: expiry,
+      hasDesignPack: false, verifiedAt: now.addingTimeInterval(-3_600))
+    XCTAssertEqual(
+      OfflineAccessPolicy.resolve(active, now: now),
+      OfflineAccessDecision(plan: .go, hasDesignPack: false, subscriptionExpiry: expiry))
+
+    let designPack = OfflineEntitlements(
+      plan: .free, subscriptionExpiry: nil,
+      hasDesignPack: true, verifiedAt: now.addingTimeInterval(-100_000))
+    XCTAssertEqual(
+      OfflineAccessPolicy.resolve(designPack, now: now),
+      OfflineAccessDecision(plan: .free, hasDesignPack: true, subscriptionExpiry: nil))
+  }
+
+  func testEntitlementContinuityDistinguishesMissingFromRevokedStoreData() {
+    let cachedPro = OfflineAccessDecision(
+      plan: .pro,
+      hasDesignPack: true,
+      subscriptionExpiry: Date().addingTimeInterval(86_400)
+    )
+
+    XCTAssertTrue(
+      EntitlementContinuityPolicy.shouldRetainCachedSubscription(
+        cachedPro, resolvedPlan: .free, authoritativeProductIDs: []))
+    XCTAssertFalse(
+      EntitlementContinuityPolicy.shouldRetainCachedSubscription(
+        cachedPro,
+        resolvedPlan: .free,
+        authoritativeProductIDs: [ResumeStudioProduct.proMonthly]
+      ))
+    XCTAssertTrue(
+      EntitlementContinuityPolicy.shouldRetainCachedDesignPack(
+        cachedPro, resolvedDesignPack: false, authoritativeProductIDs: []))
+    XCTAssertFalse(
+      EntitlementContinuityPolicy.shouldRetainCachedDesignPack(
+        cachedPro,
+        resolvedDesignPack: false,
+        authoritativeProductIDs: [ResumeStudioProduct.designForever]
+      ))
   }
 
   func testTemplateCatalogueIsDistinct() {
@@ -167,7 +227,11 @@ final class ResumeStudioTests: XCTestCase {
       withoutPhoto.template = template
       XCTAssertEqual(withoutPhoto.showsPortrait, template.isPhotoLed, template.title)
 
-      for document in [withPhoto, withoutPhoto] {
+      var hiddenPhoto = withPhoto
+      hiddenPhoto.isPhotoVisible = false
+      XCTAssertFalse(hiddenPhoto.showsPortrait, template.title)
+
+      for document in [withPhoto, withoutPhoto, hiddenPhoto] {
         let pdf = try XCTUnwrap(
           PDFDocument(data: try ResumePDFRenderer.render(document: document)))
         XCTAssertGreaterThanOrEqual(pdf.pageCount, 1, template.title)
@@ -178,6 +242,47 @@ final class ResumeStudioTests: XCTestCase {
         XCTAssertTrue(text.contains("Avery Sample"), template.title)
         XCTAssertTrue(text.contains("People Operations Manager"), template.title)
       }
+    }
+  }
+
+  /// Privacy regression: keeping a photo in the saved résumé while hiding it
+  /// must produce exactly the same visible page as a résumé with no photo data.
+  /// Comparing page pixels catches template-specific drawing that text checks miss.
+  func testHiddenPhotoCannotAffectAnyRenderedTemplate() throws {
+    let photo = try XCTUnwrap(ProfilePhoto.prepare(Self.samplePhotoData()))
+    let thumbnailSize = CGSize(width: 180, height: 254)
+
+    for template in ResumeTemplate.allCases {
+      var hiddenWithPhoto = ResumeDocument.example
+      hiddenWithPhoto.template = template
+      hiddenWithPhoto.photo = photo
+      hiddenWithPhoto.photoCrop = PhotoCrop(centerX: 0.42, centerY: 0.58, zoom: 1.4)
+      hiddenWithPhoto.isPhotoVisible = false
+
+      var hiddenWithoutPhoto = hiddenWithPhoto
+      hiddenWithoutPhoto.photo = nil
+      hiddenWithoutPhoto.photoCrop = nil
+
+      let storedPhotoPage = try XCTUnwrap(
+        PDFDocument(data: ResumePDFRenderer.render(document: hiddenWithPhoto))?.page(at: 0),
+        template.title
+      )
+      let noPhotoPage = try XCTUnwrap(
+        PDFDocument(data: ResumePDFRenderer.render(document: hiddenWithoutPhoto))?.page(at: 0),
+        template.title
+      )
+      let storedPhotoPixels = storedPhotoPage.thumbnail(
+        of: thumbnailSize, for: .mediaBox
+      ).pngData()
+      let noPhotoPixels = noPhotoPage.thumbnail(
+        of: thumbnailSize, for: .mediaBox
+      ).pngData()
+
+      XCTAssertEqual(
+        storedPhotoPixels,
+        noPhotoPixels,
+        "\(template.title) rendered stored photo data while Show in CV was off"
+      )
     }
   }
 
@@ -614,6 +719,13 @@ final class ResumeStudioTests: XCTestCase {
     let encoded = try JSONEncoder().encode(withPhoto)
     let decoded = try JSONDecoder().decode(ResumeDocument.self, from: encoded)
     XCTAssertEqual(decoded.photo, withPhoto.photo)
+    XCTAssertTrue(decoded.isPhotoVisible)
+
+    withPhoto.isPhotoVisible = false
+    let hidden = try JSONDecoder().decode(
+      ResumeDocument.self, from: JSONEncoder().encode(withPhoto))
+    XCTAssertFalse(hidden.isPhotoVisible)
+    XCTAssertEqual(hidden.photo, withPhoto.photo)
 
     // A draft written before photos existed has no `photo` key. It must still
     // decode — the store replaces any draft older than the current schema with
@@ -629,6 +741,7 @@ final class ResumeStudioTests: XCTestCase {
     let migrated = try JSONDecoder().decode(
       ResumeDocument.self, from: Data(legacy.utf8))
     XCTAssertNil(migrated.photo)
+    XCTAssertTrue(migrated.isPhotoVisible)
     XCTAssertEqual(migrated.schemaVersion, ResumeDocument.currentSchemaVersion)
     XCTAssertEqual(migrated.personal.fullName, "Avery Sample")
   }
@@ -796,6 +909,27 @@ final class ResumeStudioTests: XCTestCase {
       return XCTFail("Initial iCloud sync did not leave the syncing state")
     }
     XCTAssertTrue(FileManager.default.fileExists(atPath: cloudURL.path))
+
+    let firstData = try Data(contentsOf: cloudURL)
+    var archive = try XCTUnwrap(JSONSerialization.jsonObject(with: firstData) as? [String: Any])
+    XCTAssertEqual(archive["schemaVersion"] as? Int, 2)
+    XCTAssertNotNil(archive["revision"] as? String)
+
+    // Simulate edits on this device while a second device advances iCloud.
+    // Synchronization must stop for a choice instead of silently overwriting.
+    service.isEnabled = false
+    resumeStore.document.personal.headline = "Offline local edit"
+    try await Task.sleep(for: .milliseconds(20))
+    archive["revision"] = "remote-divergent-revision"
+    archive["savedAt"] = Date().addingTimeInterval(60).timeIntervalSince1970
+    try JSONSerialization.data(withJSONObject: archive).write(to: cloudURL, options: .atomic)
+    service.isEnabled = true
+    for _ in 0..<100 {
+      if service.status == .conflict { break }
+      try await Task.sleep(for: .milliseconds(5))
+    }
+    XCTAssertEqual(service.status, .conflict)
+    XCTAssertNotNil(service.conflict)
   }
 
   func testResumeDocumentRoundTripsThroughJSON() throws {
@@ -848,6 +982,42 @@ final class ResumeStudioTests: XCTestCase {
     XCTAssertEqual(reader.resumes.count, 2)
     XCTAssertEqual(reader.activeDraft?.title, "Product Role")
     XCTAssertEqual(reader.document.personal.headline, "Targeted Product Leader")
+  }
+
+  func testImportCanSafelyReplaceOrFreeASavedVersionSlot() throws {
+    let url = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString).appendingPathExtension("json")
+    defer { try? FileManager.default.removeItem(at: url) }
+
+    let store = ResumeStore(fileURL: url, initialDocument: .example)
+    let secondID = store.createResume(title: "Second", from: .blank)
+    let thirdID = store.createResume(title: "Third", from: .blank)
+    XCTAssertEqual(store.resumes.count, 3)
+
+    var imported = ResumeDocument.example
+    imported.personal.fullName = "Imported Person"
+    imported.personal.headline = "Imported Replacement"
+    XCTAssertTrue(store.replaceResume(secondID, with: imported, title: "Imported CV"))
+    XCTAssertEqual(store.resumes.count, 3)
+    XCTAssertEqual(store.activeResumeID, secondID)
+    XCTAssertEqual(store.document.personal.fullName, "Imported Person")
+    XCTAssertEqual(store.resumes.first(where: { $0.id == secondID })?.title, "Imported CV")
+    XCTAssertEqual(
+      store.resumes.first(where: { $0.id == secondID })?.document.personal.headline,
+      "Imported Replacement")
+
+    let importedID = try XCTUnwrap(
+      store.createResume(replacing: thirdID, title: "Fresh Import", from: imported)
+    )
+    XCTAssertEqual(store.resumes.count, 3)
+    XCTAssertEqual(store.activeResumeID, importedID)
+    XCTAssertFalse(store.resumes.contains(where: { $0.id == thirdID }))
+
+    let reader = ResumeStore(fileURL: url)
+    XCTAssertEqual(reader.activeResumeID, importedID)
+    XCTAssertEqual(reader.activeDraft?.title, "Fresh Import")
+    XCTAssertEqual(reader.document.personal.fullName, "Imported Person")
+    XCTAssertEqual(reader.document.personal.headline, "Imported Replacement")
   }
 
   func testAdditionalSectionsRenderAndRoundTrip() throws {
@@ -1393,6 +1563,18 @@ final class ResumeStudioTests: XCTestCase {
       unlocked: { MonetizationCatalog.freeResumeTemplates.contains($0) })
     XCTAssertEqual(freeResults.count, MonetizationCatalog.freeResumeTemplates.count)
     XCTAssertTrue(freeResults.allSatisfy { MonetizationCatalog.freeResumeTemplates.contains($0.template) })
+
+    let defaultResults = TemplateRecommendationEngine.recommendations(
+      preferences: TemplateFinderPreferences())
+    XCTAssertTrue(defaultResults.allSatisfy { (0...100).contains($0.score) })
+    XCTAssertGreaterThan(
+      Set(defaultResults.prefix(12).map(\.score)).count, 2,
+      "Structurally different top matches should not all display the same fit")
+
+    XCTAssertEqual(
+      TemplateRecommendation(template: .minimal, score: 110, reasons: []).score,
+      100,
+      "The recommendation model must never expose an impossible percentage")
   }
 
   func testApplicationPacketPersistsAndExportsTheCompleteSet() throws {
@@ -1503,10 +1685,230 @@ final class ResumeStudioTests: XCTestCase {
     XCTAssertTrue(report.missingKeywords.contains("terraform"))
     XCTAssertNotNil(report.items.first { $0.id == "keywords" }?.section)
 
+    var portraitDocument = ResumeDocument.example
+    portraitDocument.photo = try XCTUnwrap(ProfilePhoto.prepare(Self.samplePhotoData()))
+    let portraitFormatItem = ATSReadinessService.analyze(document: portraitDocument)
+      .items.first { $0.id == "format" }
+    XCTAssertEqual(portraitFormatItem?.section, .personal)
+    XCTAssertTrue(
+      portraitFormatItem?.detail.contains("Show in CV") == true)
+
     let suggestions = ATSReadinessService.keywordSuggestions(
       document: .example, jobDescription: advert)
     XCTAssertTrue(suggestions.contains { $0.keyword == "kubernetes" })
     XCTAssertTrue(suggestions.allSatisfy { !$0.guidance.isBlank })
+  }
+
+  func testRecruiterScanReadsTheExampleHonestly() {
+    let report = RecruiterScanService.analyze(document: .example)
+
+    // The example résumé is complete except for one deliberate gap: its first
+    // bullet carries no number, so the evidence fixation must be the only
+    // warning. If the example content changes, the scan should notice.
+    XCTAssertEqual(report.score, 92)
+    XCTAssertEqual(report.verdict, "Survives the first pass")
+    XCTAssertFalse(report.findings.contains { $0.severity == .action })
+    XCTAssertEqual(
+      report.findings.filter { $0.severity == .warning }.map(\.id), ["evidence"])
+    XCTAssertTrue(report.capturedFacts.contains { $0.contains("Northstar Works") })
+
+    // Weights stay tied to the study's gaze shares: every finding claims part
+    // of the 7.4 seconds, and the maximum points total exactly 100.
+    XCTAssertEqual(report.findings.reduce(0) { $0 + $1.maxPoints }, 100)
+    XCTAssertEqual(
+      report.findings.reduce(0.0) { $0 + $1.gazeSeconds },
+      RecruiterScanStudy.scanSeconds - 0.3, accuracy: 0.001)
+  }
+
+  func testRecruiterScanFlagsAnEmptyResume() {
+    let report = RecruiterScanService.analyze(document: .blank)
+    XCTAssertLessThan(report.score, 10)
+    XCTAssertEqual(report.verdict, "Invisible in seven seconds")
+    for id in ["identity", "current-role", "current-dates", "evidence", "education"] {
+      XCTAssertEqual(
+        report.findings.first { $0.id == id }?.severity, .action,
+        "\(id) should demand action on an empty résumé")
+    }
+    XCTAssertTrue(report.capturedFacts.isEmpty)
+    XCTAssertFalse(report.missedFacts.isEmpty)
+  }
+
+  func testRecruiterScanRewardsAQuantifiedFirstBullet() {
+    XCTAssertTrue(RecruiterScanService.isQuantified("Cut onboarding time by 38%"))
+    XCTAssertTrue(RecruiterScanService.isQuantified("Managed a R2.4m budget"))
+    XCTAssertFalse(RecruiterScanService.isQuantified("Led a team of engineers"))
+
+    var quantifiedFirst = ResumeDocument.example
+    quantifiedFirst.experience[0].highlights[0] = "Cut onboarding time by 38% across 4 regions."
+    let strong = RecruiterScanService.analyze(document: quantifiedFirst)
+    XCTAssertEqual(strong.findings.first { $0.id == "evidence" }?.severity, .pass)
+    XCTAssertEqual(strong.score, 100)
+
+    // A number buried lower in the role is credited, but told to move up.
+    var buried = ResumeDocument.example
+    buried.experience[0].highlights[2] = "Lifted engagement scores by 12 points."
+    let moved = RecruiterScanService.analyze(document: buried)
+    let evidence = moved.findings.first { $0.id == "evidence" }
+    XCTAssertEqual(evidence?.severity, .warning)
+    XCTAssertTrue(evidence?.detail.contains("Move it up") == true)
+  }
+
+  func testRecruiterScanStrictnessMovesTheBar() {
+    // The example carries no numbers anywhere in its latest role, so the three
+    // levels read the same page differently: low forgives the prose bullets,
+    // medium asks for a number, high refuses to pass without one.
+    let low = RecruiterScanService.analyze(document: .example, strictness: .low)
+    let medium = RecruiterScanService.analyze(document: .example, strictness: .medium)
+    let high = RecruiterScanService.analyze(document: .example, strictness: .high)
+    XCTAssertEqual(low.score, 100)
+    XCTAssertEqual(medium.score, 92)
+    XCTAssertEqual(high.score, 80)
+    XCTAssertEqual(low.findings.first { $0.id == "evidence" }?.severity, .pass)
+    XCTAssertEqual(medium.findings.first { $0.id == "evidence" }?.severity, .warning)
+    XCTAssertEqual(high.findings.first { $0.id == "evidence" }?.severity, .action)
+
+    // A single-role résumé slides one severity per level on trajectory.
+    var singleRole = ResumeDocument.example
+    singleRole.experience = [singleRole.experience[0]]
+    let expectations: [(RecruiterScanStrictness, ATSIssueSeverity)] = [
+      (.low, .pass), (.medium, .warning), (.high, .action),
+    ]
+    for (level, expected) in expectations {
+      let report = RecruiterScanService.analyze(document: singleRole, strictness: level)
+      XCTAssertEqual(
+        report.findings.first { $0.id == "trajectory" }?.severity, expected,
+        "single role at \(level.rawValue) strictness")
+    }
+
+    // The default stays the study baseline.
+    XCTAssertEqual(RecruiterScanService.analyze(document: .example).score, medium.score)
+  }
+
+  func testRecruiterGazePathStaysOnThePageForEveryTemplate() {
+    for template in ResumeTemplate.allCases {
+      var document = ResumeDocument.example
+      document.template = template
+      let stops = RecruiterScanService.gazePath(for: document)
+      XCTAssertFalse(stops.isEmpty, "\(template) produced no gaze path")
+      for stop in stops {
+        XCTAssertTrue(
+          (0.0...1.0).contains(stop.point.x) && (0.0...1.0).contains(stop.point.y),
+          "\(template) sent the gaze off the page at \(stop.point)")
+        XCTAssertGreaterThan(stop.duration, 0)
+        XCTAssertFalse(stop.label.isEmpty)
+      }
+      XCTAssertEqual(
+        stops.reduce(0.0) { $0 + $1.duration }, RecruiterScanStudy.scanSeconds,
+        accuracy: 0.001,
+        "\(template) does not spend exactly the study's 7.4 seconds")
+    }
+  }
+
+  func testRecruiterGazePathFollowsTheTemplatePlan() {
+    func stops(_ template: ResumeTemplate) -> [RecruiterGazeStop] {
+      var document = ResumeDocument.example
+      document.template = template
+      return RecruiterScanService.gazePath(for: document)
+    }
+    func stop(_ label: String, in path: [RecruiterGazeStop]) -> RecruiterGazeStop? {
+      path.first { $0.label == label }
+    }
+
+    // A leading facts rail pushes the main story to the right.
+    let atlasRole = stop("Current title and company", in: stops(.atlas))
+    let classicRole = stop("Current title and company", in: stops(.classic))
+    XCTAssertGreaterThan(atlasRole?.point.x ?? 0, (classicRole?.point.x ?? 1) + 0.15)
+
+    // A trailing rail keeps education in the right-hand column.
+    XCTAssertGreaterThan(stop("Education check", in: stops(.verso))?.point.x ?? 0, 0.7)
+
+    // Margin dates hang left of the story; stacked dates sit on the right edge.
+    XCTAssertLessThan(stop("Dates check", in: stops(.gazette))?.point.x ?? 1, 0.08)
+    XCTAssertGreaterThan(stop("Dates check", in: stops(.classic))?.point.x ?? 0, 0.7)
+
+    // A visible portrait claims the first fixation without stretching the scan.
+    var withPhoto = ResumeDocument.example
+    withPhoto.photo = Data([0x1])
+    withPhoto.isPhotoVisible = true
+    let photoPath = RecruiterScanService.gazePath(for: withPhoto)
+    XCTAssertEqual(photoPath.first?.label, "The portrait")
+    XCTAssertEqual(
+      photoPath.reduce(0.0) { $0 + $1.duration }, RecruiterScanStudy.scanSeconds,
+      accuracy: 0.001)
+  }
+
+  func testSmartLinkAllowancesAndTokensMatchTheBackend() {
+    // Mirrors LINK_LIMITS in functions/src/link-policy.js — both sides must
+    // promise the same numbers.
+    XCTAssertEqual(ResumeStudioPlan.free.smartLinkLimit, 1)
+    XCTAssertEqual(ResumeStudioPlan.go.smartLinkLimit, 5)
+    XCTAssertEqual(ResumeStudioPlan.pro.smartLinkLimit, 25)
+
+    // Tokens must satisfy the backend's ^[A-Za-z0-9-]{24,80}$ gate.
+    for _ in 0..<20 {
+      let token = SmartLink.newToken()
+      XCTAssertEqual(token.count, 40)
+      XCTAssertNil(token.rangeOfCharacter(from: CharacterSet.alphanumerics.inverted))
+    }
+  }
+
+  func testSmartLinkAccountingAndUnseenOpens() {
+    var link = SmartLink(
+      token: SmartLink.newToken(),
+      url: URL(string: "https://example.com/cv/x")!,
+      title: "Avery Sample Resume",
+      company: "Acme Corp",
+      createdAt: Date(),
+      expiresAt: Date(timeIntervalSinceNow: 86_400)
+    )
+    XCTAssertTrue(link.isActive)
+    XCTAssertEqual(link.unseenOpens, 0)
+
+    link.views = [
+      SmartLinkView(id: "a", firstOpenedAt: Date(), lastSeenAt: Date(), opens: 2, seconds: 90, viewer: "iPhone · Safari", downloadedPDF: false),
+      SmartLinkView(id: "b", firstOpenedAt: Date(), lastSeenAt: Date(timeIntervalSinceNow: -600), opens: 1, seconds: 30, viewer: "Windows · Chrome", downloadedPDF: true),
+    ]
+    XCTAssertEqual(link.totalOpens, 3)
+    XCTAssertEqual(link.totalSeconds, 120)
+    XCTAssertEqual(link.unseenOpens, 3)
+
+    link.acknowledgedOpens = link.totalOpens
+    XCTAssertEqual(link.unseenOpens, 0)
+
+    link.status = .revoked
+    XCTAssertFalse(link.isActive)
+  }
+
+  func testSmartLinkStorePersistsAcrossLaunches() throws {
+    let fileURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("smart-links-test-\(UUID().uuidString).json")
+    defer { try? FileManager.default.removeItem(at: fileURL) }
+
+    let store = SmartLinkStore(fileURL: fileURL)
+    var link = SmartLink(
+      token: SmartLink.newToken(),
+      url: URL(string: "https://example.com/cv/y")!,
+      title: "Avery Sample Resume",
+      company: "Northstar Works",
+      createdAt: Date(),
+      expiresAt: Date(timeIntervalSinceNow: 86_400)
+    )
+    link.views = [
+      SmartLinkView(id: "v", firstOpenedAt: Date(), lastSeenAt: Date(), opens: 1, seconds: 45, viewer: "Mac · Safari", downloadedPDF: false),
+    ]
+    store.add(link)
+    XCTAssertEqual(store.activeCount, 1)
+    XCTAssertEqual(store.unseenOpens, 1)
+    XCTAssertEqual(store.mostRecentUnseenLink?.id, link.id)
+
+    store.acknowledge(link.id)
+    XCTAssertEqual(store.unseenOpens, 0)
+
+    let reloaded = SmartLinkStore(fileURL: fileURL)
+    XCTAssertEqual(reloaded.links.count, 1)
+    XCTAssertEqual(reloaded.links.first?.company, "Northstar Works")
+    XCTAssertEqual(reloaded.links.first?.acknowledgedOpens, 1)
+    XCTAssertEqual(reloaded.unseenOpens, 0)
   }
 
   func testShortcutRoutesAreConsumedOnce() {

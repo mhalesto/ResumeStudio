@@ -8,12 +8,18 @@ import SwiftUI
 final class NetworkMonitor: ObservableObject {
   static let shared = NetworkMonitor()
 
-  @Published private(set) var isOnline = true
+  // Start conservatively. NWPathMonitor publishes the real state immediately;
+  // assuming online during that window can incorrectly discard cached access.
+  @Published private(set) var isOnline = false
 
   private let monitor = NWPathMonitor()
   private let queue = DispatchQueue(label: "com.resumestudio.networkmonitor")
 
   init() {
+    if ProcessInfo.processInfo.environment["RESUMESTUDIO_FORCE_OFFLINE"] == "1" {
+      isOnline = false
+      return
+    }
     monitor.pathUpdateHandler = { [weak self] path in
       let online = path.status == .satisfied
       Task { @MainActor in self?.isOnline = online }

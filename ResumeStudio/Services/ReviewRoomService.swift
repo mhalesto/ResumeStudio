@@ -1,11 +1,15 @@
 import FirebaseAppCheck
+import FirebaseAuth
 import Foundation
 
 actor ReviewRoomService {
   static let shared = ReviewRoomService()
 
   func publish(request review: ResumeReviewRequest, document: ResumeDocument) async throws -> URL {
-    let pdf = try await MainActor.run { try ResumePDFRenderer.render(document: document) }
+    let (pdf, pageImages) = try await MainActor.run { () -> (Data, [Data]) in
+      let pdf = try ResumePDFRenderer.render(document: document)
+      return (pdf, ResumePageRasterizer.images(fromPDF: pdf))
+    }
     guard pdf.count <= 5_000_000 else {
       throw ResumeAIError.server(message: "This PDF is too large for an online review room.")
     }
@@ -19,7 +23,8 @@ actor ReviewRoomService {
       reviewerName: review.reviewerName,
       message: review.message,
       resumeTitle: document.personal.fullName.nilIfBlank.map { "\($0) — Résumé review" } ?? "Résumé review",
-      pdfBase64: pdf.base64EncodedString()
+      pdfBase64: pdf.base64EncodedString(),
+      pageImagesBase64: pageImages.map { $0.base64EncodedString() }
     )
     let result: PublishReviewResponse = try await request(path: "v1/reviews", method: "POST", body: body)
     guard let url = URL(string: result.hostedURL) else { throw ResumeAIError.invalidResponse }
@@ -33,6 +38,16 @@ actor ReviewRoomService {
     return response.comments
   }
 
+  func revoke(token: String) async throws {
+    let _: ReviewLifecycleResponse = try await request(
+      path: "v1/reviews/\(token)", method: "PATCH", body: Optional<String>.none)
+  }
+
+  func delete(token: String) async throws {
+    let _: ReviewLifecycleResponse = try await request(
+      path: "v1/reviews/\(token)", method: "DELETE", body: Optional<String>.none)
+  }
+
   private func request<Body: Encodable, Result: Decodable>(
     path: String, method: String, body: Body?
   ) async throws -> Result {
@@ -42,6 +57,9 @@ actor ReviewRoomService {
     request.timeoutInterval = 60
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     request.setValue(try await appCheckToken(), forHTTPHeaderField: "X-Firebase-AppCheck")
+    if let token = try await Auth.auth().currentUser?.getIDToken(forcingRefresh: false) {
+      request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    }
     if let body { request.httpBody = try JSONEncoder.reviewEncoder.encode(body) }
     let (data, response) = try await URLSession.shared.data(for: request)
     guard let http = response as? HTTPURLResponse else { throw ResumeAIError.invalidResponse }
@@ -88,10 +106,15 @@ private struct PublishReviewPayload: Encodable {
   var message: String
   var resumeTitle: String
   var pdfBase64: String
+  var pageImagesBase64: [String]
 }
 
 private struct PublishReviewResponse: Decodable { var hostedURL: String }
 private struct ReviewCommentsResponse: Decodable { var comments: [RemoteReviewComment] }
+private struct ReviewLifecycleResponse: Decodable {
+  var status: String?
+  var deleted: Bool?
+}
 private struct ReviewErrorResponse: Decodable { var error: String }
 
 struct RemoteReviewComment: Decodable {

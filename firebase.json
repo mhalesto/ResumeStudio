@@ -2,6 +2,9 @@
   "firestore": {
     "rules": "firestore.rules"
   },
+  "storage": {
+    "rules": "storage.rules"
+  },
   "functions": {
     "source": "functions",
     "runtime": "nodejs22"
@@ -9,6 +12,12 @@
   "emulators": {
     "functions": {
       "port": 5001
+    },
+    "firestore": {
+      "port": 8480
+    },
+    "storage": {
+      "port": 9399
     },
     "ui": {
       "enabled": true

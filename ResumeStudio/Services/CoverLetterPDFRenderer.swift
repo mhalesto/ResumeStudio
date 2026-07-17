@@ -1057,7 +1057,6 @@ private final class CoverLetterLayout {
 
   /// Capsule contact labels, for Lozenge.
   private func drawLetterContactPills(x: CGFloat, y: CGFloat) {
-    let cg = context.cgContext
     var cx = x
     let font = UIFont.systemFont(ofSize: 8.5, weight: .medium)
     for value in [document.senderPhone, document.senderEmail] where !value.isBlank {

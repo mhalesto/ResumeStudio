@@ -16,6 +16,7 @@ struct PlansView: View {
           fallbackPrice: "R49.99",
           subtitle: "For occasional applications and focused improvements.",
           features: [
+            "20 AI-assisted résumé imports every day",
             "35 AI credits every month",
             "All \(ResumeTemplate.allCases.count) résumé and \(CoverLetterTemplate.allCases.count) cover-letter templates",
             "Unlimited document versions",
@@ -29,6 +30,7 @@ struct PlansView: View {
           fallbackPrice: "R129.99",
           subtitle: "For an active job search across several opportunities.",
           features: [
+            "30 AI-assisted résumé imports every day",
             "150 AI credits every month",
             "Everything included in Go",
             "Up to ten active Review Rooms",
@@ -54,7 +56,7 @@ struct PlansView: View {
         .buttonStyle(.bordered)
         .frame(maxWidth: .infinity)
 
-        Text("Subscriptions renew monthly until cancelled in App Store settings. AI allowances reset each billing period. The Design Pack is a one-time purchase.")
+        Text("Subscriptions renew monthly until cancelled in App Store settings. Monthly AI credits reset each billing period; résumé-import allowances reset daily at 00:00 UTC. The Design Pack is a one-time purchase.")
           .font(.caption2)
           .foregroundStyle(Theme.mutedInk)
           .multilineTextAlignment(.center)
@@ -70,6 +72,11 @@ struct PlansView: View {
     .navigationBarTitleDisplayMode(.inline)
     .toolbar {
       ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+    }
+    .task {
+      // Opening Plans is also an explicit entitlement repair point. This makes
+      // an existing App Store subscription visible without another purchase.
+      await purchases.refreshEntitlements()
     }
     .overlay {
       if purchases.isLoading {
@@ -110,6 +117,9 @@ struct PlansView: View {
         Text("\(purchases.plan.title) plan").font(.headline)
         Text("\(purchases.displayedCreditBalance) of \(purchases.displayedCreditLimit) AI credits available")
           .font(.caption).foregroundStyle(Theme.mutedInk)
+        let imports = purchases.currentImportAllowance
+        Text("\(imports.importsRemaining) of \(imports.importsLimit) AI-assisted imports available today")
+          .font(.caption).foregroundStyle(Theme.mutedInk)
         if let bonus = purchases.currentUsage?.bonusCreditsRemaining, bonus > 0 {
           Text("Includes \(bonus) referral bonus credits")
             .font(.caption.bold()).foregroundStyle(.green)
@@ -131,6 +141,8 @@ struct PlansView: View {
         .font(.title3.bold()).foregroundStyle(.green)
       Label("10 AI credits in your first calendar month", systemImage: "sparkles")
       Label("Then 5 free AI credits every month", systemImage: "calendar")
+      Label("5 separate AI-assisted résumé imports every day", systemImage: "doc.badge.arrow.up")
+      Label("Unlimited on-device import previews", systemImage: "iphone")
       Label("No payment or subscription required", systemImage: "creditcard.trianglebadge.exclamationmark")
       Label("Referral rewards: give 10 credits and get 5", systemImage: "person.2.fill")
       NavigationLink {
@@ -139,7 +151,7 @@ struct PlansView: View {
         Text("View referral rewards")
       }
       Divider()
-      Text("Small writing improvements cost 1 credit, career drafts and analysis cost 3, and full résumé or interview actions cost 5.")
+      Text("Résumé imports use the separate daily allowance. Small writing improvements cost 1 credit, career drafts and analysis cost 3, and full tailoring or interview actions cost 5.")
         .font(.caption).foregroundStyle(Theme.mutedInk)
     }
     .font(.subheadline)

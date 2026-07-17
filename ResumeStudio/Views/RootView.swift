@@ -28,31 +28,39 @@ struct RootView: View {
     .statusBarHidden(true)
     // Constant for the app's lifetime, so it can't flip during the hand-off.
     .preferredColorScheme(appearance.colorScheme)
+    .task {
+      // Launch is never conditional on Firebase, StoreKit, iCloud or network
+      // availability. This deadline also recovers if an animation task is
+      // interrupted while the app moves through background/foreground states.
+      try? await Task.sleep(for: .seconds(4))
+      guard !isSplashComplete else { return }
+      withAnimation(.easeInOut(duration: 0.25)) { isSplashComplete = true }
+    }
   }
 }
 
 private enum AppTab: String, CaseIterable, Identifiable {
   case home
   case documents
-  case templates
+  case applications
   case settings
 
   var id: String { rawValue }
 
   var title: String {
     switch self {
-    case .home: "Home"
+    case .home: "Today"
     case .documents: "Documents"
-    case .templates: "Templates"
+    case .applications: "Applications"
     case .settings: "Settings"
     }
   }
 
   var systemImage: String {
     switch self {
-    case .home: "house"
+    case .home: "sparkles"
     case .documents: "doc.text"
-    case .templates: "rectangle.split.2x1"
+    case .applications: "briefcase"
     case .settings: "gearshape"
     }
   }
@@ -68,6 +76,8 @@ private struct AppShellView: View {
   @EnvironmentObject private var applicationStore: ApplicationStore
   @EnvironmentObject private var purchases: PurchaseManager
   @EnvironmentObject private var referralStore: ReferralStore
+  @EnvironmentObject private var smartLinks: SmartLinkStore
+  @Environment(\.horizontalSizeClass) private var horizontalSizeClass
   @StateObject private var careerCoachStore = CareerCoachStore()
   @AppStorage("careerCoachIntroDismissed") private var coachIntroDismissed = false
   @State private var selectedTab = AppTab.home
@@ -79,10 +89,18 @@ private struct AppShellView: View {
     ZStack {
       tabPage(.home) { HomeView() }
       tabPage(.documents) {
-        NavigationStack { ResumeLibraryView() }
+        if horizontalSizeClass == .regular {
+          ProfessionalDocumentsWorkspaceView()
+        } else {
+          NavigationStack { ResumeLibraryView() }
+        }
       }
-      tabPage(.templates) {
-        NavigationStack { TemplateGalleryView() }
+      tabPage(.applications) {
+        if horizontalSizeClass == .regular {
+          ProfessionalApplicationsWorkspaceView()
+        } else {
+          HomeView(initialRoute: .applications, allowsWelcome: false, acceptsExternalRoutes: false)
+        }
       }
       tabPage(.settings) {
         NavigationStack { SettingsView() }
@@ -131,8 +149,7 @@ private struct AppShellView: View {
         selectedTab = .home
         NotificationCenter.default.post(name: .openSharedJobCapture, object: nil)
       case "applications":
-        selectedTab = .home
-        NotificationCenter.default.post(name: .openHomeRoute, object: HomeRoute.applications)
+        selectedTab = .applications
       case "ats":
         selectedTab = .home
         NotificationCenter.default.post(name: .openHomeRoute, object: HomeRoute.atsChecker)
@@ -140,7 +157,8 @@ private struct AppShellView: View {
         selectedTab = .home
         NotificationCenter.default.post(name: .openHomeRoute, object: HomeRoute.interviewCenter)
       case "templates":
-        selectedTab = .templates
+        selectedTab = .home
+        NotificationCenter.default.post(name: .openHomeRoute, object: HomeRoute.gallery)
       case "plans":
         isPlansPresented = true
       case "referral":
@@ -159,6 +177,25 @@ private struct AppShellView: View {
     .onReceive(NotificationCenter.default.publisher(for: .shortcutRouteQueued)) { _ in
       consumeShortcutRoute()
     }
+    // Fresh link activity greets every return to the app — this is where the
+    // "they just read it" notifications come from without remote push.
+    .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+      Task {
+        await purchases.refreshEntitlements()
+        await smartLinks.refresh()
+      }
+    }
+    .task {
+      // Firebase configures itself non-blockingly at launch; give it a beat
+      // so the first refresh doesn't fail soft and wait for the next
+      // foreground to try again.
+      try? await Task.sleep(nanoseconds: 2_000_000_000)
+      await smartLinks.refresh()
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .selectAppTab)) { notification in
+      guard let value = notification.object as? String, let tab = AppTab(rawValue: value) else { return }
+      selectedTab = tab
+    }
     .onAppear {
       consumeShortcutRoute()
     }
@@ -175,13 +212,13 @@ private struct AppShellView: View {
     guard let route = ShortcutRouteStore.consume() else { return }
     switch route {
     case "applications":
-      selectedTab = .home
-      NotificationCenter.default.post(name: .openHomeRoute, object: HomeRoute.applications)
+      selectedTab = .applications
     case "ats":
       selectedTab = .home
       NotificationCenter.default.post(name: .openHomeRoute, object: HomeRoute.atsChecker)
     case "templates":
-      selectedTab = .templates
+      selectedTab = .home
+      NotificationCenter.default.post(name: .openHomeRoute, object: HomeRoute.gallery)
     default:
       break
     }
@@ -202,6 +239,7 @@ private struct AppShellView: View {
 
 extension Notification.Name {
   static let openHomeRoute = Notification.Name("ResumeStudio.openHomeRoute")
+  static let selectAppTab = Notification.Name("ResumeStudio.selectAppTab")
 }
 
 private struct AppFooter: View {

@@ -8,61 +8,158 @@ enum TemplateRecommendationEngine {
   ) -> [TemplateRecommendation] {
     ResumeTemplate.allCases.compactMap { template in
       if preferences.freeOnly && !unlocked(template) { return nil }
-      var score = 50
-      var reasons: [String] = []
+      // This is a compatibility score, not a probability. Keep the weights
+      // deliberately below 100 in ordinary cases so several broad tag matches
+      // do not all collapse into a misleading perfect score.
+      var score = 32
+      var rankedReasons: [(priority: Int, text: String)] = []
       let tags = template.styleTags
+      let plan = template.plan
+
+      func reward(_ points: Int, _ reason: String? = nil, priority: Int = 0) {
+        score += points
+        if let reason { rankedReasons.append((priority, reason)) }
+      }
+
+      func penalize(_ points: Int) {
+        score -= points
+      }
 
       if preferences.strictATS {
-        if !template.plan.hasSideColumn && !template.isPhotoLed {
-          score += 24
-          reasons.append("Single-column, photo-free ATS structure")
+        if !plan.hasSideColumn && !template.isPhotoLed {
+          reward(18, "Single-column, photo-free ATS structure", priority: 100)
         } else {
-          score -= 18
+          if plan.hasSideColumn { penalize(12) }
+          if template.isPhotoLed { penalize(10) }
         }
-        if tags.contains(.ats) || tags.contains(.clean) { score += 10 }
+        if tags.contains(.ats) {
+          reward(8, "Explicitly tagged for ATS-friendly parsing", priority: 96)
+        } else if tags.contains(.clean) {
+          reward(4, "Clean structure supports parser readability", priority: 72)
+        }
       }
 
       if preferences.wantsPhoto == template.isPhotoLed {
-        score += 16
-        reasons.append(preferences.wantsPhoto ? "Designed around a portrait" : "Keeps the focus on your evidence")
+        reward(
+          7,
+          preferences.wantsPhoto ? "Designed around a portrait" : "Keeps the focus on your evidence",
+          priority: 70)
       } else if preferences.wantsPhoto, !template.isPhotoLed {
-        score -= 5
+        penalize(6)
+      } else if !preferences.wantsPhoto, template.isPhotoLed {
+        penalize(7)
       }
 
       switch preferences.seniority {
       case .earlyCareer:
-        if tags.contains(.clean) || tags.contains(.modern) { score += 10 }
+        if tags.contains(.clean) {
+          reward(7, "Clean hierarchy suits an early-career résumé", priority: 64)
+        }
+        if tags.contains(.modern) { reward(3) }
       case .experienced:
-        if tags.contains(.modern) || tags.contains(.structured) { score += 10 }
+        if tags.contains(.structured) {
+          reward(7, "Structured hierarchy suits experienced candidates", priority: 66)
+        }
+        if tags.contains(.modern) { reward(4) }
+        if tags.contains(.clean) { reward(2) }
       case .leadership:
-        if tags.contains(.bold) || tags.contains(.structured) { score += 12 }
+        if tags.contains(.bold) {
+          reward(7, "Confident presentation supports a leadership profile", priority: 66)
+        }
+        if tags.contains(.structured) { reward(6) }
+        if tags.contains(.classic) { reward(2) }
       case .executive:
-        if tags.contains(.classic) || tags.contains(.bold) { score += 14 }
+        if tags.contains(.classic) {
+          reward(8, "Classic hierarchy suits an executive résumé", priority: 68)
+        }
+        if tags.contains(.bold) { reward(6) }
+        if tags.contains(.structured) { reward(3) }
       }
 
       let role = preferences.role.lowercased()
       let isCreativeRole = ["design", "creative", "brand", "art", "media", "fashion"].contains { role.contains($0) }
       let isTechnicalRole = ["engineer", "developer", "data", "security", "technical", "product"].contains { role.contains($0) }
-      if isCreativeRole, tags.contains(.creative) {
-        score += 14
-        reasons.append("Creative presentation matches the target role")
+      let isTraditionalRole = [
+        "account", "bank", "compliance", "finance", "government", "legal", "research",
+      ].contains { role.contains($0) }
+      let isPeopleRole = [
+        "customer", "human resources", "operations", "people", "recruit", "sales",
+      ].contains { role.contains($0) }
+      if isCreativeRole {
+        if tags.contains(.creative) {
+          reward(9, "Creative presentation matches the target role", priority: 88)
+        }
+        if tags.contains(.bold) || tags.contains(.showcase) { reward(3) }
       }
-      if isTechnicalRole, tags.contains(.ats) || isTechnicalRole && tags.contains(.clean) {
-        score += 12
-        reasons.append("Clear technical information hierarchy")
+      if isTechnicalRole {
+        if tags.contains(.ats) { reward(6) }
+        if tags.contains(.clean) { reward(4) }
+        if tags.contains(.structured) { reward(3) }
+        if tags.contains(.ats) || tags.contains(.clean) || tags.contains(.structured) {
+          rankedReasons.append((86, "Clear technical information hierarchy"))
+        }
+      }
+      if isTraditionalRole {
+        if tags.contains(.classic) { reward(6) }
+        if tags.contains(.ats) { reward(5) }
+        if tags.contains(.classic) || tags.contains(.ats) {
+          rankedReasons.append((84, "Conventional hierarchy matches the target field"))
+        }
+      }
+      if isPeopleRole {
+        if tags.contains(.structured) { reward(5) }
+        if tags.contains(.clean) { reward(3) }
+        if tags.contains(.structured) || tags.contains(.clean) {
+          rankedReasons.append((82, "Scannable hierarchy supports a people-focused role"))
+        }
       }
 
-      if preferences.targetPages == .one {
-        if template.plan.density < 1 || tags.contains(.clean) { score += 10 }
-        if template.plan.hasSideColumn { score += 4 }
+      switch preferences.targetPages {
+      case .automatic:
+        break
+      case .one:
+        if plan.density <= 0.9 {
+          reward(6, "Compact spacing supports a one-page target", priority: 78)
+        } else if plan.density < 1 {
+          reward(4, "Efficient spacing supports a one-page target", priority: 76)
+        } else {
+          reward(2)
+        }
+        if tags.contains(.clean) { reward(2) }
+        switch plan.competencies {
+        case .columns, .iconGrid: reward(2)
+        case .chips: reward(1)
+        default: break
+        }
+        if plan.hasSideColumn, !preferences.strictATS { reward(2) }
+      case .two:
+        if plan.density >= 1 {
+          reward(4, "Generous spacing suits a two-page résumé", priority: 74)
+        }
+        if plan.hasSideColumn { reward(2) }
       }
 
-      if [.unitedStates, .canada, .unitedKingdom].contains(preferences.market), template.isPhotoLed {
-        score -= 14
+      if [.unitedStates, .canada, .unitedKingdom].contains(preferences.market) {
+        if template.isPhotoLed {
+          penalize(12)
+        } else {
+          reward(3)
+        }
+        if tags.contains(.ats) { reward(3, "Matches common market screening conventions", priority: 80) }
       }
-      if reasons.isEmpty { reasons.append(template.subtitle) }
+
+      var seenReasons: Set<String> = []
+      var reasons = rankedReasons
+        .sorted { lhs, rhs in
+          lhs.priority == rhs.priority ? lhs.text < rhs.text : lhs.priority > rhs.priority
+        }
+        .compactMap { item -> String? in
+          seenReasons.insert(item.text).inserted ? item.text : nil
+        }
+      if reasons.isEmpty { reasons = [template.subtitle] }
+      reasons = Array(reasons.prefix(unlocked(template) ? 2 : 3))
       if unlocked(template) { reasons.append("Available on your current plan") }
-      return TemplateRecommendation(template: template, score: score, reasons: Array(reasons.prefix(3)))
+      return TemplateRecommendation(template: template, score: score, reasons: reasons)
     }
     .sorted { lhs, rhs in
       lhs.score == rhs.score ? lhs.template.title < rhs.template.title : lhs.score > rhs.score

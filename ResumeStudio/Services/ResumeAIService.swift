@@ -1,3 +1,4 @@
+import CryptoKit
 import FirebaseAppCheck
 import FirebaseAuth
 import Foundation
@@ -54,9 +55,20 @@ actor ResumeAIService {
   func importResume(text: String) async throws -> AIImportedResume {
     let cleanText = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !cleanText.isEmpty else { throw ResumeAIError.invalidResponse }
+    let submittedText = String(cleanText.prefix(55_000))
+    let digest = SHA256.hash(data: Data(submittedText.utf8))
+      .map { String(format: "%02x", $0) }.joined()
+    let cacheKey = "resume-import:\(digest)"
+    if let cached: AIImportedResume = await MainActor.run(body: {
+      AIArtifactStore.shared.latest(
+        AIImportedResume.self, action: .importResume, context: cacheKey)
+    }) {
+      return cached
+    }
     return try await request(
       action: .importResume,
-      payload: AIResumeImportPayload(resumeText: String(cleanText.prefix(55_000)))
+      artifactContext: cacheKey,
+      payload: AIResumeImportPayload(resumeText: submittedText)
     )
   }
 
@@ -315,7 +327,7 @@ actor ResumeAIService {
       throw ResumeAIError.server(message: "AI processing is paused in Privacy Centre.")
     }
     let knownUsage = await PurchaseManager.shared.currentUsage
-    if let knownUsage, knownUsage.creditsRemaining < action.creditCost {
+    if action != .importResume, let knownUsage, knownUsage.creditsRemaining < action.creditCost {
       await PurchaseManager.shared.requestPlans()
       throw ResumeAIError.server(
         message: "This action needs \(action.creditCost) AI credits. Choose Go or Pro for a larger monthly allowance."
@@ -361,6 +373,9 @@ actor ResumeAIService {
       errorDecoder.dateDecodingStrategy = .iso8601
       let error = try? errorDecoder.decode(AIAPIErrorResponse.self, from: data)
       if let usage = error?.usage { await PurchaseManager.shared.updateUsage(usage) }
+      if let allowance = error?.importAllowance {
+        await PurchaseManager.shared.updateImportAllowance(allowance)
+      }
       if error?.code == "insufficient_credits" {
         await PurchaseManager.shared.requestPlans()
       }
@@ -375,6 +390,9 @@ actor ResumeAIService {
       throw ResumeAIError.invalidResponse
     }
     if let usage = envelope.usage { await PurchaseManager.shared.updateUsage(usage) }
+    if let allowance = envelope.importAllowance {
+      await PurchaseManager.shared.updateImportAllowance(allowance)
+    }
     await MainActor.run {
       AIArtifactStore.shared.record(envelope.result, action: action, context: artifactContext)
       NotificationCenter.default.post(
@@ -443,10 +461,12 @@ private struct AIAPIRequest<Payload: Encodable>: Encodable {
 private struct AIAPIResponse<Result: Decodable>: Decodable {
   var result: Result
   var usage: AIUsageSnapshot?
+  var importAllowance: DailyImportAllowance?
 }
 
 private struct AIAPIErrorResponse: Decodable {
   var error: String
   var code: String?
   var usage: AIUsageSnapshot?
+  var importAllowance: DailyImportAllowance?
 }

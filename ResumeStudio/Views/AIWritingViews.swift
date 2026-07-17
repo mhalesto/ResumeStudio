@@ -216,6 +216,13 @@ struct JobTargetingView: View {
   @State private var errorMessage: String?
   @FocusState private var isJobDescriptionFocused: Bool
 
+  private let existingApplicationID: UUID?
+
+  init(applicationID: UUID? = nil) {
+    existingApplicationID = applicationID
+    _applicationID = State(initialValue: applicationID)
+  }
+
   private var quality: JobDescriptionQuality { JobDescriptionAnalyzer.analyze(jobDescription) }
   private var canRun: Bool {
     !jobDescription.isBlank && (quality.isDetailedEnough || allowLimitedAdvert)
@@ -278,6 +285,7 @@ struct JobTargetingView: View {
     .background(Theme.paper)
     .navigationTitle("Target a job")
     .navigationBarTitleDisplayMode(.inline)
+    .onAppear(perform: loadExistingApplication)
     .sheet(isPresented: Binding(
       get: { tailored != nil },
       set: { if !$0 { tailored = nil } }
@@ -300,6 +308,19 @@ struct JobTargetingView: View {
   private var versionTitle: String {
     let target = [role, company].filter { !$0.isBlank }.joined(separator: " — ")
     return target.isBlank ? "Tailored Résumé" : target
+  }
+
+  private func loadExistingApplication() {
+    guard let existingApplicationID,
+      let application = applicationStore.applications.first(where: { $0.id == existingApplicationID }),
+      jobDescription.isBlank
+    else { return }
+    role = application.role
+    company = application.company
+    sourceURL = application.sourceURL
+    jobDescription = application.jobDescription
+    analysis = application.matchAnalysis
+    baseResumeID = application.baseResumeID
   }
 
   private func dismissKeyboard() { isJobDescriptionFocused = false; AppKeyboard.dismiss() }

@@ -71,6 +71,7 @@ struct TemplatePreviewShareMenu: ViewModifier {
   let accent: ResumeAccent
   var photo: Data?
   var crop: PhotoCrop?
+  var isPhotoVisible = true
 
   @State private var shareItem: PreviewShareItem?
 
@@ -80,7 +81,9 @@ struct TemplatePreviewShareMenu: ViewModifier {
         Button {
           Task {
             if let image = await TemplateThumbnailRenderer.shareImage(
-              template: template, accent: accent, photo: photo, crop: crop) {
+              template: template, accent: accent, photo: photo, crop: crop,
+              isPhotoVisible: isPhotoVisible
+            ) {
               shareItem = PreviewShareItem(image: image)
             }
           }
@@ -97,9 +100,14 @@ struct TemplatePreviewShareMenu: ViewModifier {
 extension View {
   /// Long-press to share a higher-resolution preview image of the template.
   func templatePreviewShareMenu(
-    template: ResumeTemplate, accent: ResumeAccent, photo: Data? = nil, crop: PhotoCrop? = nil
+    template: ResumeTemplate, accent: ResumeAccent, photo: Data? = nil, crop: PhotoCrop? = nil,
+    isPhotoVisible: Bool = true
   ) -> some View {
     modifier(
-      TemplatePreviewShareMenu(template: template, accent: accent, photo: photo, crop: crop))
+      TemplatePreviewShareMenu(
+        template: template, accent: accent, photo: photo, crop: crop,
+        isPhotoVisible: isPhotoVisible
+      )
+    )
   }
 }

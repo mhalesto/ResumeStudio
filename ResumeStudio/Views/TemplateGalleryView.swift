@@ -201,6 +201,7 @@ struct TemplateGalleryView: View {
                     isSelected: store.document.template == template,
                     photo: store.document.photo,
                     photoCrop: store.document.photoCrop,
+                    isPhotoVisible: store.document.isPhotoVisible,
                     width: previewWidth
                   )
                   if !purchases.canUse(template) { PlanLockBadge().padding(8) }
@@ -211,7 +212,8 @@ struct TemplateGalleryView: View {
                 template: template,
                 accent: store.document.accent,
                 photo: store.document.photo,
-                crop: store.document.photoCrop
+                crop: store.document.photoCrop,
+                isPhotoVisible: store.document.isPhotoVisible
               )
 
               if store.document.template == template {

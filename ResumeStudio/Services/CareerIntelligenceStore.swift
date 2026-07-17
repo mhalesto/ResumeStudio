@@ -171,6 +171,11 @@ final class CareerIntelligenceStore: ObservableObject {
     save()
   }
 
+  func deleteReviewRequest(_ id: UUID) {
+    reviewRequests.removeAll { $0.id == id }
+    save()
+  }
+
   func add(_ attempt: VoicePracticeAttempt) { voiceAttempts.insert(attempt, at: 0); save() }
 
   func addRevision(_ revision: AIRevision) { aiRevisions.insert(revision, at: 0); save() }
@@ -211,6 +216,37 @@ final class CareerIntelligenceStore: ObservableObject {
     marketSources = value.marketSources ?? []
     preferredMarket = value.preferredMarket
     save()
+  }
+
+  func mergeData(_ data: Data) throws {
+    let value = try Self.decoder.decode(CareerIntelligenceArchive.self, from: data)
+    evidence = Self.merge(evidence, value.evidence, date: \.updatedAt)
+    contacts = Self.mergeNewest(contacts, value.contacts, date: { $0.lastContactedAt ?? $0.createdAt })
+    networkingDrafts = Self.mergeNewest(networkingDrafts, value.networkingDrafts, date: { $0.createdAt })
+    offers = Self.mergeNewest(offers, value.offers, date: { $0.createdAt })
+    reviewRequests = Self.mergeNewest(reviewRequests, value.reviewRequests, date: { $0.createdAt })
+    voiceAttempts = Self.mergeNewest(voiceAttempts, value.voiceAttempts, date: { $0.createdAt })
+    aiRevisions = Self.mergeNewest(aiRevisions, value.aiRevisions ?? [], date: { $0.createdAt })
+    processingRecords = Self.mergeNewest(processingRecords, value.processingRecords ?? [], date: { $0.completedAt })
+    marketSources = Self.mergeNewest(marketSources, value.marketSources ?? [], date: { $0.checkedAt })
+    save()
+  }
+
+  private static func merge<Value: Identifiable>(
+    _ local: [Value], _ remote: [Value], date: KeyPath<Value, Date>
+  ) -> [Value] where Value.ID: Hashable {
+    mergeNewest(local, remote, date: { $0[keyPath: date] })
+  }
+
+  private static func mergeNewest<Value: Identifiable>(
+    _ local: [Value], _ remote: [Value], date: (Value) -> Date
+  ) -> [Value] where Value.ID: Hashable {
+    var values = Dictionary(uniqueKeysWithValues: local.map { ($0.id, $0) })
+    for value in remote {
+      if let existing = values[value.id], date(existing) >= date(value) { continue }
+      values[value.id] = value
+    }
+    return values.values.sorted { date($0) > date($1) }
   }
 
   private var archive: CareerIntelligenceArchive {

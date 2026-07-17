@@ -158,6 +158,7 @@ enum ReviewRequestStatus: String, CaseIterable, Codable, Identifiable {
   case sent
   case feedbackReceived
   case closed
+  case revoked
 
   var id: String { rawValue }
   var title: String {
@@ -166,6 +167,7 @@ enum ReviewRequestStatus: String, CaseIterable, Codable, Identifiable {
     case .sent: "Sent"
     case .feedbackReceived: "Feedback received"
     case .closed: "Closed"
+    case .revoked: "Link disabled"
     }
   }
 }
@@ -256,6 +258,8 @@ struct VoicePracticeAttempt: Identifiable, Codable, Equatable {
   var createdAt = Date()
   var deliveryScore: Int? = nil
   var audioFilename: String? = nil
+  var pauseCount: Int? = nil
+  var longestPauseSeconds: Double? = nil
 }
 
 struct AIJobCapture: Codable, Equatable {

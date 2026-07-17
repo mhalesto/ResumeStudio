@@ -49,15 +49,30 @@ struct AIHistoryView: View {
     .scrollContentBackground(.hidden)
     .background(Theme.paper)
     .navigationTitle("Saved AI work")
-    .confirmationDialog(
-      "Delete this saved result?", isPresented: Binding(
-        get: { artifactToDelete != nil }, set: { if !$0 { artifactToDelete = nil } }
-      ), titleVisibility: .visible
-    ) {
-      Button("Delete", role: .destructive) {
-        if let artifactToDelete { store.delete(artifactToDelete) }
-        artifactToDelete = nil
-      }
+    .sheet(item: $artifactToDelete) { artifact in
+      PremiumConfirmationSheet(
+        title: "Delete saved AI result?",
+        message: "This result will be removed from your processing history and private backup.",
+        systemImage: "sparkles.rectangle.stack.fill",
+        accent: .purple,
+        rows: [
+          PremiumConfirmationRow(
+            eyebrow: "SAVED RESULT",
+            title: artifact.action.title,
+            detail: artifact.previewLines.first ?? artifact.createdAt.formatted(date: .abbreviated, time: .shortened),
+            systemImage: artifact.action.systemImage,
+            tone: .destructive
+          )
+        ],
+        safetyNote: "Your résumé and any changes you already applied stay untouched.",
+        confirmTitle: "Delete saved result",
+        onConfirm: {
+          store.delete(artifact)
+          artifactToDelete = nil
+        },
+        onCancel: { artifactToDelete = nil }
+      )
+      .premiumConfirmationPresentation(initialFraction: 0.48)
     }
   }
 

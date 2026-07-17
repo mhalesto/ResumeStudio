@@ -85,6 +85,7 @@ struct SmartTemplateFinderView: View {
         isSelected: store.document.template == recommendation.template,
         photo: store.document.photo,
         photoCrop: store.document.photoCrop,
+        isPhotoVisible: store.document.isPhotoVisible,
         width: 112
       )
       VStack(alignment: .leading, spacing: 7) {
@@ -142,7 +143,8 @@ struct TemplateComparisonView: View {
               TemplatePreviewCard(
                 template: template, accent: store.document.accent,
                 isSelected: store.document.template == template,
-                photo: store.document.photo, photoCrop: store.document.photoCrop, width: 210)
+                photo: store.document.photo, photoCrop: store.document.photoCrop,
+                isPhotoVisible: store.document.isPhotoVisible, width: 210)
                 .overlay(alignment: .topTrailing) {
                   if !purchases.canUse(template) { PlanLockBadge().padding(8) }
                 }

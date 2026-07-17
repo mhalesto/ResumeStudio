@@ -26,6 +26,52 @@ struct ApplicationPacketView: View {
     Form {
       if let application, let binding = Binding($packet) {
         Section {
+          HStack {
+            VStack(alignment: .leading, spacing: 4) {
+              Text("One guided application pack").font(.headline)
+              Text("Every AI result is saved, then waits for your review.")
+                .font(.caption).foregroundStyle(Theme.mutedInk)
+            }
+            Spacer()
+            Text("\(workflowCompleted)/6").font(.title2.bold()).foregroundStyle(resumeStore.document.accent.color)
+          }
+          ProgressView(value: Double(workflowCompleted), total: 6)
+            .tint(resumeStore.document.accent.color)
+          LabeledContent("Maximum AI cost") { Text("19 credits").fontWeight(.semibold) }
+          LabeledContent("Still needed") { Text("\(remainingCreditCost) credits").fontWeight(.semibold) }
+
+          workflowLabel("Job captured", detail: application.role.nilIfBlank ?? "Opportunity saved", done: true, icon: "scope")
+          workflowLabel("Résumé selected", detail: resumeStore.resumes.first(where: { $0.id == binding.wrappedValue.resumeID })?.title ?? "Active résumé", done: true, icon: "doc.text")
+          NavigationLink(value: HomeRoute.jobTargetingApplication(applicationID)) {
+            workflowLabel(
+              application.matchAnalysis == nil ? "Analyse match and review tailoring" : "Review match or create tailored version",
+              detail: application.tailoredResumeID == nil ? "Up to 8 credits" : "Tailored version saved",
+              done: application.matchAnalysis != nil && application.tailoredResumeID != nil,
+              icon: "wand.and.stars")
+          }
+          workflowLabel(
+            "Cover letter and email", detail: letterIsReady ? "Draft saved" : "Generate below · 3 credits",
+            done: letterIsReady, icon: "envelope.badge")
+          DatePicker(
+            "Application deadline",
+            selection: Binding(
+              get: { application.deadline ?? Calendar.current.date(byAdding: .day, value: 7, to: Date())! },
+              set: { updateDeadline($0) }
+            ),
+            displayedComponents: [.date, .hourAndMinute]
+          )
+          NavigationLink(value: HomeRoute.interviewPrep(applicationID)) {
+            workflowLabel(
+              "Create interview plan", detail: application.interviewPlan == nil ? "5 credits" : "Plan saved",
+              done: application.interviewPlan != nil, icon: "person.2.wave.2.fill")
+          }
+        } header: {
+          Text("Application Pack workflow")
+        } footer: {
+          Text("Costs are shown before any AI action. Local edits and exports never consume credits.")
+        }
+
+        Section {
           LabeledContent("Target", value: [application.role, application.company].filter { !$0.isBlank }.joined(separator: " at "))
           Picker("Résumé version", selection: binding.resumeID) {
             ForEach(resumeStore.resumes) { Text($0.title).tag($0.id) }
@@ -110,6 +156,9 @@ struct ApplicationPacketView: View {
     .onDisappear {
       if let packet { applicationStore.updatePacket(packet) }
     }
+    .onChange(of: packet) { _, updated in
+      if let updated { applicationStore.updatePacket(updated) }
+    }
     .sheet(item: $shareFiles) { item in ShareSheet(activityItems: item.urls) }
   }
 
@@ -122,6 +171,47 @@ struct ApplicationPacketView: View {
         $0.id == (application.tailoredResumeID ?? application.baseResumeID)
       })?.document ?? resumeStore.document
     )
+  }
+
+  private var letterIsReady: Bool {
+    packet?.coverLetter.bodyParagraphs.contains(where: { !$0.isBlank }) == true
+  }
+
+  private var remainingCreditCost: Int {
+    guard let application else { return 0 }
+    var cost = 0
+    if application.matchAnalysis == nil { cost += ResumeAIAction.analyzeJob.creditCost }
+    if application.tailoredResumeID == nil { cost += ResumeAIAction.tailorResume.creditCost }
+    if !letterIsReady { cost += ResumeAIAction.writeCoverLetter.creditCost }
+    if application.interviewPlan == nil { cost += ResumeAIAction.interviewPrep.creditCost }
+    return cost
+  }
+
+  private var workflowCompleted: Int {
+    guard let application else { return 0 }
+    return 2
+      + (application.matchAnalysis != nil && application.tailoredResumeID != nil ? 1 : 0)
+      + (letterIsReady ? 1 : 0)
+      + (application.deadline != nil ? 1 : 0)
+      + (application.interviewPlan != nil ? 1 : 0)
+  }
+
+  private func workflowLabel(_ title: String, detail: String, done: Bool, icon: String) -> some View {
+    HStack(spacing: 11) {
+      Image(systemName: done ? "checkmark.circle.fill" : icon)
+        .foregroundStyle(done ? .green : resumeStore.document.accent.color)
+        .frame(width: 24)
+      VStack(alignment: .leading, spacing: 2) {
+        Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ink)
+        Text(detail).font(.caption).foregroundStyle(Theme.mutedInk)
+      }
+    }
+  }
+
+  private func updateDeadline(_ date: Date) {
+    guard var application else { return }
+    application.deadline = date
+    applicationStore.update(application)
   }
 
   @MainActor

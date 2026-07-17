@@ -349,6 +349,7 @@ struct JobCaptureView: View {
     )
     applicationStore.add(application)
     didCreate = true
+    NotificationCenter.default.post(name: .openHomeRoute, object: HomeRoute.applicationPacket(application.id))
   }
 
   private static func parseDate(_ value: String) -> Date? {

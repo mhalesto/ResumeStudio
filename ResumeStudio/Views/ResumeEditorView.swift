@@ -11,6 +11,7 @@ struct ResumeEditorView: View {
   @State private var showCropper = false
   @State private var showProfileAI = false
   @State private var showCompetencyAI = false
+  @State private var photoErrorMessage: String?
 
   var body: some View {
     ScrollViewReader { proxy in
@@ -83,6 +84,17 @@ struct ResumeEditorView: View {
           contentsOf: suggestions.filter { !existing.contains($0.lowercased()) }
         )
       }
+    }
+    .alert(
+      "Unable to Add Photo",
+      isPresented: Binding(
+        get: { photoErrorMessage != nil },
+        set: { if !$0 { photoErrorMessage = nil } }
+      )
+    ) {
+      Button("OK", role: .cancel) {}
+    } message: {
+      Text(photoErrorMessage ?? "Please choose a different image and try again.")
     }
   }
 
@@ -171,7 +183,7 @@ struct ResumeEditorView: View {
       header(for: .personal)
     } footer: {
       Text(
-        "Your photo is optional, and every template has a place for it. The photo-led ones — \(photoTemplateNames) — build their header around it. It never leaves this device."
+        "Your photo is optional, and every template has a place for it. Use Show in CV to hide it from this version without deleting it. The photo-led ones — \(photoTemplateNames) — build their header around it. It is never sent to AI. When iCloud sync is on, it is included in your private résumé sync."
       )
     }
     .id(ResumeSection.personal)
@@ -180,10 +192,37 @@ struct ResumeEditorView: View {
   /// The portrait: a circle ringed in the accent colour, showing the exact crop
   /// the PDF will draw. Tapping it re-frames.
   private var photoRow: some View {
+    ViewThatFits(in: .horizontal) {
+      HStack(spacing: 16) {
+        photoIdentityControls
+        Spacer(minLength: 12)
+        portraitVisibilityControl
+      }
+
+      VStack(alignment: .leading, spacing: 14) {
+        photoIdentityControls
+        Divider()
+        compactPortraitVisibilityControl
+      }
+    }
+    .padding(.vertical, 6)
+    .onChange(of: pickedPhoto) { _, item in
+      Task { await load(item) }
+    }
+    .sheet(isPresented: $showCropper) {
+      if let image = store.document.photoImage {
+        PhotoCropView(image: image, crop: store.document.photoCrop, accent: accent) { crop in
+          store.document.photoCrop = crop
+        }
+      }
+    }
+  }
+
+  private var photoIdentityControls: some View {
     let hasPhoto = store.document.photo != nil
     return HStack(spacing: 16) {
       Button {
-        if store.document.photo != nil { showCropper = true }
+        if hasPhoto { showCropper = true }
       } label: {
         ZStack {
           if let image = store.document.croppedPhotoImage {
@@ -199,8 +238,19 @@ struct ResumeEditorView: View {
         }
         .frame(width: 68, height: 68)
         .clipShape(Circle())
+        .opacity(store.document.isPhotoVisible ? 1 : 0.46)
         .overlay {
           Circle().strokeBorder(accent, lineWidth: 3)
+        }
+        .overlay(alignment: .bottomTrailing) {
+          if !store.document.isPhotoVisible {
+            Image(systemName: "eye.slash.fill")
+              .font(.system(size: 10, weight: .bold))
+              .foregroundStyle(.white)
+              .frame(width: 24, height: 24)
+              .background(Theme.ink, in: Circle())
+              .overlay { Circle().strokeBorder(Theme.card, lineWidth: 2) }
+          }
         }
       }
       .buttonStyle(.plain)
@@ -236,8 +286,10 @@ struct ResumeEditorView: View {
           .foregroundStyle(accent)
 
           Button {
-            store.document.photo = nil
-            store.document.photoCrop = nil
+            var updated = store.document
+            updated.photo = nil
+            updated.photoCrop = nil
+            store.document = updated
           } label: {
             HStack(spacing: 6) {
               Image(systemName: "trash")
@@ -249,29 +301,74 @@ struct ResumeEditorView: View {
           .buttonStyle(.plain)
         }
       }
-
-      Spacer(minLength: 0)
-    }
-    .padding(.vertical, 6)
-    .onChange(of: pickedPhoto) { _, item in
-      Task { await load(item) }
-    }
-    .sheet(isPresented: $showCropper) {
-      if let image = store.document.photoImage {
-        PhotoCropView(image: image, crop: store.document.photoCrop, accent: accent) { crop in
-          store.document.photoCrop = crop
-        }
-      }
     }
   }
 
+  private var portraitVisibilityControl: some View {
+    VStack(alignment: .trailing, spacing: 5) {
+      Text("SHOW IN CV")
+        .font(.system(size: 9, weight: .bold))
+        .tracking(0.7)
+        .foregroundStyle(Theme.mutedInk)
+      Toggle("Show portrait in this résumé", isOn: $store.document.isPhotoVisible)
+        .labelsHidden()
+        .tint(accent)
+      Label(
+        store.document.isPhotoVisible ? "Visible" : "Hidden",
+        systemImage: store.document.isPhotoVisible ? "eye.fill" : "eye.slash.fill"
+      )
+      .font(.caption2.weight(.semibold))
+      .foregroundStyle(store.document.isPhotoVisible ? accent : Theme.mutedInk)
+    }
+    .accessibilityElement(children: .contain)
+  }
+
+  private var compactPortraitVisibilityControl: some View {
+    HStack(spacing: 12) {
+      Label {
+        VStack(alignment: .leading, spacing: 2) {
+          Text("Show photo in CV")
+            .font(.subheadline.weight(.semibold))
+          Text(store.document.isPhotoVisible ? "Included in previews and exports" : "Saved here, hidden from previews and exports")
+            .font(.caption)
+            .foregroundStyle(Theme.mutedInk)
+        }
+      } icon: {
+        Image(systemName: store.document.isPhotoVisible ? "eye.fill" : "eye.slash.fill")
+          .foregroundStyle(store.document.isPhotoVisible ? accent : Theme.mutedInk)
+      }
+      Spacer(minLength: 8)
+      Toggle("Show portrait in this résumé", isOn: $store.document.isPhotoVisible)
+        .labelsHidden()
+        .tint(accent)
+    }
+    .accessibilityElement(children: .contain)
+  }
+
+  @MainActor
   private func load(_ item: PhotosPickerItem?) async {
-    guard let item,
-      let raw = try? await item.loadTransferable(type: Data.self),
+    guard let item else { return }
+    defer { pickedPhoto = nil }
+
+    do {
+      guard let raw = try await item.loadTransferable(type: Data.self) else {
+        photoErrorMessage = "The selected photo could not be read. Please choose a local JPG, PNG, or HEIC image."
+        return
+      }
       // Downscaled and squared before it goes anywhere near the draft file.
-      let prepared = ProfilePhoto.prepare(raw)
-    else { return }
-    store.document.photo = prepared
+      guard let prepared = ProfilePhoto.prepare(raw) else {
+        photoErrorMessage = "That image format could not be prepared for your résumé. Please choose a JPG, PNG, or HEIC image."
+        return
+      }
+
+      var updated = store.document
+      let wasEmpty = updated.photo == nil
+      updated.photo = prepared
+      if wasEmpty { updated.isPhotoVisible = true }
+      store.document = updated
+    } catch {
+      photoErrorMessage = "The photo could not be loaded: \(error.localizedDescription)"
+    }
   }
 
   /// The photo-led templates, which build their whole header around the portrait.

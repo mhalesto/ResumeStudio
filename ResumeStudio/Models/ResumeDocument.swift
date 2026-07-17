@@ -27,6 +27,10 @@ struct ResumeDocument: Codable, Equatable, Hashable {
   /// which is exactly how photos were framed before this was adjustable.
   var photoCrop: PhotoCrop?
 
+  /// Per-version visibility. Hiding a portrait never deletes its image or crop,
+  /// so a user can keep photo and non-photo résumé variants without re-importing.
+  var isPhotoVisible: Bool
+
   var suggestedFilename: String {
     let source = personal.fullName.trimmingCharacters(in: .whitespacesAndNewlines)
     let base = source.isEmpty ? "Resume" : "\(source) Resume"
@@ -209,6 +213,7 @@ struct ResumeDocument: Codable, Equatable, Hashable {
     case template
     case photo
     case photoCrop
+    case isPhotoVisible
     case layout
   }
 
@@ -225,6 +230,7 @@ struct ResumeDocument: Codable, Equatable, Hashable {
     template: ResumeTemplate,
     photo: Data? = nil,
     photoCrop: PhotoCrop? = nil,
+    isPhotoVisible: Bool = true,
     layout: ResumeLayoutSettings = .standard
   ) {
     self.schemaVersion = schemaVersion
@@ -239,6 +245,7 @@ struct ResumeDocument: Codable, Equatable, Hashable {
     self.template = template
     self.photo = photo
     self.photoCrop = photoCrop
+    self.isPhotoVisible = isPhotoVisible
     self.layout = layout
   }
 
@@ -257,6 +264,7 @@ struct ResumeDocument: Codable, Equatable, Hashable {
     template = try container.decodeIfPresent(ResumeTemplate.self, forKey: .template) ?? .modern
     photo = try container.decodeIfPresent(Data.self, forKey: .photo)
     photoCrop = try container.decodeIfPresent(PhotoCrop.self, forKey: .photoCrop)
+    isPhotoVisible = try container.decodeIfPresent(Bool.self, forKey: .isPhotoVisible) ?? true
     layout = try container.decodeIfPresent(ResumeLayoutSettings.self, forKey: .layout) ?? .standard
     layout.normalize()
   }
@@ -265,11 +273,11 @@ struct ResumeDocument: Codable, Equatable, Hashable {
     photo.flatMap(UIImage.init(data:))
   }
 
-  /// Whether the exported PDF actually prints a portrait. Every template has a
-  /// place for one, so this is a question about the draft rather than the look:
-  /// the photo-led templates always print it, the rest only once a photo exists.
+  /// Whether the exported PDF actually prints a portrait. When visibility is
+  /// disabled, both the photo and photo-led templates' initials placeholder are
+  /// removed and the letterhead closes up the space.
   var showsPortrait: Bool {
-    template.isPhotoLed || photo != nil
+    isPhotoVisible && (template.isPhotoLed || photo != nil)
   }
 
   /// The portrait as the circle shows it. Everything that draws the photo — the

@@ -9,7 +9,7 @@ ResumeStudio is a native SwiftUI app for building polished, export-ready resumes
 - Structured editing for personal details, profile, competencies, experience, education, and references
 - AI profile writing, competency suggestions, experience-bullet rewrites, job-match review, and reviewed résumé tailoring
 - AI-generated cover letters grounded in the existing résumé and pasted job description
-- Forty-five editable, searchable-PDF cover-letter templates, with coordinated designs drawn to match résumé templates
+- Fifty-five editable, searchable-PDF cover-letter templates, with coordinated designs drawn to match résumé templates
 - Multiple named résumé versions with duplication and non-destructive AI tailoring
 - Side-by-side version comparison with per-section restore into the active résumé
 - A Layout Studio with font, scale, line spacing, margins, paper size, custom headings, section order, and one- or two-page auto-fit
@@ -17,6 +17,8 @@ ResumeStudio is a native SwiftUI app for building polished, export-ready resumes
 - Account-free iCloud sync for résumé versions, applications, and cover letters
 - Application tracker with saved, applied, interview, offer, and rejected stages
 - Live ATS coaching with a readiness score, matched and missing job-language evidence, and links back to the exact résumé section
+- A Recruiter Scan that replays the eye-tracking research's 7.4-second first pass on the rendered page — an animated gaze spotlight adapted to the template's layout, a dwell-time heatmap, a first-impression score weighted by gaze share with low, medium, and high strictness, and what the recruiter left with versus looked for and never found — computed entirely on device
+- Trackable résumé links: send a hosted link instead of an attachment and know when it is opened — per-viewer opens, honest visible-tab reading time, and PDF-download flags, with refresh-driven alerts, a Today-queue follow-up nudge, and one-tap revoke; the viewer page states plainly that opens are visible to the sender, and viewers are never identified
 - A role-, seniority-, market-, portrait-, page-, plan-, and ATS-aware Template Finder with favorites, recent styles, and three-way comparison
 - Per-application packets that keep the selected résumé, cover letter, application email, follow-up email, notes, and interview checklist together
 - Outcome analytics for application-to-interview and interview-to-offer conversion, response time, source performance, and résumé-version performance
@@ -29,12 +31,12 @@ ResumeStudio is a native SwiftUI app for building polished, export-ready resumes
 - Projects, certifications, languages, awards, volunteering, publications, and custom sections
 - Automatic local draft persistence
 - Reordering and deletion of repeatable sections
-- One hundred and twenty-one distinct résumé PDF templates, twenty-three of them photo-led
+- One hundred and thirty-one distinct résumé PDF templates, thirty of them photo-led
 - Fifty-one structural templates that rearrange the page rather than the letterhead: sidebar columns for contact, skills and education; a dated timeline rail; dates hung in the margin; card-per-entry; two-column splits; a ticked skills matrix; and a skills-first order
 - Contact icons, skill pills and a skills matrix drawn as real text, so a two-column page stays searchable and selectable
 - An optional profile photo on every template: the photo-led styles build their header around it, the rest close the space up without one
 - An ATS check that warns when a template puts content in a second column, because some parsers read columns out of order
-- Nine accurately previewed accent colours: four free originals and five premium jewel tones
+- Fourteen accurately previewed accent colours: four free originals and ten premium Signature and Atelier tones
 - Calendar deadline/interview export, Mail handoff, App Shortcuts, a Career Momentum widget, and explicit-action Safari application autofill backed by the private app group
 - Data-driven, automatically paginated PDF generation
 - Live PDFKit preview
@@ -53,6 +55,8 @@ ResumeStudio is a native SwiftUI app for building polished, export-ready resumes
 - `Services/ResumeStore.swift`: versioned local résumé-library persistence
 - `Services/ApplicationStore.swift`: local application-tracker persistence
 - `Services/ResumeAnalysisServices.swift`: on-device job-advert and ATS checks
+- `Services/RecruiterScanService.swift`: the recruiter first-pass simulation — fixation audit and template-aware gaze path
+- `Services/SmartLinkService.swift` and `Services/SmartLinkStore.swift`: hosted trackable-link publishing, activity polling, and view alerts
 - `Services/ProductivityServices.swift`: template recommendations, packet export, analytics, auto-fit, and market localization
 - `Services/PlatformIntegrationService.swift`: Calendar, Mail, widget, Shortcut, and Safari-profile bridges
 - `Services/ResumeDocumentInterchange.swift`: DOCX export and local document import
@@ -76,16 +80,16 @@ The client sends a redacted resume snapshot. Names, phone numbers, email address
 
 ## Plans and in-app purchases
 
-The résumé builder remains useful without payment: manual editing, ATS checks, application tracking, iCloud sync, privacy controls, and unwatermarked PDF, DOCX, and text export are free. AI-assisted import uses the included AI allowance.
+The résumé builder remains useful without payment: manual editing, ATS checks, application tracking, iCloud sync, privacy controls, unlimited on-device import previews, and unwatermarked PDF, DOCX, and text export are free. AI-assisted résumé import has a separate daily allowance and never spends monthly AI credits.
 
-- **Free**: three résumé versions, 32 résumé templates, 14 cover-letter templates, 10 introductory AI credits, then five credits per month.
-- **Go — R49.99/month**: all templates, unlimited versions, 35 AI credits per month, and one active hosted Review Room.
-- **Pro — R129.99/month**: everything in Go, 150 AI credits per month, and up to ten active hosted Review Rooms.
+- **Free**: three saved résumé versions, five AI-assisted imports per day, 34 résumé templates, 16 cover-letter templates, one active trackable résumé link, 10 introductory AI credits, then five credits per month.
+- **Go — R49.99/month**: all templates, unlimited versions, 20 AI-assisted imports per day, 35 AI credits per month, one active hosted Review Room, and five active trackable links.
+- **Pro — R129.99/month**: everything in Go, 30 AI-assisted imports per day, 150 AI credits per month, up to ten active hosted Review Rooms, and 25 active trackable links.
 - **Design Pack Forever — R299.99 once-off**: all current and future templates plus unlimited local versions. AI and hosted-service allowances remain on the user's active Free, Go, or Pro plan.
 
 Verified members can share a referral link. A new member who claims it during their first 30 days receives 10 bonus AI credits, while the inviter receives 5. Rewards are enforced by Firebase, limited to three successful referrals per UTC day and 20 in a rolling 90-day window, and exclude duplicate and self-referrals.
 
-AI actions use weighted credits: focused writing and Career Coach responses cost one; job analysis, cover letters, voice feedback and career-toolkit drafts cost three; full import, tailoring, interview packs, and evidence-preserving translation cost five. The Firebase backend verifies StoreKit's signed transaction JWS and performs the credit reservation in Firestore before calling the model. Failed upstream requests are refunded automatically.
+AI actions use weighted credits: résumé import uses its separate daily allowance; focused writing and Career Coach responses cost one; job analysis, cover letters, voice feedback and career-toolkit drafts cost three; tailoring, interview packs, and evidence-preserving translation cost five. The Firebase backend verifies StoreKit's signed transaction JWS and performs the relevant daily-import or credit reservation in Firestore before calling the model. Failed upstream requests are refunded automatically.
 
 The local Xcode catalog is `ResumeStudio/Configuration.storekit` and is selected by the shared Run scheme. The production products must use these exact identifiers:
 
@@ -121,10 +125,12 @@ For local purchase testing, run the shared scheme and use Xcode's **Debug > Stor
    OPENAI_API_KEY=your_key_here
    ```
 
-3. Start the emulator from the repository root:
+3. Start the emulators from the repository root (Firestore and Storage are
+   required by the Review Room and trackable-link routes; they run on ports
+   8480 and 9399):
 
    ```sh
-   firebase emulators:start --only functions
+   firebase emulators:start
    ```
 
 4. In the Xcode scheme, add this launch environment variable:
@@ -133,7 +139,16 @@ For local purchase testing, run the shared scheme and use Xcode's **Debug > Stor
    AI_SERVICE_BASE_URL=http://127.0.0.1:5001/resumestudio-4addf/europe-west1/api
    ```
 
-The emulator intentionally bypasses App Check. Production never does.
+The emulator intentionally bypasses App Check. Production never does. When the
+`AI_SERVICE_BASE_URL` override is present the trackable-link client also skips
+minting an App Check token, so simulators whose debug token is not registered
+in the Firebase console can still exercise the link routes locally. To point a
+booted simulator at the emulator without editing the scheme:
+
+```sh
+SIMCTL_CHILD_AI_SERVICE_BASE_URL="http://127.0.0.1:5001/resumestudio-4addf/europe-west1/api" \
+  xcrun simctl launch <device> com.halalisanimbanjwa.ResumeStudio
+```
 
 ### Deploy the AI proxy
 
