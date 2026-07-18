@@ -48,13 +48,15 @@ extension ResumeAIAction {
     case .evaluateInterviewAnswer: "Interview answer feedback"
     case .careerToolkit: "Career toolkit draft"
     case .translateResume: "Translated résumé"
+    case .outcomeLearning: "Outcome learning draft"
     }
   }
 
   var systemImage: String {
     switch self {
     case .importResume: "doc.badge.arrow.up"
-    case .improveBullet, .writeProfile, .suggestCompetencies, .tailorResume, .translateResume: "wand.and.stars"
+    case .improveBullet, .writeProfile, .suggestCompetencies, .tailorResume, .translateResume,
+         .outcomeLearning: "wand.and.stars"
     case .analyzeJob: "scope"
     case .writeCoverLetter: "envelope"
     case .interviewPrep, .interviewAssessment, .gradeInterviewAssessment,

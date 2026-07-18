@@ -22,6 +22,7 @@ ResumeStudio is a native SwiftUI app for building polished, export-ready resumes
 - A role-, seniority-, market-, portrait-, page-, plan-, and ATS-aware Template Finder with favorites, recent styles, and three-way comparison
 - Per-application packets that keep the selected résumé, cover letter, application email, follow-up email, notes, and interview checklist together
 - Outcome analytics for application-to-interview and interview-to-offer conversion, response time, source performance, and résumé-version performance
+- A private Outcome Learning Loop with one-minute stage debriefs, exact résumé/packet attribution, a ranked next recommendation, free on-device drafting, optional connected drafting for paid plans, and review-before-apply improvement versions
 - A complete interview workspace with a graphical calendar, upcoming and past interviews, outcomes, reflections, and local day-before reminders
 - AI interview plans and eight-question résumé-based quizzes, unlocked at 90% résumé completion
 - AI marking with saved totals, percentages, strengths, knowledge gaps, per-question feedback, focus plans, and attempt history

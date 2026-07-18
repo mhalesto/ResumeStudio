@@ -315,6 +315,7 @@ enum TodayActionPriority: Int, Comparable {
   case smartLink = 70
   case application = 80
   case dueFollowUp = 90
+  case outcomeReview = 92
   case imminentInterview = 95
   case expiringHostedWork = 100
 

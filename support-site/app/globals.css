@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+:root { --paper:#f4f0e8; --ink:#101722; --muted:#657080; --night:#07101d; --panel:#111b29; --line:#d9d3c8; --orange:#df5010; }
+* { box-sizing:border-box; }
+html { scroll-behavior:smooth; }
+body { margin:0; background:var(--paper); color:var(--ink); font-family:var(--font-geist-sans),system-ui,sans-serif; }
+a { color:inherit; }
+main { min-height:100vh; }
+.site-header { max-width:1120px; margin:auto; min-height:92px; padding:20px 28px; display:flex; align-items:center; justify-content:space-between; gap:24px; }
+.brand { display:flex; align-items:center; gap:12px; text-decoration:none; font-size:21px; font-weight:750; letter-spacing:-.04em; }
+.brand-mark { width:42px; height:42px; display:grid; place-items:center; border-radius:13px; background:var(--night); color:var(--orange); font-family:var(--font-geist-mono); font-size:14px; letter-spacing:.06em; }
+.accent { color:var(--orange); }
+nav { display:flex; gap:8px; }
+nav a { padding:10px 14px; text-decoration:none; color:#3d4755; border-radius:999px; }
+nav a:hover,nav a:focus-visible { background:#fff; outline:none; }
+.hero { max-width:1120px; margin:0 auto; min-height:560px; padding:92px 70px 70px; border-radius:38px; color:#f7f3ec; background:radial-gradient(circle at 82% 12%,#813116 0,transparent 25%),linear-gradient(145deg,#111d2c,var(--night) 64%); box-shadow:0 28px 80px #10172224; }
+.eyebrow { color:#ff7131; font:700 12px/1 var(--font-geist-mono); letter-spacing:.17em; }
+h1 { max-width:850px; margin:24px 0; font:500 clamp(48px,8vw,88px)/.98 Georgia,serif; letter-spacing:-.055em; }
+h1 em { color:#ff7131; font-weight:500; }
+.lede { max-width:620px; color:#b9c1cd; font-size:19px; line-height:1.65; }
+.hero-actions { display:flex; flex-wrap:wrap; gap:12px; margin-top:34px; }
+.button { display:inline-flex; min-height:48px; align-items:center; justify-content:center; padding:0 20px; border:1px solid #ffffff30; border-radius:999px; color:white; text-decoration:none; font-weight:700; }
+.button.primary { border-color:var(--orange); background:var(--orange); }
+.card-grid { max-width:1120px; margin:28px auto 80px; display:grid; grid-template-columns:repeat(3,1fr); gap:18px; }
+.feature-card { min-height:240px; padding:28px; border:1px solid var(--line); border-radius:26px; background:#fffaf3; text-decoration:none; transition:transform .2s,border-color .2s; }
+.feature-card:hover { transform:translateY(-4px); border-color:var(--orange); }
+.feature-card span { color:var(--orange); font:700 12px var(--font-geist-mono); }
+.feature-card h2 { margin:50px 0 10px; font:500 27px Georgia,serif; }
+.feature-card p { color:var(--muted); line-height:1.55; }
+.document { max-width:920px; margin:0 auto 80px; padding:56px 64px 72px; background:#fffaf3; border:1px solid var(--line); border-radius:34px; }
+.document h1 { margin:0 0 24px; font-size:clamp(44px,7vw,72px); color:var(--ink); }
+.document .updated { color:var(--muted); margin-bottom:40px; }
+.document section { padding:28px 0; border-top:1px solid var(--line); }
+.document h2 { font:500 29px Georgia,serif; margin:0 0 14px; }
+.document h3 { margin:24px 0 8px; }
+.document p,.document li { color:#46515f; line-height:1.7; }
+.document li+li { margin-top:8px; }
+.callout { padding:20px 22px; border-left:4px solid var(--orange); background:#f7eee4; border-radius:0 16px 16px 0; }
+.support-options { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.support-option { padding:20px; background:white; border:1px solid var(--line); border-radius:18px; }
+.support-option strong { display:block; margin-bottom:6px; }
+footer { max-width:1120px; margin:0 auto; padding:28px; border-top:1px solid var(--line); color:var(--muted); display:flex; justify-content:space-between; gap:20px; font-size:13px; }
+@media(max-width:760px){.site-header{padding:16px 18px}.hero{margin:0 12px;min-height:520px;padding:64px 28px;border-radius:28px}.card-grid{grid-template-columns:1fr;margin:18px 12px 60px}.document{margin:0 12px 60px;padding:40px 24px;border-radius:26px}.support-options{grid-template-columns:1fr}footer{margin:0 12px;flex-direction:column}nav a{padding:9px}.brand{font-size:18px}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.feature-card{transition:none}}

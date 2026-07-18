@@ -1856,6 +1856,110 @@ final class ResumeStudioTests: XCTestCase {
     XCTAssertEqual(summary.bySource.first { $0.name == "jobs.example.com" }?.count, 2)
   }
 
+  func testOutcomeReviewPersistsExactResumeAndReplacesTheSameStageReview() throws {
+    let fileURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("outcome-store-\(UUID().uuidString).json")
+    defer { try? FileManager.default.removeItem(at: fileURL) }
+    let resumeID = UUID()
+    let application = JobApplication(
+      company: "Evergreen Labs", role: "People Lead", jobDescription: "",
+      sourceURL: "https://jobs.example/outcome", status: .rejected, notes: "",
+      baseResumeID: resumeID, tailoredResumeID: nil, matchAnalysis: nil,
+      interviewPlan: nil
+    )
+    let store = ApplicationStore(fileURL: fileURL)
+    store.add(application)
+    store.saveOutcomeReview(ApplicationOutcomeReview(
+      stage: .rejected,
+      reason: .evidenceTooWeak,
+      feedbackSource: .recruiter,
+      feedback: "Show clearer results.",
+      whatWorked: "Role alignment",
+      nextChange: "Strengthen one achievement",
+      followUpAt: nil,
+      resumeID: resumeID,
+      packetID: nil
+    ), for: application.id)
+
+    let first = try XCTUnwrap(ApplicationStore(fileURL: fileURL).applications.first)
+    XCTAssertEqual(first.outcomeReviewList.count, 1)
+    XCTAssertEqual(first.currentOutcomeReview?.resumeID, resumeID)
+    XCTAssertEqual(first.currentOutcomeReview?.feedback, "Show clearer results.")
+    XCTAssertFalse(first.needsCurrentOutcomeReview)
+
+    store.saveOutcomeReview(ApplicationOutcomeReview(
+      stage: .rejected,
+      reason: .skillsGap,
+      feedbackSource: .interviewer,
+      feedback: "A specific skill was missing.",
+      whatWorked: "",
+      nextChange: "Surface supported skills",
+      followUpAt: nil,
+      resumeID: resumeID,
+      packetID: nil
+    ), for: application.id)
+    let replaced = try XCTUnwrap(ApplicationStore(fileURL: fileURL).applications.first)
+    XCTAssertEqual(replaced.outcomeReviewList.count, 1)
+    XCTAssertEqual(replaced.currentOutcomeReview?.reason, .skillsGap)
+  }
+
+  func testOutcomeLearningPrioritizesMissingDebriefThenRecordedEvidenceSignal() throws {
+    let resumeID = UUID()
+    var application = JobApplication(
+      company: "Example", role: "Operations Lead", jobDescription: "", sourceURL: "",
+      status: .rejected, notes: "", baseResumeID: resumeID, tailoredResumeID: nil,
+      matchAnalysis: nil, interviewPlan: nil
+    )
+    var summary = OutcomeLearningService.summarize(
+      applications: [application],
+      resumes: [ResumeDraft(id: resumeID, title: "Operations", document: .example)]
+    )
+    XCTAssertEqual(summary.recommendation.focus, .collectOutcome)
+    XCTAssertEqual(summary.pendingApplicationIDs, [application.id])
+
+    application.outcomeReviews = [ApplicationOutcomeReview(
+      stage: .rejected,
+      reason: .evidenceTooWeak,
+      feedbackSource: .recruiter,
+      feedback: "",
+      whatWorked: "",
+      nextChange: "",
+      followUpAt: nil,
+      resumeID: resumeID,
+      packetID: nil
+    )]
+    summary = OutcomeLearningService.summarize(
+      applications: [application],
+      resumes: [ResumeDraft(id: resumeID, title: "Operations", document: .example)]
+    )
+    XCTAssertEqual(summary.recommendation.focus, .experienceEvidence)
+    XCTAssertEqual(summary.recommendation.resumeID, resumeID)
+    XCTAssertEqual(summary.reviewedCount, 1)
+    XCTAssertTrue(summary.recommendation.detail.localizedCaseInsensitiveContains("evidence"))
+  }
+
+  func testOutcomeLearningQualityGateRejectsInventedNumbers() throws {
+    let document = ResumeDocument.example
+    let entry = try XCTUnwrap(document.experience.first)
+    let original = try XCTUnwrap(entry.highlights.first)
+    let result = try OnDeviceAIQualityGate.outcomeLearningDraft(
+      AIOutcomeLearningDraft(
+        title: "Strengthen evidence",
+        rationale: "Make an existing result easier to scan.",
+        proposedProfile: "",
+        proposedCompetencies: [],
+        experienceEntryID: entry.id.uuidString,
+        originalBullet: original,
+        proposedBullet: "Improved this result by 99% while preserving every responsibility.",
+        coachingSteps: ["Add a metric only when it can be verified."],
+        claimsRequiringConfirmation: []
+      ),
+      for: document
+    )
+    XCTAssertFalse(result.hasExperienceChange)
+    XCTAssertEqual(result.coachingSteps, ["Add a metric only when it can be verified."])
+  }
+
   func testLocalizationAndTranslationPreserveIdentityAndEvidenceStructure() throws {
     var localized = ResumeDocument.example
     ResumeMarketLocalizationService.apply(

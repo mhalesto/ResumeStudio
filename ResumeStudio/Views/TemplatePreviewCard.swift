@@ -476,7 +476,7 @@ struct TemplatePreviewCard: View {
       VStack(alignment: .leading, spacing: 7) {
         Rectangle().fill(accent.color).frame(height: 4)
         HStack(spacing: 7) {
-          Text("</>").font(.system(size: 10, weight: .bold, design: .monospaced))
+          Text(verbatim: "</>").font(.system(size: 10, weight: .bold, design: .monospaced))
             .foregroundStyle(accent.color)
           Capsule().fill(Color.black.opacity(0.75)).frame(width: 82, height: 7)
         }
@@ -500,7 +500,7 @@ struct TemplatePreviewCard: View {
       .padding(.top, 5)
     case .academic:
       VStack(spacing: 7) {
-        Text("CURRICULUM VITAE")
+        Text(verbatim: "CURRICULUM VITAE")
           .font(.system(size: 6, weight: .semibold, design: .serif))
           .foregroundStyle(accent.color)
         Capsule().fill(Color.black.opacity(0.78)).frame(width: 100, height: 8)
@@ -542,7 +542,7 @@ struct TemplatePreviewCard: View {
       HStack(alignment: .top, spacing: 10) {
         Rectangle().fill(accent.color).frame(width: 5)
         VStack(alignment: .leading, spacing: 8) {
-          Text("EDITORIAL PROFILE")
+          Text(verbatim: "EDITORIAL PROFILE")
             .font(.system(size: 5, weight: .bold, design: .serif))
             .foregroundStyle(accent.color)
           Capsule().fill(Color.black.opacity(0.80)).frame(width: 104, height: 9)
@@ -597,7 +597,7 @@ struct TemplatePreviewCard: View {
         HStack(spacing: 9) {
           Circle().fill(accent.color).frame(width: 38, height: 38)
             .overlay {
-              Text("RS")
+              Text(verbatim: "RS")
                 .font(.system(size: 10, weight: .black, design: .rounded))
                 .foregroundStyle(.white)
             }
@@ -612,7 +612,7 @@ struct TemplatePreviewCard: View {
       .padding(.top, 4)
     case .marquee:
       VStack(alignment: .leading, spacing: 7) {
-        Text("RESUME")
+        Text(verbatim: "RESUME")
           .font(.system(size: 24, weight: .black, design: .rounded))
           .foregroundStyle(Color.black.opacity(0.82))
           .minimumScaleFactor(0.7)
@@ -640,7 +640,7 @@ struct TemplatePreviewCard: View {
     case .ivy:
       VStack(spacing: 8) {
         Rectangle().fill(Color.black.opacity(0.78)).frame(height: 1.5)
-        Text("CURRICULUM VITAE")
+        Text(verbatim: "CURRICULUM VITAE")
           .font(.system(size: 7, weight: .bold, design: .serif))
           .tracking(1.2)
         Capsule().fill(Color.black.opacity(0.75)).frame(width: 96, height: 8)
@@ -826,7 +826,7 @@ struct TemplatePreviewCard: View {
       )
     case .aurelia:
       VStack(spacing: 8) {
-        Text("AURELIA")
+        Text(verbatim: "AURELIA")
           .font(.system(size: 12, weight: .semibold, design: .serif))
           .tracking(4)
           .foregroundStyle(Color.black.opacity(0.8))
@@ -869,7 +869,7 @@ struct TemplatePreviewCard: View {
             .fill(accent.color)
             .frame(width: 32, height: 32)
             .overlay {
-              Text("RS")
+              Text(verbatim: "RS")
                 .font(.system(size: 9, weight: .bold, design: .serif))
                 .foregroundStyle(.white)
             }

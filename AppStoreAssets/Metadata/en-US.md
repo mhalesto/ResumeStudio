@@ -40,6 +40,7 @@ PREPARE FOR INTERVIEWS
 MANAGE YOUR JOB SEARCH
 
 - Track saved, applied, interview, offer and rejected applications.
+- Turn interviews, offers and rejections into a private debrief and one evidence-based next improvement.
 - Keep career evidence, offers and application details organised.
 - Invite trusted reviewers through hosted Review Rooms on eligible plans.
 - Use the focused Career Coach for guidance grounded in your saved career information.

@@ -265,7 +265,7 @@ struct CoverLetterTemplateCard: View {
       }
     case .marquee:
       ZStack(alignment: .topLeading) {
-        Text("Aa")
+        Text(verbatim: "Aa")
           .font(.system(size: 35, weight: .black, design: .rounded))
           .foregroundStyle(Color.black.opacity(0.08))
           .padding(.leading, 13)

@@ -16,6 +16,7 @@ enum ResumeAIAction: String, Codable {
   case evaluateInterviewAnswer
   case careerToolkit
   case translateResume
+  case outcomeLearning
 }
 
 struct AIResumeImportPayload: Codable {
@@ -132,6 +133,41 @@ struct AIResumeSnapshot: Codable, Equatable {
     education = document.education.map(AIEducationSnapshot.init)
     additionalSections = document.additionalSections.compactMap(AIAdditionalSectionSnapshot.init)
   }
+}
+
+struct AIOutcomeLearningSignal: Codable, Equatable {
+  var stage: String
+  var reason: String
+  var feedbackSource: String
+  var feedback: String
+  var whatWorked: String
+  var nextChange: String
+}
+
+struct AIOutcomeLearningPayload: Codable, Equatable {
+  var resume: AIResumeSnapshot
+  var focus: String
+  var recommendation: String
+  var signals: [AIOutcomeLearningSignal]
+}
+
+struct AIOutcomeLearningDraft: Codable, Equatable {
+  var title: String
+  var rationale: String
+  var proposedProfile: String
+  var proposedCompetencies: [String]
+  var experienceEntryID: String
+  var originalBullet: String
+  var proposedBullet: String
+  var coachingSteps: [String]
+  var claimsRequiringConfirmation: [String]
+
+  var hasProfileChange: Bool { !proposedProfile.isBlank }
+  var hasCompetencyChanges: Bool { !proposedCompetencies.isEmpty }
+  var hasExperienceChange: Bool {
+    !experienceEntryID.isBlank && !originalBullet.isBlank && !proposedBullet.isBlank
+  }
+  var hasResumeChanges: Bool { hasProfileChange || hasCompetencyChanges || hasExperienceChange }
 }
 
 struct AIAdditionalSectionSnapshot: Codable, Equatable {

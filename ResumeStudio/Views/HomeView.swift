@@ -406,6 +406,29 @@ struct HomeView: View {
         }
       ))
     }
+    let dueOutcomeFollowUps: [(
+      application: JobApplication, review: ApplicationOutcomeReview, followUpAt: Date
+    )] = applicationStore.applications.flatMap { application in
+      application.outcomeReviewList.compactMap { review in
+        guard let followUpAt = review.followUpAt, followUpAt <= Date() else { return nil }
+        return (application: application, review: review, followUpAt: followUpAt)
+      }
+    }
+    if let due = dueOutcomeFollowUps.sorted(by: { $0.followUpAt < $1.followUpAt }).first {
+      actions.append(TodayAction(
+        id: "outcome-follow-up-\(due.review.id)",
+        title: "Follow up on \(due.application.role.nilIfBlank ?? "an application")",
+        detail: "You scheduled this while reviewing the \(due.review.stage.title.lowercased()) outcome.",
+        systemImage: "arrowshape.turn.up.right.circle.fill",
+        route: .applicationPacket(due.application.id),
+        priority: .dueFollowUp,
+        onComplete: {
+          var completed = due.review
+          completed.followUpAt = nil
+          applicationStore.saveOutcomeReview(completed, for: due.application.id)
+        }
+      ))
+    }
     let tomorrow = Calendar.current.date(byAdding: .day, value: 2, to: Date()) ?? Date()
     if let interview = applicationStore.upcomingInterviews.first(where: { $0.scheduledAt <= tomorrow }) {
       actions.append(TodayAction(
@@ -413,6 +436,20 @@ struct HomeView: View {
         detail: "Your \(interview.format.title.lowercased()) interview is \(interview.scheduledAt.formatted(.relative(presentation: .named))).",
         systemImage: "person.2.wave.2.fill", route: .interviewPrep(interview.applicationID),
         priority: .imminentInterview))
+    }
+    if let application = applicationStore.applications
+      .filter(\.needsCurrentOutcomeReview)
+      .sorted(by: { $0.updatedAt > $1.updatedAt })
+      .first
+    {
+      actions.append(TodayAction(
+        id: "outcome-review-\(application.id)",
+        title: "Learn from \(application.role.nilIfBlank ?? "an application outcome")",
+        detail: "Add a one-minute private debrief, then ResumeStudio will recommend one next improvement.",
+        systemImage: "arrow.trianglehead.2.clockwise.rotate.90",
+        route: .applicationDetail(application.id),
+        priority: .outcomeReview
+      ))
     }
     if let application = applicationStore.applications.first(where: {
       $0.status == .applied && Date().timeIntervalSince($0.updatedAt) >= 6 * 86_400

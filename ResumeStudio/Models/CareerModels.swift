@@ -38,6 +38,9 @@ struct JobApplication: Identifiable, Codable, Equatable {
   var deadline: Date? = nil
   var activities: [ApplicationActivity]? = nil
   var packet: ApplicationPacket? = nil
+  /// Short, user-authored debriefs for meaningful pipeline stages. Optional so
+  /// existing local and iCloud archives continue to decode without migration.
+  var outcomeReviews: [ApplicationOutcomeReview]? = nil
   var createdAt = Date()
   var updatedAt = Date()
 }

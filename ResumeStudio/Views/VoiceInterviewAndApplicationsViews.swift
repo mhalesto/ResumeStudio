@@ -329,6 +329,7 @@ struct ApplicationCommandCenterView: View {
   @EnvironmentObject private var careerStore: CareerIntelligenceStore
   @EnvironmentObject private var resumeStore: ResumeStore
   @State private var selectedStatus: JobApplicationStatus?
+  @State private var outcomeReviewRequest: OutcomeReviewRequest?
 
   private var applications: [JobApplication] {
     let values: [JobApplication]
@@ -397,6 +398,9 @@ struct ApplicationCommandCenterView: View {
         NavigationLink(value: HomeRoute.jobCapture) { Image(systemName: "plus") }
       }
     }
+    .sheet(item: $outcomeReviewRequest) { request in
+      OutcomeReviewSheet(applicationID: request.applicationID)
+    }
   }
 
   private var pipelineHero: some View {
@@ -448,6 +452,11 @@ struct ApplicationCommandCenterView: View {
     .dropDestination(for: String.self) { values, _ in
       guard let status, let raw = values.first, let id = UUID(uuidString: raw) else { return false }
       withAnimation(.snappy) { applicationStore.move(id, to: status) }
+      if let application = applicationStore.applications.first(where: { $0.id == id }),
+        application.needsCurrentOutcomeReview
+      {
+        outcomeReviewRequest = OutcomeReviewRequest(applicationID: id)
+      }
       return true
     } isTargeted: { targeted in
       if targeted, let status { selectedStatus = status }

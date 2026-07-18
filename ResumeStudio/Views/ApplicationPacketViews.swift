@@ -246,14 +246,45 @@ private struct PacketShareFiles: Identifiable {
 struct ApplicationAnalyticsView: View {
   @EnvironmentObject private var applicationStore: ApplicationStore
   @EnvironmentObject private var resumeStore: ResumeStore
+  @State private var outcomeReviewRequest: OutcomeReviewRequest?
+  @State private var improvementRecommendation: OutcomeLearningRecommendation?
 
   private var summary: ApplicationAnalyticsSummary {
     ApplicationAnalyticsService.summarize(applicationStore.applications)
   }
 
+  private var learning: OutcomeLearningSummary {
+    OutcomeLearningService.summarize(
+      applications: applicationStore.applications,
+      resumes: resumeStore.resumes
+    )
+  }
+
+  private struct RecentOutcome: Identifiable {
+    let application: JobApplication
+    let review: ApplicationOutcomeReview
+    var id: UUID { review.id }
+  }
+
+  private var recentOutcomes: [RecentOutcome] {
+    applicationStore.applications.flatMap { application in
+      application.outcomeReviewList.map { RecentOutcome(application: application, review: $0) }
+    }
+    .sorted { $0.review.updatedAt > $1.review.updatedAt }
+  }
+
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 20) {
+        OutcomeRecommendationCard(summary: learning, accent: resumeStore.document.accent.color) {
+          recommendationAction
+        }
+
+        HStack(spacing: 10) {
+          metric("\(learning.reviewedCount)", "Outcomes reviewed", resumeStore.document.accent.color)
+          metric("\(learning.pendingApplicationIDs.count)", "Waiting for review", .orange)
+        }
+
         HStack(spacing: 10) {
           metric("\(summary.applicationToInterviewRate)%", "Application → interview", .orange)
           metric("\(summary.interviewToOfferRate)%", "Interview → offer", .green)
@@ -299,6 +330,34 @@ struct ApplicationAnalyticsView: View {
           }
         }
 
+        if !recentOutcomes.isEmpty {
+          chartCard("Recent learning") {
+            ForEach(recentOutcomes.prefix(6)) { outcome in
+              Button {
+                outcomeReviewRequest = OutcomeReviewRequest(applicationID: outcome.application.id)
+              } label: {
+                HStack(alignment: .top, spacing: 12) {
+                  Image(systemName: outcome.review.reason.systemImage)
+                    .foregroundStyle(outcome.review.reason.isPositiveSignal ? .green : resumeStore.document.accent.color)
+                    .frame(width: 24)
+                  VStack(alignment: .leading, spacing: 4) {
+                    Text(outcome.application.role.nilIfBlank ?? "Application")
+                      .font(.subheadline.bold()).foregroundStyle(Theme.ink)
+                    Text(outcome.review.reason.title)
+                      .font(.caption).foregroundStyle(Theme.inkSoft)
+                    Text(outcome.review.updatedAt, style: .relative)
+                      .font(.caption2).foregroundStyle(Theme.mutedInk)
+                  }
+                  Spacer()
+                  Image(systemName: "chevron.right").foregroundStyle(Theme.mutedInk)
+                }
+              }
+              .buttonStyle(.plain)
+              if outcome.id != recentOutcomes.prefix(6).last?.id { Divider() }
+            }
+          }
+        }
+
         Text("These are private, local correlations—not promises that a template caused an outcome.")
           .font(.caption).foregroundStyle(Theme.mutedInk)
       }
@@ -307,6 +366,56 @@ struct ApplicationAnalyticsView: View {
     .background(Theme.paper)
     .navigationTitle("Outcome Analytics")
     .navigationBarTitleDisplayMode(.inline)
+    .sheet(item: $outcomeReviewRequest) { request in
+      OutcomeReviewSheet(applicationID: request.applicationID)
+    }
+    .sheet(item: $improvementRecommendation) { recommendation in
+      OutcomeImprovementReviewView(recommendation: recommendation)
+    }
+  }
+
+  @ViewBuilder private var recommendationAction: some View {
+    let recommendation = learning.recommendation
+    if recommendation.focus == .collectOutcome, let applicationID = recommendation.applicationID {
+      Button {
+        outcomeReviewRequest = OutcomeReviewRequest(applicationID: applicationID)
+      } label: {
+        recommendationButton(recommendation.actionTitle)
+      }
+      .buttonStyle(.plain)
+    } else if recommendation.focus.supportsDrafting {
+      Button {
+        improvementRecommendation = recommendation
+      } label: {
+        recommendationButton(recommendation.actionTitle)
+      }
+      .buttonStyle(.plain)
+    } else {
+      NavigationLink(value: destination(for: recommendation.focus)) {
+        recommendationButton(recommendation.actionTitle)
+      }
+      .buttonStyle(.plain)
+    }
+  }
+
+  private func recommendationButton(_ title: String) -> some View {
+    HStack {
+      Text(title)
+      Spacer()
+      Image(systemName: "arrow.right")
+    }
+    .font(.headline).foregroundStyle(.white)
+    .padding(.horizontal, 17).padding(.vertical, 14)
+    .background(resumeStore.document.accent.color, in: Capsule())
+  }
+
+  private func destination(for focus: OutcomeLearningFocus) -> HomeRoute {
+    switch focus {
+    case .preserveStrength: .resumeLibrary
+    case .targeting: .jobCapture
+    case .collectOutcome: .applications
+    case .professionalProfile, .experienceEvidence, .competencies: .aiChangeReview
+    }
   }
 
   private func metric(_ value: String, _ label: String, _ color: Color) -> some View {

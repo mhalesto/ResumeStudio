@@ -54,6 +54,30 @@ final class ApplicationStore: ObservableObject {
     save()
   }
 
+  func saveOutcomeReview(_ review: ApplicationOutcomeReview, for applicationID: UUID) {
+    guard let index = applications.firstIndex(where: { $0.id == applicationID }) else { return }
+    var reviews = applications[index].outcomeReviews ?? []
+    var updatedReview = review
+    updatedReview.updatedAt = Date()
+    if let existing = reviews.firstIndex(where: { $0.stage == review.stage }) {
+      updatedReview.id = reviews[existing].id
+      updatedReview.createdAt = reviews[existing].createdAt
+      reviews[existing] = updatedReview
+    } else {
+      reviews.insert(updatedReview, at: 0)
+      var activities = applications[index].activities ?? []
+      activities.append(ApplicationActivity(
+        kind: .note,
+        title: "Outcome reviewed",
+        detail: updatedReview.reason.title
+      ))
+      applications[index].activities = activities
+    }
+    applications[index].outcomeReviews = reviews
+    applications[index].updatedAt = Date()
+    save()
+  }
+
   @discardableResult
   func ensurePacket(
     for applicationID: UUID,

@@ -42,12 +42,14 @@ Acceptance:
 - [x] Add a resumable Application Pack workflow:
   capture job → choose résumé → match analysis → reviewed tailoring → cover letter/email → deadline → interview plan.
 - [x] Show the maximum AI-credit cost before starting and checkpoint every completed step.
+- [x] Close the application loop with private outcome debriefs, exact résumé-version attribution, local recommendations, and reviewable improvement versions.
 
 Acceptance:
 
 - Today always explains why an action is recommended and opens the exact destination.
 - Application Pack can be left and resumed without losing completed steps.
 - AI output is never silently applied to a résumé.
+- Outcome learning preserves the historical résumé used and creates a separate version for every accepted improvement.
 
 ## Phase 4 — iPad professional workspace
 

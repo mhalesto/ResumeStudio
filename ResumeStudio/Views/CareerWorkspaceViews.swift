@@ -438,6 +438,7 @@ struct ApplicationDetailView: View {
   let applicationID: UUID
   @State private var draft: JobApplication?
   @State private var originalStatus: JobApplicationStatus?
+  @State private var outcomeReviewRequest: OutcomeReviewRequest?
 
   var body: some View {
     Form {
@@ -446,11 +447,39 @@ struct ApplicationDetailView: View {
           TextField("Role", text: binding.role)
           TextField("Company", text: binding.company)
           TextField("Source URL", text: binding.sourceURL)
-          Picker("Status", selection: binding.status) {
+          Picker("Status", selection: Binding(
+            get: { binding.wrappedValue.status },
+            set: { updateStatus($0) }
+          )) {
             ForEach(JobApplicationStatus.allCases) { Text($0.title).tag($0) }
           }
         }
         Section("Notes") { TextEditor(text: binding.notes).frame(minHeight: 120) }
+        if binding.wrappedValue.canReviewCurrentOutcome {
+          Section {
+            Button {
+              outcomeReviewRequest = OutcomeReviewRequest(applicationID: applicationID)
+            } label: {
+              HStack(spacing: 12) {
+                Image(systemName: binding.wrappedValue.currentOutcomeReview == nil
+                  ? "checklist" : "checkmark.seal.fill")
+                  .foregroundStyle(.orange).frame(width: 28)
+                VStack(alignment: .leading, spacing: 3) {
+                  Text(binding.wrappedValue.currentOutcomeReview == nil
+                    ? "Review this outcome" : "Outcome reviewed")
+                    .font(.headline).foregroundStyle(Theme.ink)
+                  Text(binding.wrappedValue.currentOutcomeReview?.reason.title
+                    ?? "Capture what happened and improve the next application.")
+                    .font(.caption).foregroundStyle(Theme.mutedInk)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").foregroundStyle(Theme.mutedInk)
+              }
+            }
+            .buttonStyle(.plain)
+          } header: { Text("Learning loop") }
+            footer: { Text("The debrief stays private and remains tied to the exact résumé version used.") }
+        }
         if let deadline = binding.wrappedValue.deadline {
           Section("Deadline") {
             DatePicker("Closing date", selection: Binding(
@@ -507,6 +536,32 @@ struct ApplicationDetailView: View {
         draft.activities = activities
       }
       store.update(draft)
+    }
+    .sheet(item: $outcomeReviewRequest, onDismiss: reload) { request in
+      OutcomeReviewSheet(applicationID: request.applicationID)
+    }
+  }
+
+  private func reload() {
+    draft = store.applications.first { $0.id == applicationID }
+    originalStatus = draft?.status
+  }
+
+  private func updateStatus(_ status: JobApplicationStatus) {
+    guard var current = draft, current.status != status else { return }
+    let previous = current.status
+    current.status = status
+    var activities = current.activities ?? []
+    activities.append(ApplicationActivity(
+      kind: status == .applied ? .applied : status == .offer ? .offer : .statusChanged,
+      title: "Moved to \(status.title)", detail: "Previously \(previous.title)"
+    ))
+    current.activities = activities
+    draft = current
+    originalStatus = status
+    store.update(current)
+    if current.canReviewCurrentOutcome && current.currentOutcomeReview == nil {
+      outcomeReviewRequest = OutcomeReviewRequest(applicationID: applicationID)
     }
   }
 }
