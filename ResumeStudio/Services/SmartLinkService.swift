@@ -18,7 +18,12 @@ struct SmartLinkService {
     var pageImages: [Data]
   }
 
-  func publish(_ request: PublishRequest) async throws -> URL {
+  struct PublishedLink {
+    var url: URL
+    var remoteID: String?
+  }
+
+  func publish(_ request: PublishRequest) async throws -> PublishedLink {
     let payload = PublishLinkPayload(
       clientID: MonetizationIdentity.installationID,
       entitlement: await PurchaseManager.shared.entitlementProof(),
@@ -35,25 +40,73 @@ struct SmartLinkService {
     guard let url = URL(string: response.hostedURL) else {
       throw ResumeAIError.invalidResponse
     }
-    return url
+    return PublishedLink(url: url, remoteID: response.managementID)
   }
 
-  func activity(token: String) async throws -> SmartLinkActivity {
-    try await request(
-      path: "v1/links/\(token)/activity", method: "GET", body: Optional<String>.none
+  func activity(for link: SmartLink) async throws -> SmartLinkActivity {
+    let path: String
+    if link.canShare {
+      path = "v1/links/\(link.token)/activity"
+    } else if let remoteID = link.remoteID {
+      path = "v1/links/managed/\(remoteID)/activity"
+    } else {
+      throw SmartLinkError.message("This recovered link can no longer be managed.")
+    }
+    return try await request(
+      path: path, method: "GET", body: Optional<String>.none
     )
   }
 
-  func revoke(token: String) async throws {
+  func revoke(_ link: SmartLink) async throws {
+    let path = try lifecyclePath(for: link)
     let _: LinkLifecycleResponse = try await request(
-      path: "v1/links/\(token)", method: "PATCH", body: Optional<String>.none
+      path: path, method: "PATCH", body: Optional<String>.none
     )
   }
 
-  func delete(token: String) async throws {
+  func delete(_ link: SmartLink) async throws {
+    let path = try lifecyclePath(for: link)
     let _: LinkLifecycleResponse = try await request(
-      path: "v1/links/\(token)", method: "DELETE", body: Optional<String>.none
+      path: path, method: "DELETE", body: Optional<String>.none
     )
+  }
+
+  /// Restores hosted links owned by the signed-in account after an app
+  /// container reinstall or a missing local index.
+  func recoverHostedLinks() async throws -> [SmartLink] {
+    let payload = RecoverLinksPayload(
+      clientID: MonetizationIdentity.installationID,
+      entitlement: await PurchaseManager.shared.entitlementProof()
+    )
+    let response: RecoverLinksResponse = try await request(
+      path: "v1/links/recover", method: "POST", body: payload
+    )
+    return response.links.map { recovered in
+      let token = recovered.token ?? ""
+      let url = token.isBlank
+        ? URL(string: "resumestudio://recovered-link/\(recovered.managementID)")!
+        : (Self.viewerURL(token: token) ?? URL(string: "resumestudio://recovered-link/\(recovered.managementID)")!)
+      return SmartLink(
+        remoteID: recovered.managementID,
+        token: token,
+        url: url,
+        title: recovered.title,
+        company: recovered.company,
+        createdAt: recovered.createdAt,
+        expiresAt: recovered.expiresAt,
+        status: SmartLinkStatus(rawValue: recovered.status) ?? .open,
+        views: recovered.views,
+        activityByDay: recovered.dailyActivity,
+        lastRefreshedAt: Date(),
+        acknowledgedOpens: 0
+      )
+    }
+  }
+
+  private func lifecyclePath(for link: SmartLink) throws -> String {
+    if link.canShare { return "v1/links/\(link.token)" }
+    if let remoteID = link.remoteID { return "v1/links/managed/\(remoteID)" }
+    throw SmartLinkError.message("This recovered link can no longer be managed.")
   }
 
   /// The public viewer URL for a token, built from the app's own configured
@@ -147,6 +200,8 @@ struct SmartLinkActivity: Decodable {
   var status: String
   var expiresAt: Date?
   var views: [SmartLinkView]
+  /// Optional while older deployed backends are still rolling forward.
+  var dailyActivity: [SmartLinkDailyActivity]?
 }
 
 private struct PublishLinkPayload: Encodable {
@@ -160,7 +215,26 @@ private struct PublishLinkPayload: Encodable {
   var pageImagesBase64: [String]
 }
 
-private struct PublishLinkResponse: Decodable { var hostedURL: String }
+private struct PublishLinkResponse: Decodable {
+  var hostedURL: String
+  var managementID: String?
+}
+private struct RecoverLinksPayload: Encodable {
+  var clientID: String
+  var entitlement: MonetizationEntitlementProof
+}
+private struct RecoverLinksResponse: Decodable { var links: [RecoveredLinkPayload] }
+private struct RecoveredLinkPayload: Decodable {
+  var managementID: String
+  var token: String?
+  var title: String
+  var company: String
+  var createdAt: Date
+  var expiresAt: Date
+  var status: String
+  var views: [SmartLinkView]
+  var dailyActivity: [SmartLinkDailyActivity]
+}
 private struct LinkLifecycleResponse: Decodable {
   var status: String?
   var deleted: Bool?

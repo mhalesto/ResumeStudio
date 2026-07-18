@@ -28,6 +28,7 @@ struct AIHistoryView: View {
               VStack(alignment: .leading, spacing: 7) {
                 Label(artifact.action.title, systemImage: artifact.action.systemImage)
                   .font(.headline)
+                if let provider = artifact.provider { AIRouteBadge(provider: provider) }
                 if let preview = artifact.previewLines.first {
                   Text(preview).font(.subheadline).foregroundStyle(Theme.mutedInk)
                     .lineLimit(2)
@@ -98,6 +99,9 @@ private struct AIArtifactDetailView: View {
     List {
       Section {
         LabeledContent("Generated", value: artifact.createdAt.formatted(date: .abbreviated, time: .shortened))
+        if let provider = artifact.provider {
+          LabeledContent("AI route") { AIRouteBadge(provider: provider) }
+        }
       }
       if !artifact.previewLines.isEmpty {
         Section("Result") {
@@ -117,5 +121,16 @@ private struct AIArtifactDetailView: View {
     .background(Theme.paper)
     .navigationTitle(artifact.action.title)
     .navigationBarTitleDisplayMode(.inline)
+  }
+}
+
+struct AIRouteBadge: View {
+  let provider: ProductInsightSource
+
+  var body: some View {
+    Label(provider.title, systemImage: provider.systemImage)
+      .font(.caption2.weight(.semibold))
+      .foregroundStyle(provider == .onDeviceAI ? Color.green : Color.blue)
+      .accessibilityIdentifier("ai.route.\(provider.rawValue)")
   }
 }

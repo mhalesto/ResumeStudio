@@ -13,8 +13,22 @@
 			</array>
 		</dict>
 	</array>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>AIServiceBaseURL</key>
 	<string>https://europe-west1-resumestudio-4addf.cloudfunctions.net/api</string>
+	<key>MarketingURL</key>
+	<string>https://www.halalisani.com/projects/resumestudio-ios/</string>
+	<key>PrivacyPolicyURL</key>
+	<string>https://www.halalisani.com/projects/resumestudio-ios/privacy/</string>
+	<key>SupportURL</key>
+	<string>https://www.halalisani.com/projects/resumestudio-ios/support/</string>
+	<key>DataCollectionURL</key>
+	<string>https://www.halalisani.com/projects/resumestudio-ios/data-collection/</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+	</array>
 	<!-- The app's only encryption is HTTPS through URLSession and StoreKit's
 	     signed transactions, both exempt. Declaring this here stops App Store
 	     Connect asking for export compliance on every upload. -->

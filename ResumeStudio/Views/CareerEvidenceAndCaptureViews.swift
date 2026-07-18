@@ -214,6 +214,7 @@ struct JobCaptureView: View {
   @State private var isWorking = false
   @State private var errorMessage: String?
   @State private var didCreate = false
+  @State private var provider: ProductInsightSource?
 
   private var duplicateApplication: JobApplication? {
     guard let captured else { return nil }
@@ -273,6 +274,7 @@ struct JobCaptureView: View {
         .disabled(content.trimmingCharacters(in: .whitespacesAndNewlines).count < 40 || isWorking)
 
         if captured != nil {
+          if let provider { AIRouteBadge(provider: provider) }
           JobCaptureReviewCard(result: Binding(
             get: { captured! },
             set: { captured = $0 }
@@ -299,6 +301,10 @@ struct JobCaptureView: View {
     .navigationTitle("Capture a Job")
     .navigationBarTitleDisplayMode(.inline)
     .task { await consumeSharedCaptureIfNeeded() }
+    .onReceive(NotificationCenter.default.publisher(for: .aiRequestDidComplete)) { note in
+      guard let raw = note.userInfo?["provider"] as? String else { return }
+      provider = ProductInsightSource(rawValue: raw)
+    }
     .sensoryFeedback(.success, trigger: didCreate)
   }
 
@@ -348,6 +354,7 @@ struct JobCaptureView: View {
       )]
     )
     applicationStore.add(application)
+    ProductInsights.record(.jobCaptured, once: true)
     didCreate = true
     NotificationCenter.default.post(name: .openHomeRoute, object: HomeRoute.applicationPacket(application.id))
   }

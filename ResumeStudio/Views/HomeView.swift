@@ -1,4 +1,5 @@
 import SwiftUI
+import TipKit
 
 /// Where the home screen can take you.
 enum HomeRoute: Hashable {
@@ -37,6 +38,8 @@ enum HomeRoute: Hashable {
   case privacyCenter
   case recruiterScan
   case smartLinks
+  case personalProfile
+  case campaign
 }
 
 struct HomeView: View {
@@ -46,9 +49,29 @@ struct HomeView: View {
   @EnvironmentObject private var careerStore: CareerIntelligenceStore
   @EnvironmentObject private var purchases: PurchaseManager
   @EnvironmentObject private var smartLinks: SmartLinkStore
+  @EnvironmentObject private var personalProfile: PersonalProfileStore
+  @Environment(\.dynamicTypeSize) private var dynamicTypeSize
   @State private var path: [HomeRoute] = []
   @State private var pendingStart: StartChoice?
   @State private var showWelcome = false
+  @State private var welcomeDestination: HomeRoute?
+  @State private var navigationRequestID: UUID?
+  @State private var isWelcomePresentationQueued = false
+  @State private var showAccentPicker = false
+  @State private var isExportingPDF = false
+  @State private var exportShare: HomeShareItem?
+  @State private var exportError: String?
+  /// Set by a hero library shortcut to scroll the page to the section it counts.
+  /// Each tap carries a fresh id so repeat taps still fire, which saves clearing
+  /// the state from inside its own change handler — a second write in the same
+  /// frame that SwiftUI complains about.
+  @State private var scrollRequest: ScrollRequest?
+  private static let coverLettersAnchor = "home.section.coverLetters"
+
+  private struct ScrollRequest: Equatable {
+    let id = UUID()
+    let anchor: String
+  }
   @AppStorage("hasSeenWelcome") private var hasSeenWelcome = false
   // Scales the serif display headline with the reader's text-size setting instead
   // of pinning it at 38pt.
@@ -68,24 +91,33 @@ struct HomeView: View {
 
   var body: some View {
     NavigationStack(path: $path) {
-      ScrollView {
-        VStack(alignment: .leading, spacing: 30) {
-          hero
-          today
-          quickStart
-          workspace
-          templates
-          coverLetters
-          recentlyEdited
-          privacyNote
+      ScrollViewReader { scroll in
+        ScrollView {
+          VStack(alignment: .leading, spacing: 30) {
+            hero
+            today
+            campaign
+            quickStart
+            workspace
+            templates
+            coverLetters.id(Self.coverLettersAnchor)
+            recentlyEdited
+            privacyNote
+          }
+          .padding(.horizontal, 20)
+          .padding(.top, 12)
+          .padding(.bottom, 40)
+          // The design is phone-shaped. On iPad, hold it to a readable column rather
+          // than stretching the hero and the progress bars across the whole display.
+          .frame(maxWidth: 680)
+          .frame(maxWidth: .infinity)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 12)
-        .padding(.bottom, 40)
-        // The design is phone-shaped. On iPad, hold it to a readable column rather
-        // than stretching the hero and the progress bars across the whole display.
-        .frame(maxWidth: 680)
-        .frame(maxWidth: .infinity)
+        .onChange(of: scrollRequest) { _, request in
+          guard let request else { return }
+          withAnimation(.easeInOut(duration: 0.45)) {
+            scroll.scrollTo(request.anchor, anchor: .top)
+          }
+        }
       }
       .background(Theme.paper)
       .task(id: ResumeThumbnailWarmKey(
@@ -176,32 +208,70 @@ struct HomeView: View {
           RecruiterScanView(document: store.document)
         case .smartLinks:
           SmartLinksView()
+        case .personalProfile:
+          PersonalProfileView()
+        case .campaign:
+          CareerCampaignView(
+            applicationsThisWeek: applicationsThisWeek,
+            networkingThisWeek: networkingThisWeek,
+            practiceThisWeek: practiceThisWeek
+          )
         }
       }
-      .sheet(isPresented: $showWelcome, onDismiss: { hasSeenWelcome = true }) {
+      .sheet(isPresented: $showWelcome, onDismiss: finishWelcome) {
         WelcomeSheet(
           accent: accent,
           templateCount: ResumeTemplate.allCases.count,
           onExample: {
+            welcomeDestination = .editor(nil)
             showWelcome = false
-            path = [.editor(nil)]
           },
           onBlank: {
             store.startBlankResume()
+            welcomeDestination = .editor(store.document.incompleteSections.first)
             showWelcome = false
-            path = [.editor(store.document.incompleteSections.first)]
           },
           onImport: {
+            welcomeDestination = .importResume
             showWelcome = false
-            path = [.importResume]
+          },
+          onTailor: {
+            welcomeDestination = .jobCapture
+            showWelcome = false
+          },
+          onOrganize: {
+            welcomeDestination = .applications
+            showWelcome = false
           }
         )
+      }
+      .sheet(isPresented: $showAccentPicker) {
+        AccentPickerSheet(
+          selection: $store.document.accent,
+          canUse: { purchases.canUse($0) },
+          onLocked: { purchases.requestPlans() }
+        )
+      }
+      .sheet(item: $exportShare) { item in
+        ShareSheet(activityItems: [item.url])
+      }
+      .alert(
+        "Couldn’t create the PDF",
+        isPresented: Binding(
+          get: { exportError != nil },
+          set: { if !$0 { exportError = nil } }
+        ),
+        presenting: exportError
+      ) { _ in
+        Button("OK", role: .cancel) {}
+      } message: { message in
+        Text(message)
       }
       .onAppear {
         // First launch only: point people at a starting move before they face
         // the full home screen. The flag is set when the sheet is dismissed, so
         // a launch where presentation is pre-empted doesn't burn the one chance.
-        if allowsWelcome && !hasSeenWelcome { showWelcome = true }
+        queueWelcomeIfNeeded()
       }
       .alert(item: $pendingStart) { choice in
         Alert(
@@ -215,7 +285,7 @@ struct HomeView: View {
               store.startBlankResume()
             }
             // A blank draft has nothing to show, so land on the first thing to fill in.
-            path.append(.editor(store.document.incompleteSections.first))
+            replacePath(afterPresentation: .editor(store.document.incompleteSections.first))
           },
           secondaryButton: .cancel()
         )
@@ -223,15 +293,80 @@ struct HomeView: View {
     }
     .onReceive(NotificationCenter.default.publisher(for: .openSharedJobCapture)) { _ in
       guard acceptsExternalRoutes else { return }
-      path = [.jobCapture]
+      handleExternalRoute(.jobCapture)
     }
     .onReceive(NotificationCenter.default.publisher(for: .openHomeRoute)) { notification in
       guard acceptsExternalRoutes else { return }
-      if let route = notification.object as? HomeRoute { path = [route] }
+      if let route = notification.object as? HomeRoute { handleExternalRoute(route) }
     }
   }
 
+  /// Present only after NavigationStack has completed its first layout pass.
+  /// The extra guard also prevents repeated onAppear callbacks from queuing
+  /// competing sheet presentations.
+  private func queueWelcomeIfNeeded() {
+    guard allowsWelcome, !hasSeenWelcome, !showWelcome, !isWelcomePresentationQueued else { return }
+    isWelcomePresentationQueued = true
+    Task { @MainActor in
+      await Task.yield()
+      isWelcomePresentationQueued = false
+      guard allowsWelcome, !hasSeenWelcome, !showWelcome else { return }
+      showWelcome = true
+    }
+  }
+
+  /// Coalesces route requests and moves the NavigationStack mutation to the
+  /// next render pass. This is used when a sheet, tab, notification, or alert
+  /// is also changing presentation state.
+  private func replacePath(afterPresentation route: HomeRoute) {
+    let requestID = UUID()
+    navigationRequestID = requestID
+    Task { @MainActor in
+      await Task.yield()
+      guard navigationRequestID == requestID else { return }
+      navigationRequestID = nil
+      path = [route]
+    }
+  }
+
+  private func handleExternalRoute(_ route: HomeRoute) {
+    // A deep link is already a deliberate starting choice. Suppress a queued
+    // first-launch sheet, or dismiss the visible one before changing the path.
+    hasSeenWelcome = true
+    isWelcomePresentationQueued = false
+    if showWelcome {
+      welcomeDestination = route
+      showWelcome = false
+    } else {
+      replacePath(afterPresentation: route)
+    }
+  }
+
+  private func finishWelcome() {
+    hasSeenWelcome = true
+    guard let destination = welcomeDestination else { return }
+    welcomeDestination = nil
+    replacePath(afterPresentation: destination)
+  }
+
   private var accent: Color { store.document.accent.color }
+
+  private var weekStart: Date {
+    Calendar.current.dateInterval(of: .weekOfYear, for: Date())?.start ?? .distantPast
+  }
+
+  private var campaignProgress: WeeklyCampaignProgress {
+    WeeklyCampaignService.progress(
+      applications: applicationStore.applications,
+      contacts: careerStore.contacts,
+      voiceAttempts: careerStore.voiceAttempts,
+      since: weekStart
+    )
+  }
+
+  private var applicationsThisWeek: Int { campaignProgress.applications }
+  private var networkingThisWeek: Int { campaignProgress.networking }
+  private var practiceThisWeek: Int { campaignProgress.practice }
 
   private struct TodayAction: Identifiable {
     let id: String
@@ -239,6 +374,8 @@ struct HomeView: View {
     let detail: String
     let systemImage: String
     let route: HomeRoute
+    let priority: TodayActionPriority
+    var onComplete: (() -> Void)? = nil
   }
 
   private var todayActions: [TodayAction] {
@@ -249,14 +386,33 @@ struct HomeView: View {
         id: "smart-link-\(read.id)", title: "\(who) read your résumé",
         detail: read.lastSeenAt.map { "Opened \($0.formatted(.relative(presentation: .named))). Follow up while you're on their mind." }
           ?? "Your trackable link has new opens.",
-        systemImage: "eye.fill", route: .smartLinks))
+        systemImage: "eye.fill", route: .smartLinks, priority: .smartLink))
+    }
+    if let contact = careerStore.contacts
+      .filter({ ($0.followUpAt ?? .distantFuture) <= Date() })
+      .sorted(by: { ($0.followUpAt ?? .distantFuture) < ($1.followUpAt ?? .distantFuture) })
+      .first
+    {
+      actions.append(TodayAction(
+        id: "contact-\(contact.id)",
+        title: "Follow up with \(contact.name.nilIfBlank ?? "a career contact")",
+        detail: "This relationship follow-up is due. Open Networking to draft a thoughtful message.",
+        systemImage: "person.crop.circle.badge.clock", route: .networking,
+        priority: .dueFollowUp,
+        onComplete: {
+          var updated = contact
+          updated.followUpAt = nil
+          careerStore.upsert(updated)
+        }
+      ))
     }
     let tomorrow = Calendar.current.date(byAdding: .day, value: 2, to: Date()) ?? Date()
     if let interview = applicationStore.upcomingInterviews.first(where: { $0.scheduledAt <= tomorrow }) {
       actions.append(TodayAction(
         id: "interview-\(interview.id)", title: "Prepare for \(interview.company)",
         detail: "Your \(interview.format.title.lowercased()) interview is \(interview.scheduledAt.formatted(.relative(presentation: .named))).",
-        systemImage: "person.2.wave.2.fill", route: .interviewPrep(interview.applicationID)))
+        systemImage: "person.2.wave.2.fill", route: .interviewPrep(interview.applicationID),
+        priority: .imminentInterview))
     }
     if let application = applicationStore.applications.first(where: {
       $0.status == .applied && Date().timeIntervalSince($0.updatedAt) >= 6 * 86_400
@@ -264,13 +420,14 @@ struct HomeView: View {
       actions.append(TodayAction(
         id: "follow-up-\(application.id)", title: "Follow up with \(application.company.nilIfBlank ?? "the employer")",
         detail: "This application has been waiting for about a week.", systemImage: "paperplane.circle.fill",
-        route: .applicationPacket(application.id)))
+        route: .applicationPacket(application.id), priority: .application))
     }
     if let application = applicationStore.applications.first(where: { $0.status == .saved && $0.matchAnalysis == nil }) {
       actions.append(TodayAction(
         id: "match-\(application.id)", title: "Finish \(application.role.nilIfBlank ?? "your application")",
         detail: "Analyse the match, tailor the résumé and prepare the application pack.",
-        systemImage: "wand.and.stars", route: .applicationPacket(application.id)))
+        systemImage: "wand.and.stars", route: .applicationPacket(application.id),
+        priority: .application))
     }
     let soon = Calendar.current.date(byAdding: .day, value: 2, to: Date()) ?? Date()
     if let review = careerStore.reviewRequests.first(where: {
@@ -279,28 +436,61 @@ struct HomeView: View {
       actions.append(TodayAction(
         id: "review-\(review.id)", title: "Close or refresh a Review Room",
         detail: "The link for \(review.reviewerName.nilIfBlank ?? "your reviewer") expires soon.",
-        systemImage: "person.2.badge.gearshape.fill", route: .reviewRoom))
+        systemImage: "person.2.badge.gearshape.fill", route: .reviewRoom,
+        priority: .expiringHostedWork))
     }
     let atsReport = ATSReadinessService.analyze(document: store.document, jobDescription: "")
     if atsReport.actionCount > 0 {
       actions.append(TodayAction(
         id: "ats-evidence", title: "Resolve missing ATS evidence",
         detail: "\(atsReport.actionCount) readiness item\(atsReport.actionCount == 1 ? " needs" : "s need") your attention.",
-        systemImage: "checkmark.shield", route: .atsChecker))
+        systemImage: "checkmark.shield", route: .atsChecker, priority: .resumeReadiness))
     }
     if !store.document.incompleteSections.isEmpty {
       actions.append(TodayAction(
         id: "resume-incomplete", title: "Complete your résumé",
         detail: "Add \(store.document.incompleteSections.count) missing section\(store.document.incompleteSections.count == 1 ? "" : "s") before applying.",
-        systemImage: "doc.badge.ellipsis", route: .editor(store.document.incompleteSections.first)))
+        systemImage: "doc.badge.ellipsis", route: .editor(store.document.incompleteSections.first),
+        priority: .resumeReadiness))
     }
+    if let campaignAction { actions.append(campaignAction) }
     if actions.isEmpty {
       actions.append(TodayAction(
         id: "capture", title: "Capture your next opportunity",
         detail: "Start one guided workflow from job advert to interview plan.",
-        systemImage: "scope", route: .jobCapture))
+        systemImage: "scope", route: .jobCapture, priority: .campaign))
     }
-    return Array(actions.prefix(3))
+    return Array(actions.sorted {
+      if $0.priority != $1.priority { return $0.priority > $1.priority }
+      return $0.id < $1.id
+    }.prefix(3))
+  }
+
+  private var campaignAction: TodayAction? {
+    let gaps: [(ratio: Double, action: TodayAction?)] = [
+      (
+        Double(max(0, weeklyApplicationGoal - applicationsThisWeek)) / Double(max(weeklyApplicationGoal, 1)),
+        applicationsThisWeek < weeklyApplicationGoal ? TodayAction(
+          id: "campaign-application", title: "Move your weekly campaign forward",
+          detail: "Capture or progress \(weeklyApplicationGoal - applicationsThisWeek) more opportunit\(weeklyApplicationGoal - applicationsThisWeek == 1 ? "y" : "ies") this week.",
+          systemImage: "scope", route: .jobCapture, priority: .campaign) : nil
+      ),
+      (
+        Double(max(0, weeklyNetworkingGoal - networkingThisWeek)) / Double(max(weeklyNetworkingGoal, 1)),
+        networkingThisWeek < weeklyNetworkingGoal ? TodayAction(
+          id: "campaign-networking", title: "Strengthen one career relationship",
+          detail: "You have \(weeklyNetworkingGoal - networkingThisWeek) networking touchpoint\(weeklyNetworkingGoal - networkingThisWeek == 1 ? "" : "s") left this week.",
+          systemImage: "person.2.wave.2", route: .networking, priority: .campaign) : nil
+      ),
+      (
+        Double(max(0, weeklyPracticeGoal - practiceThisWeek)) / Double(max(weeklyPracticeGoal, 1)),
+        practiceThisWeek < weeklyPracticeGoal ? TodayAction(
+          id: "campaign-practice", title: "Practise one interview answer",
+          detail: "A short voice attempt keeps interview preparation moving.",
+          systemImage: "waveform.and.mic", route: .voiceInterview, priority: .campaign) : nil
+      ),
+    ]
+    return gaps.filter { $0.action != nil }.max { $0.ratio < $1.ratio }?.action
   }
 
   private var today: some View {
@@ -315,23 +505,75 @@ struct HomeView: View {
           .font(.subheadline.bold()).foregroundStyle(accent)
       }
       ForEach(todayActions) { action in
-        Button { path.append(action.route) } label: {
-          HStack(spacing: 14) {
-            Image(systemName: action.systemImage)
-              .font(.title3).foregroundStyle(accent)
-              .frame(width: 46, height: 46)
-              .background(accent.opacity(0.11), in: RoundedRectangle(cornerRadius: 14))
-            VStack(alignment: .leading, spacing: 4) {
-              Text(action.title).font(.headline).foregroundStyle(Theme.ink)
-              Text(action.detail).font(.caption).foregroundStyle(Theme.mutedInk).multilineTextAlignment(.leading)
+        HStack(spacing: 0) {
+          Button { path.append(action.route) } label: {
+            HStack(spacing: 14) {
+              Image(systemName: action.systemImage)
+                .font(.title3).foregroundStyle(accent)
+                .frame(width: 46, height: 46)
+                .background(accent.opacity(0.11), in: RoundedRectangle(cornerRadius: 14))
+              VStack(alignment: .leading, spacing: 4) {
+                Text(action.title).font(.headline).foregroundStyle(Theme.ink)
+                Text(action.detail).font(.caption).foregroundStyle(Theme.mutedInk).multilineTextAlignment(.leading)
+              }
+              Spacer()
+              Image(systemName: "chevron.right").foregroundStyle(Theme.mutedInk)
             }
+            .padding(15)
+          }
+          .buttonStyle(.plain)
+          .accessibilityIdentifier("today.action.\(action.id)")
+          if let onComplete = action.onComplete {
+            Button(action: onComplete) {
+              Image(systemName: "checkmark.circle.fill")
+                .font(.title2).foregroundStyle(.green)
+                .padding(.trailing, 15)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Mark follow-up complete")
+            .accessibilityIdentifier("today.complete.\(action.id)")
+          }
+        }
+        .cardSurface(radius: 19)
+      }
+    }
+  }
+
+  @AppStorage("campaign.weeklyApplicationGoal") private var weeklyApplicationGoal = 4
+  @AppStorage("campaign.weeklyNetworkingGoal") private var weeklyNetworkingGoal = 3
+  @AppStorage("campaign.weeklyPracticeGoal") private var weeklyPracticeGoal = 1
+
+  private var campaign: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      Button { path.append(.campaign) } label: {
+        VStack(alignment: .leading, spacing: 14) {
+          HStack {
+            Label("WEEKLY CAMPAIGN", systemImage: "chart.line.uptrend.xyaxis")
+              .eyebrow().foregroundStyle(accent)
             Spacer()
             Image(systemName: "chevron.right").foregroundStyle(Theme.mutedInk)
           }
-          .padding(15).cardSurface(radius: 19)
+          campaignProgress("Opportunities", value: applicationsThisWeek, goal: weeklyApplicationGoal)
+          campaignProgress("Relationships", value: networkingThisWeek, goal: weeklyNetworkingGoal)
+          campaignProgress("Practice", value: practiceThisWeek, goal: weeklyPracticeGoal)
         }
-        .buttonStyle(.plain)
+        .padding(18).cardSurface(radius: 20)
       }
+      .buttonStyle(.plain)
+
+      TipView(CaptureJobTip()) { _ in path.append(.jobCapture) }
+        .tint(accent)
+    }
+  }
+
+  private func campaignProgress(_ title: String, value: Int, goal: Int) -> some View {
+    VStack(alignment: .leading, spacing: 6) {
+      HStack {
+        Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ink)
+        Spacer()
+        Text("\(min(value, goal))/\(goal)").font(.caption.bold()).foregroundStyle(Theme.mutedInk)
+      }
+      ProgressView(value: Double(min(value, goal)), total: Double(max(goal, 1))).tint(accent)
     }
   }
 
@@ -376,6 +618,12 @@ struct HomeView: View {
         Text(greeting)
           .eyebrow()
           .foregroundStyle(Theme.heroMutedInk)
+          .lineLimit(1)
+          .minimumScaleFactor(0.7)
+        Spacer(minLength: 12)
+        PDFExportWandButton(accent: accent, isWorking: isExportingPDF) {
+          exportResumePDF()
+        }
       }
 
       VStack(alignment: .leading, spacing: 12) {
@@ -395,14 +643,44 @@ struct HomeView: View {
       completionBar
       nextStep
 
-      HStack(spacing: 0) {
-        HeroStat(value: "\(ResumeTemplate.allCases.count)", label: "Templates")
-        statDivider
-        HeroStat(value: "\(ResumeAccent.allCases.count)", label: "Accents")
-        statDivider
-        HeroStat(value: "PDF", label: "Export")
+      VStack(alignment: .leading, spacing: 10) {
+        HStack(alignment: .firstTextBaseline) {
+          Text("Design library")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(Theme.heroInk)
+          Spacer()
+          Text("Tap to explore")
+            .font(.caption2)
+            .foregroundStyle(accent.opacity(0.88))
+        }
+
+        LazyVGrid(columns: heroLibraryColumns, spacing: 8) {
+          HeroLibraryShortcut(
+            value: "\(ResumeTemplate.allCases.count)",
+            label: "Templates",
+            systemImage: "square.grid.2x2.fill",
+            accent: accent
+          ) { path.append(.gallery) }
+            .accessibilityIdentifier("home.stat.templates")
+
+          HeroLibraryShortcut(
+            value: "\(ResumeAccent.allCases.count)",
+            label: "Accents",
+            systemImage: "paintpalette.fill",
+            accent: accent
+          ) { showAccentPicker = true }
+            .accessibilityIdentifier("home.stat.accents")
+
+          HeroLibraryShortcut(
+            value: "\(CoverLetterTemplate.allCases.count)",
+            label: "Cover letters",
+            systemImage: "envelope.open.fill",
+            accent: accent
+          ) { scrollRequest = ScrollRequest(anchor: Self.coverLettersAnchor) }
+            .accessibilityIdentifier("home.stat.coverLetters")
+        }
       }
-      .padding(.top, 2)
+      .padding(.top, 4)
     }
     .padding(24)
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -434,6 +712,30 @@ struct HomeView: View {
         .strokeBorder(Color.white.opacity(0.06), lineWidth: 1)
     }
     .shadow(color: Theme.ink.opacity(0.16), radius: 24, y: 14)
+  }
+
+  /// One tap from the hero to a shareable PDF. The preview screen still offers
+  /// the ATS variant, DOCX and print; this is the straight line to the file.
+  private func exportResumePDF() {
+    guard !isExportingPDF else { return }
+    isExportingPDF = true
+    Task { @MainActor in
+      defer { isExportingPDF = false }
+      do {
+        // One frame for the button's working state to land before UIKit takes
+        // the main actor for the PDF context.
+        await Task.yield()
+        let data = try ResumePDFRenderer.render(document: store.document)
+        let url = FileManager.default.temporaryDirectory
+          .appendingPathComponent(store.document.suggestedFilename)
+          .appendingPathExtension("pdf")
+        try data.write(to: url, options: .atomic)
+        exportShare = HomeShareItem(url: url)
+        ProductInsights.record(.documentExported, once: true)
+      } catch {
+        exportError = error.localizedDescription
+      }
+    }
   }
 
   private var continueButton: some View {
@@ -490,6 +792,11 @@ struct HomeView: View {
     .accessibilityLabel("Résumé \(store.document.completionPercentage) percent complete")
   }
 
+  private var heroLibraryColumns: [GridItem] {
+    let count = dynamicTypeSize.isAccessibilitySize ? 1 : 3
+    return Array(repeating: GridItem(.flexible(), spacing: 8), count: count)
+  }
+
   /// The hero always offers the next move: the first gap to fill while the draft
   /// is incomplete, and the PDF once it isn't.
   @ViewBuilder
@@ -527,12 +834,6 @@ struct HomeView: View {
       .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
     .buttonStyle(.plain)
-  }
-
-  private var statDivider: some View {
-    Rectangle()
-      .fill(.white.opacity(0.10))
-      .frame(width: 1, height: 34)
   }
 
   // MARK: - Start creating
@@ -653,6 +954,51 @@ struct HomeView: View {
           // Import card's hit frame (its artwork fills past its bounds) bleeds
           // up over this row and steals the tap — routing "Trackable links"
           // into the importer.
+          .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+
+        Button {
+          path.append(.personalProfile)
+        } label: {
+          HStack(spacing: 16) {
+            ZStack {
+              RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(accent.opacity(0.14))
+              Image(systemName: "globe")
+                .font(.system(size: 21, weight: .semibold))
+                .foregroundStyle(accent)
+            }
+            .frame(width: 54, height: 54)
+
+            VStack(alignment: .leading, spacing: 4) {
+              Text("CV page")
+                .font(.headline)
+                .foregroundStyle(Theme.ink)
+              Text(personalProfile.profile.map { "Live · /p/\($0.handle)" }
+                ?? "A permanent link for your résumé")
+                .font(.caption)
+                .foregroundStyle(Theme.mutedInk)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            }
+
+            Spacer()
+
+            if personalProfile.profile != nil {
+              Text("Live")
+                .font(.caption2.bold())
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(accent, in: Capsule())
+                .foregroundStyle(.white)
+            }
+            Image(systemName: "chevron.right")
+              .font(.footnote.weight(.semibold))
+              .foregroundStyle(Theme.mutedInk)
+          }
+          .padding(14)
+          .cardSurface(radius: Theme.tileRadius)
           .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -990,11 +1336,16 @@ private enum StartChoice: String, Identifiable {
 private struct WelcomeSheet: View {
   @Environment(\.dismiss) private var dismiss
   @ScaledMetric(relativeTo: .title) private var titleSize: CGFloat = 28
+  @State private var isBuildingResume = false
+  @AppStorage("career.onboardingGoal") private var selectedGoal = ""
+  @AppStorage(ProductInsights.enabledKey) private var productInsightsEnabled = false
   let accent: Color
   let templateCount: Int
   let onExample: () -> Void
   let onBlank: () -> Void
   let onImport: () -> Void
+  let onTailor: () -> Void
+  let onOrganize: () -> Void
 
   var body: some View {
     // Scrolls if it ever has to (large text sizes), and the close button gets a
@@ -1029,7 +1380,9 @@ private struct WelcomeSheet: View {
             .font(Theme.display(titleSize))
             .foregroundStyle(Theme.ink)
             .fixedSize(horizontal: false, vertical: true)
-          Text("\(templateCount) templates, private on-device drafts, and a polished PDF in minutes. How would you like to start?")
+          Text(isBuildingResume
+            ? "Choose how to start your résumé. You can change templates at any time."
+            : "What would you most like ResumeStudio to help you accomplish first?")
             .font(.subheadline)
             .foregroundStyle(Theme.mutedInk)
             .fixedSize(horizontal: false, vertical: true)
@@ -1037,32 +1390,53 @@ private struct WelcomeSheet: View {
         .padding(.top, 8)
 
         VStack(spacing: 12) {
-          WelcomeChoice(
-            title: "Start with an example",
-            subtitle: "A complete sample you can edit into your own",
-            systemImage: "sparkles",
-            accent: accent,
-            prominent: true,
-            action: onExample
-          )
-          WelcomeChoice(
-            title: "Start blank",
-            subtitle: "Build every section yourself",
-            systemImage: "plus",
-            accent: accent,
-            prominent: false,
-            action: onBlank
-          )
-          WelcomeChoice(
-            title: "Import a résumé",
-            subtitle: "Bring in a PDF, DOCX or LinkedIn export",
-            systemImage: "square.and.arrow.down",
-            accent: accent,
-            prominent: false,
-            action: onImport
-          )
+          if isBuildingResume {
+            WelcomeChoice(
+              title: "Start with an example",
+              subtitle: "A complete sample you can edit into your own",
+              systemImage: "sparkles", accent: accent, prominent: true, action: onExample)
+            WelcomeChoice(
+              title: "Start blank", subtitle: "Build every section yourself",
+              systemImage: "plus", accent: accent, prominent: false, action: onBlank)
+            WelcomeChoice(
+              title: "Import a résumé", subtitle: "Bring in a PDF, DOCX or LinkedIn export",
+              systemImage: "square.and.arrow.down", accent: accent, prominent: false, action: onImport)
+            Button("Back to goals", systemImage: "chevron.left") { isBuildingResume = false }
+              .font(.subheadline.weight(.semibold))
+          } else {
+            WelcomeChoice(
+              title: "Build or refresh my résumé",
+              subtitle: "Start with one of \(templateCount) templates, a blank page, or an import",
+              systemImage: "doc.text.fill", accent: accent, prominent: true
+            ) { selectGoal("build"); isBuildingResume = true }
+            WelcomeChoice(
+              title: "Tailor for a specific role",
+              subtitle: "Capture a job advert and turn it into a focused application workflow",
+              systemImage: "scope", accent: accent, prominent: false
+            ) { selectGoal("tailor"); onTailor() }
+            WelcomeChoice(
+              title: "Organise my job search",
+              subtitle: "Track applications, interviews, follow-ups and next actions",
+              systemImage: "rectangle.3.group.fill", accent: accent, prominent: false
+            ) { selectGoal("organize"); onOrganize() }
+          }
         }
         .padding(.top, 26)
+
+        if !isBuildingResume {
+          Toggle(isOn: $productInsightsEnabled) {
+            VStack(alignment: .leading, spacing: 3) {
+              Text("Share anonymous product insights").font(.subheadline.weight(.semibold))
+              Text("Optional aggregate counters only—never résumé text, identity, job details, links or a device ID.")
+                .font(.caption).foregroundStyle(Theme.mutedInk)
+            }
+          }
+          .accessibilityIdentifier("onboarding.productInsights")
+          .padding(.top, 18)
+          .onChange(of: productInsightsEnabled) { _, enabled in
+            if enabled { ProductInsights.flushPending() }
+          }
+        }
       }
       .padding(.horizontal, 24)
       .padding(.top, 16)
@@ -1070,6 +1444,70 @@ private struct WelcomeSheet: View {
     }
     .presentationDetents([.fraction(0.7), .large])
     .presentationDragIndicator(.hidden)
+  }
+
+  private func selectGoal(_ goal: String) {
+    selectedGoal = goal
+    ProductInsights.record(.onboardingGoalSelected, once: true, goal: goal)
+  }
+}
+
+private struct CaptureJobTip: Tip {
+  var title: Text { Text("Save a job advert from Safari") }
+  var message: Text? { Text("Share a job page to ResumeStudio to begin tailoring without copying it by hand.") }
+  var image: Image? { Image(systemName: "safari.fill") }
+}
+
+private struct CareerCampaignView: View {
+  @EnvironmentObject private var resumeStore: ResumeStore
+  @AppStorage("campaign.targetRole") private var targetRole = ""
+  @AppStorage("campaign.weeklyApplicationGoal") private var applicationGoal = 4
+  @AppStorage("campaign.weeklyNetworkingGoal") private var networkingGoal = 3
+  @AppStorage("campaign.weeklyPracticeGoal") private var practiceGoal = 1
+  let applicationsThisWeek: Int
+  let networkingThisWeek: Int
+  let practiceThisWeek: Int
+
+  var body: some View {
+    List {
+      Section {
+        PremiumFeatureHero(
+          eyebrow: "FOCUSED MOMENTUM",
+          title: "Run a calmer weekly job-search campaign.",
+          subtitle: "Choose a direction and let Today turn it into small, useful next actions.",
+          icon: "chart.line.uptrend.xyaxis", accent: resumeStore.document.accent.color)
+        .listRowInsets(EdgeInsets()).listRowBackground(Color.clear)
+      }
+      Section("Direction") {
+        TextField("Target role or career direction", text: $targetRole)
+          .textInputAutocapitalization(.words)
+      }
+      goalSection("Opportunities", systemImage: "scope", value: applicationsThisWeek, goal: $applicationGoal, range: 1...12)
+      goalSection("Relationships", systemImage: "person.2.wave.2", value: networkingThisWeek, goal: $networkingGoal, range: 1...10)
+      goalSection("Interview practice", systemImage: "waveform.and.mic", value: practiceThisWeek, goal: $practiceGoal, range: 1...7)
+      Section {
+        Text("Counts reset each calendar week. ResumeStudio keeps these goals and activity records on your device unless you enable iCloud sync.")
+          .font(.caption).foregroundStyle(Theme.mutedInk)
+      }
+    }
+    .scrollContentBackground(.hidden).background(Theme.paper)
+    .navigationTitle("Weekly campaign")
+  }
+
+  private func goalSection(
+    _ title: String, systemImage: String, value: Int, goal: Binding<Int>, range: ClosedRange<Int>
+  ) -> some View {
+    Section {
+      HStack {
+        Label(title, systemImage: systemImage)
+        Spacer()
+        Text("\(min(value, goal.wrappedValue))/\(goal.wrappedValue)").font(.subheadline.bold())
+      }
+      ProgressView(value: Double(min(value, goal.wrappedValue)), total: Double(max(goal.wrappedValue, 1)))
+        .tint(resumeStore.document.accent.color)
+      Stepper("Weekly goal: \(goal.wrappedValue)", value: goal, in: range)
+        .accessibilityIdentifier("campaign.goal.\(title.lowercased())")
+    }
   }
 }
 
@@ -1115,6 +1553,7 @@ private struct WelcomeChoice: View {
       )
     }
     .buttonStyle(.plain)
+    .accessibilityIdentifier("onboarding.choice.\(title.lowercased().replacingOccurrences(of: " ", with: "-"))")
   }
 }
 
@@ -1211,28 +1650,290 @@ private struct ResumeThumbnailWarmKey: Hashable {
   let isPhotoVisible: Bool
 }
 
-private struct HeroStat: View {
+private struct HeroLibraryShortcut: View {
   let value: String
   let label: String
-  // Scales with Dynamic Type; the shrink guards keep three across from clipping
-  // at the largest accessibility sizes.
-  @ScaledMetric(relativeTo: .title3) private var valueSize: CGFloat = 20
+  let systemImage: String
+  let accent: Color
+  let action: () -> Void
+  @ScaledMetric(relativeTo: .title2) private var valueSize: CGFloat = 24
 
   var body: some View {
-    VStack(spacing: 3) {
-      Text(value)
-        .font(.system(size: valueSize, weight: .bold))
-        .foregroundStyle(Theme.heroInk)
-        .lineLimit(1)
-        .minimumScaleFactor(0.6)
-      Text(label)
-        .eyebrow()
-        .foregroundStyle(Theme.heroMutedInk)
-        .lineLimit(1)
-        .minimumScaleFactor(0.6)
+    Button(action: action) {
+      VStack(alignment: .leading, spacing: 0) {
+        HStack {
+          Image(systemName: systemImage)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(accent)
+            .frame(width: 30, height: 30)
+            .background(accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+
+          Spacer(minLength: 4)
+
+          Image(systemName: "chevron.right")
+            .font(.system(size: 9, weight: .bold))
+            .foregroundStyle(Theme.heroMutedInk.opacity(0.75))
+        }
+
+        Spacer(minLength: 10)
+
+        Text(value)
+          .font(.system(size: valueSize, weight: .bold))
+          .foregroundStyle(Theme.heroInk)
+          .monospacedDigit()
+          .lineLimit(1)
+          .minimumScaleFactor(0.6)
+
+        Text(label)
+          .font(.caption.weight(.medium))
+          .foregroundStyle(accent)
+          .lineLimit(2)
+          .minimumScaleFactor(0.75)
+      }
+      .padding(11)
+      .frame(maxWidth: .infinity, minHeight: 108, alignment: .leading)
+      .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+      .overlay {
+        RoundedRectangle(cornerRadius: 16, style: .continuous)
+          .strokeBorder(.white.opacity(0.075), lineWidth: 1)
+      }
+      .contentShape(Rectangle())
     }
-    .frame(maxWidth: .infinity)
+    .buttonStyle(HeroLibraryButtonStyle())
+    .accessibilityLabel("\(label), \(value) available")
+    .accessibilityAddTraits(.isButton)
   }
+}
+
+private struct HeroLibraryButtonStyle: ButtonStyle {
+  func makeBody(configuration: Configuration) -> some View {
+    configuration.label
+      .scaleEffect(configuration.isPressed ? 0.97 : 1)
+      .opacity(configuration.isPressed ? 0.82 : 1)
+      .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+  }
+}
+
+/// The PDF export, kept separate from the design library in the hero's top-right
+/// corner where it reads as the card's one action. The sparkles orbit behind the
+/// pill and twinkle out of step with each other; Reduce Motion gets the same
+/// scatter, held still.
+private struct PDFExportWandButton: View {
+  let accent: Color
+  let isWorking: Bool
+  let action: () -> Void
+
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @State private var isOrbiting = false
+  @State private var isGlowing = false
+
+  private struct Sparkle: Identifiable {
+    let id = UUID()
+    /// Where the sparkle sits on the orbit, in degrees.
+    let angle: Double
+    let size: CGFloat
+    let delay: Double
+    let restingOpacity: Double
+  }
+
+  // Deliberately uneven spacing — evenly spaced sparkles read as a loading
+  // spinner rather than as scattered light.
+  private let sparkles: [Sparkle] = [
+    Sparkle(angle: -74, size: 9, delay: 0, restingOpacity: 0.9),
+    Sparkle(angle: -18, size: 6, delay: 0.55, restingOpacity: 0.65),
+    Sparkle(angle: 62, size: 7.5, delay: 1.1, restingOpacity: 0.8),
+    Sparkle(angle: 128, size: 5.5, delay: 0.35, restingOpacity: 0.6),
+    Sparkle(angle: 206, size: 8, delay: 1.45, restingOpacity: 0.85),
+  ]
+
+  private let orbitRadius: CGFloat = 33
+
+  var body: some View {
+    Button(action: action) {
+      pill
+        // A background so the orbit spills past the pill without widening the
+        // greeting row, and so a sparkle crossing the label passes behind it.
+        .background { sparkleField }
+        .contentShape(Capsule())
+    }
+    .buttonStyle(.plain)
+    .disabled(isWorking)
+    .accessibilityLabel("Export PDF")
+    .accessibilityHint("Renders your résumé and opens the share sheet")
+    .accessibilityIdentifier("home.export.pdf")
+    .onAppear {
+      guard !reduceMotion else { return }
+      withAnimation(.linear(duration: 16).repeatForever(autoreverses: false)) {
+        isOrbiting = true
+      }
+      withAnimation(.easeInOut(duration: 2.1).repeatForever(autoreverses: true)) {
+        isGlowing = true
+      }
+    }
+  }
+
+  private var pill: some View {
+    HStack(spacing: 6) {
+      Group {
+        if isWorking {
+          ProgressView().controlSize(.mini).tint(accent)
+        } else {
+          Image(systemName: "wand.and.stars")
+            .font(.system(size: 14, weight: .semibold))
+        }
+      }
+      .frame(width: 16)
+      Text("PDF")
+        .font(.caption.weight(.bold))
+        .tracking(0.6)
+    }
+    .foregroundStyle(accent)
+    .padding(.horizontal, 13)
+    .padding(.vertical, 8)
+    .background {
+      Capsule()
+        .fill(accent.opacity(0.16))
+        .overlay { Capsule().strokeBorder(accent.opacity(0.45), lineWidth: 1) }
+    }
+    .shadow(color: accent.opacity(isGlowing ? 0.5 : 0.18), radius: isGlowing ? 13 : 6)
+  }
+
+  private var sparkleField: some View {
+    ZStack {
+      ForEach(sparkles) { sparkle in
+        SparkleMote(
+          sparkle: sparkle,
+          accent: accent,
+          radius: orbitRadius,
+          isAnimated: !reduceMotion
+        )
+      }
+    }
+    .rotationEffect(.degrees(isOrbiting ? 360 : 0))
+    .allowsHitTesting(false)
+  }
+
+  private struct SparkleMote: View {
+    let sparkle: Sparkle
+    let accent: Color
+    let radius: CGFloat
+    let isAnimated: Bool
+
+    @State private var isLit = false
+
+    var body: some View {
+      Image(systemName: "sparkle")
+        .font(.system(size: sparkle.size, weight: .semibold))
+        .foregroundStyle(accent)
+        .opacity(isLit ? sparkle.restingOpacity : 0.12)
+        .scaleEffect(isLit ? 1 : 0.55)
+        .offset(
+          x: radius * cos(sparkle.angle * .pi / 180),
+          y: radius * sin(sparkle.angle * .pi / 180)
+        )
+        // Cancels the field's rotation so each sparkle stays upright as it travels.
+        .rotationEffect(.degrees(-sparkle.angle))
+        .onAppear {
+          guard isAnimated else {
+            isLit = true
+            return
+          }
+          withAnimation(
+            .easeInOut(duration: 1.4)
+              .repeatForever(autoreverses: true)
+              .delay(sparkle.delay)
+          ) {
+            isLit = true
+          }
+        }
+    }
+  }
+}
+
+/// The full accent palette, opened from the hero's Accents shortcut. The quick-pick
+/// row under the templates only shows swatches; this names them and marks what
+/// the plan covers.
+private struct AccentPickerSheet: View {
+  @Binding var selection: ResumeAccent
+  let canUse: (ResumeAccent) -> Bool
+  let onLocked: () -> Void
+
+  @Environment(\.dismiss) private var dismiss
+
+  private let columns = [GridItem(.adaptive(minimum: 104), spacing: 14)]
+
+  var body: some View {
+    NavigationStack {
+      ScrollView {
+        LazyVGrid(columns: columns, spacing: 14) {
+          ForEach(ResumeAccent.allCases) { option in
+            swatch(option)
+          }
+        }
+        .padding(20)
+      }
+      .background(Theme.paper)
+      .navigationTitle("Accent colour")
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbarBackground(Theme.paper, for: .navigationBar)
+      .toolbar {
+        ToolbarItem(placement: .confirmationAction) {
+          Button("Done") { dismiss() }.tint(selection.color)
+        }
+      }
+    }
+  }
+
+  private func swatch(_ option: ResumeAccent) -> some View {
+    let unlocked = canUse(option)
+    let selected = selection == option
+    return Button {
+      guard unlocked else {
+        onLocked()
+        return
+      }
+      withAnimation(.spring(response: 0.3, dampingFraction: 0.72)) { selection = option }
+    } label: {
+      VStack(spacing: 10) {
+        RoundedRectangle(cornerRadius: 14, style: .continuous)
+          .fill(option.color)
+          .frame(height: 58)
+          .overlay {
+            if !unlocked {
+              Image(systemName: "lock.fill")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(.white)
+                .shadow(color: .black.opacity(0.35), radius: 1)
+            } else if selected {
+              Image(systemName: "checkmark")
+                .font(.system(size: 17, weight: .bold))
+                .foregroundStyle(.white)
+                .shadow(color: .black.opacity(0.35), radius: 1)
+            }
+          }
+        Text(option.title)
+          .font(.footnote.weight(.medium))
+          .foregroundStyle(Theme.ink)
+          .lineLimit(1)
+          .minimumScaleFactor(0.7)
+      }
+      .padding(10)
+      .background(Theme.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+      .overlay {
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
+          .strokeBorder(selected ? option.color : Color.clear, lineWidth: 2)
+      }
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel("\(option.title) accent\(option.isPremium ? ", premium" : "")")
+    .accessibilityAddTraits(selected ? .isSelected : [])
+  }
+}
+
+/// A rendered PDF on its way to the share sheet from the home screen.
+private struct HomeShareItem: Identifiable {
+  let url: URL
+  var id: URL { url }
 }
 
 private struct SectionHeading: View {

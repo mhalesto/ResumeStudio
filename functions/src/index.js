@@ -5,7 +5,7 @@ import { Environment, SignedDataVerifier } from "@apple/app-store-server-library
 import { getApps, initializeApp } from "firebase-admin/app";
 import { getAppCheck } from "firebase-admin/app-check";
 import { getAuth } from "firebase-admin/auth";
-import { FieldValue, getFirestore } from "firebase-admin/firestore";
+import { FieldValue, Timestamp, getFirestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { onRequest } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
@@ -18,6 +18,12 @@ import {
   openDecision,
   viewerHint,
 } from "./link-policy.js";
+import {
+  profileIsBranded,
+  sanitizeProfileLinks,
+  validHandle,
+} from "./profile-policy.js";
+import { productInsightPayload } from "./metrics-policy.js";
 
 if (getApps().length === 0) initializeApp();
 
@@ -490,8 +496,34 @@ export const api = onRequest(
     if (reviewRouteHandled) return;
     const linkRouteHandled = await handleLinkRoutes(request, response);
     if (linkRouteHandled) return;
+    const profileRouteHandled = await handleProfileRoutes(request, response);
+    if (profileRouteHandled) return;
     const referralRouteHandled = await handleReferralRoutes(request, response);
     if (referralRouteHandled) return;
+
+    if (request.method === "POST" && request.path.endsWith("/v1/metrics")) {
+      if (!(await verifyAppCheck(request, response))) return;
+      const insight = productInsightPayload(request.body);
+      if (!insight) {
+        response.status(400).json({ error: "Invalid product insight." });
+        return;
+      }
+      const today = dayKey(new Date());
+      const counters = {
+        day: today,
+        total: FieldValue.increment(1),
+        [`event_${insight.event}`]: FieldValue.increment(1),
+        [`plan_${insight.plan}`]: FieldValue.increment(1),
+        [`source_${insight.source}`]: FieldValue.increment(1),
+        [`version_${insight.version}`]: FieldValue.increment(1),
+        updatedAt: FieldValue.serverTimestamp(),
+        expiresAt: Timestamp.fromDate(new Date(Date.now() + 90 * 24 * 60 * 60 * 1000)),
+      };
+      if (insight.goal) counters[`goal_${insight.goal}`] = FieldValue.increment(1);
+      await db.collection("productMetrics").doc(today).set(counters, { merge: true });
+      response.status(202).json({ accepted: true });
+      return;
+    }
 
     if (request.method === "GET") {
       response.status(200).json({ status: "ok", model: MODEL });
@@ -793,6 +825,8 @@ async function deleteAccountData(uid) {
 
   for (const room of ownedRooms.docs) await deleteReviewRoom(room.ref, room.data());
   for (const link of ownedLinks.docs) await deleteResumeLink(link.ref, link.data());
+  // Releases the vanity handle and removes the hosted PDF and page images.
+  await deleteProfile(uid);
   await deleteCollection(db.collection("users").doc(uid).collection("aiArtifacts"));
 
   const directRefs = [
@@ -1378,13 +1412,18 @@ async function deleteReviewAssets(id, filePath) {
 
 async function handleLinkRoutes(request, response) {
   const createMatch = request.path === "/v1/links";
+  const recoverMatch = request.path === "/v1/links/recover";
   const activityMatch = request.path.match(/^\/v1\/links\/([A-Za-z0-9-]{24,80})\/activity$/);
   const lifecycleMatch = request.path.match(/^\/v1\/links\/([A-Za-z0-9-]{24,80})$/);
+  const managedActivityMatch = request.path.match(/^\/v1\/links\/managed\/([a-f0-9]{64})\/activity$/);
+  const managedLifecycleMatch = request.path.match(/^\/v1\/links\/managed\/([a-f0-9]{64})$/);
   const publicMatch = request.path.match(/^\/cv\/([A-Za-z0-9-]{24,80})$/);
   const beatMatch = request.path.match(/^\/cv\/([A-Za-z0-9-]{24,80})\/beat$/);
   const pdfMatch = request.path.match(/^\/cv\/([A-Za-z0-9-]{24,80})\/pdf$/);
   const pageMatch = request.path.match(/^\/cv\/([A-Za-z0-9-]{24,80})\/page\/(\d+)$/);
-  if (!createMatch && !activityMatch && !lifecycleMatch && !publicMatch && !beatMatch && !pdfMatch && !pageMatch) {
+  if (!createMatch && !recoverMatch && !activityMatch && !lifecycleMatch &&
+      !managedActivityMatch && !managedLifecycleMatch &&
+      !publicMatch && !beatMatch && !pdfMatch && !pageMatch) {
     return false;
   }
 
@@ -1455,6 +1494,9 @@ async function handleLinkRoutes(request, response) {
         ownerSubjectHash: access.subjectHash,
         ownerUID: authUser?.uid || null,
         ownerTier: access.tier,
+        // Stored only in the locked backend so an authenticated owner can
+        // recover the share address after an app reinstall.
+        token,
         resumeTitle: cleanText(resumeTitle, 200) || "Résumé",
         company: cleanText(company, 160),
         filePath,
@@ -1464,7 +1506,46 @@ async function handleLinkRoutes(request, response) {
         status: "open",
       });
       const hostedURL = `${publicOrigin(request)}/cv/${token}`;
-      response.status(201).json({ hostedURL });
+      response.status(201).json({ hostedURL, managementID: id });
+      return true;
+    }
+
+    if (recoverMatch && request.method === "POST") {
+      if (!(await verifyAppCheck(request, response))) return true;
+      const user = await requiredAuthenticatedUser(request);
+      const { clientID, entitlement } = request.body || {};
+      if (typeof clientID !== "string" || !clientID.trim()) {
+        response.status(400).json({ error: "Invalid link recovery request." });
+        return true;
+      }
+      const access = await resolveMonetizationAccess(clientID, entitlement, user.uid);
+      const installationHash = createHash("sha256")
+        .update(`installation:${clientID}`).digest("hex");
+      const snapshots = await Promise.all([
+        db.collection("resumeLinks").where("ownerUID", "==", user.uid).limit(50).get(),
+        db.collection("resumeLinks").where("ownerSubjectHash", "==", access.subjectHash).limit(50).get(),
+        db.collection("resumeLinks").where("ownerSubjectHash", "==", installationHash).limit(50).get(),
+      ]);
+      const owned = new Map();
+      snapshots.flatMap((snapshot) => snapshot.docs)
+        .forEach((document) => owned.set(document.id, document));
+      const links = await Promise.all([...owned.values()].map(async (document) => {
+        const value = document.data();
+        const activity = await resumeLinkActivityPayload(document);
+        return {
+          managementID: document.id,
+          token: validReviewToken(value.token) ? value.token : null,
+          title: value.resumeTitle || "Résumé",
+          company: value.company || "",
+          createdAt: value.createdAt?.toDate?.()?.toISOString?.() || new Date().toISOString(),
+          expiresAt: value.expiresAt?.toDate?.()?.toISOString?.() || new Date().toISOString(),
+          status: activity.status,
+          views: activity.views,
+          dailyActivity: activity.dailyActivity,
+        };
+      }));
+      links.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+      response.status(200).json({ links });
       return true;
     }
 
@@ -1475,26 +1556,23 @@ async function handleLinkRoutes(request, response) {
         response.status(404).json({ error: "Link not found." });
         return true;
       }
-      const link = snapshot.data();
-      const expired = link.expiresAt?.toDate?.() < new Date();
-      const views = await snapshot.ref.collection("views")
-        .orderBy("lastSeenAt", "desc").limit(50).get();
-      response.json({
-        status: link.status === "open" && expired ? "expired" : link.status,
-        expiresAt: link.expiresAt?.toDate?.()?.toISOString?.() || null,
-        views: views.docs.map((doc) => {
-          const value = doc.data();
-          return {
-            id: doc.id,
-            firstOpenedAt: value.firstOpenedAt?.toDate?.()?.toISOString?.() || null,
-            lastSeenAt: value.lastSeenAt?.toDate?.()?.toISOString?.() || null,
-            opens: value.opens || 0,
-            seconds: value.seconds || 0,
-            viewer: value.viewer || "Unknown device",
-            downloadedPDF: Boolean(value.downloadedPDF),
-          };
-        }),
-      });
+      response.json(await resumeLinkActivityPayload(snapshot));
+      return true;
+    }
+
+    if (managedActivityMatch && request.method === "GET") {
+      if (!(await verifyAppCheck(request, response))) return true;
+      const user = await requiredAuthenticatedUser(request);
+      const snapshot = await db.collection("resumeLinks").doc(managedActivityMatch[1]).get();
+      if (!snapshot.exists) {
+        response.status(404).json({ error: "Link not found." });
+        return true;
+      }
+      if (snapshot.data().ownerUID !== user.uid) {
+        response.status(403).json({ error: "Only the owner can view this link." });
+        return true;
+      }
+      response.json(await resumeLinkActivityPayload(snapshot));
       return true;
     }
 
@@ -1523,20 +1601,57 @@ async function handleLinkRoutes(request, response) {
       return true;
     }
 
+    if (managedLifecycleMatch && (request.method === "PATCH" || request.method === "DELETE")) {
+      if (!(await verifyAppCheck(request, response))) return true;
+      const user = await requiredAuthenticatedUser(request);
+      const ref = db.collection("resumeLinks").doc(managedLifecycleMatch[1]);
+      const snapshot = await ref.get();
+      if (!snapshot.exists) {
+        response.status(404).json({ error: "Link not found." });
+        return true;
+      }
+      const link = snapshot.data();
+      if (link.ownerUID !== user.uid) {
+        response.status(403).json({ error: "Only the owner can change this link." });
+        return true;
+      }
+      if (request.method === "DELETE") {
+        await deleteResumeLink(ref, link);
+        response.status(200).json({ deleted: true });
+      } else {
+        await deleteLinkAssets(ref.id, link.filePath);
+        await ref.set({ status: "revoked", revokedAt: FieldValue.serverTimestamp() }, { merge: true });
+        response.status(200).json({ status: "revoked" });
+      }
+      return true;
+    }
+
     if (publicMatch && request.method === "GET") {
       const link = await activeResumeLink(publicMatch[1]);
       if (!link) { response.status(410).send(linkUnavailablePage()); return true; }
       const visitor = ensureVisitorCookie(request, response, publicMatch[1], link.data);
       const viewRef = link.ref.collection("views").doc(visitor);
       const existing = await viewRef.get();
-      const decision = openDecision({ lastSeenAt: existing.data()?.lastSeenAt?.toDate?.() });
-      await viewRef.set({
-        firstOpenedAt: existing.data()?.firstOpenedAt || FieldValue.serverTimestamp(),
-        lastSeenAt: FieldValue.serverTimestamp(),
-        opens: FieldValue.increment(decision.freshOpen ? 1 : 0),
-        seconds: FieldValue.increment(0),
-        viewer: viewerHint(request.header("user-agent")),
-      }, { merge: true });
+      const now = new Date();
+      const decision = openDecision({ lastSeenAt: existing.data()?.lastSeenAt?.toDate?.(), now });
+      const writes = [viewRef.set({
+          firstOpenedAt: existing.data()?.firstOpenedAt || FieldValue.serverTimestamp(),
+          lastSeenAt: FieldValue.serverTimestamp(),
+          opens: FieldValue.increment(decision.freshOpen ? 1 : 0),
+          seconds: FieldValue.increment(0),
+          viewer: viewerHint(request.header("user-agent")),
+        }, { merge: true })];
+      if (decision.freshOpen) {
+        const day = dayKey(now);
+        writes.push(link.ref.collection("dailyActivity").doc(day).set({
+          day,
+          opens: FieldValue.increment(1),
+          seconds: FieldValue.increment(0),
+          downloads: FieldValue.increment(0),
+          updatedAt: FieldValue.serverTimestamp(),
+        }, { merge: true }));
+      }
+      await Promise.all(writes);
       response.set("Content-Type", "text/html; charset=utf-8");
       response.set("Content-Security-Policy", "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; frame-src 'self'; base-uri 'none'");
       response.set("Referrer-Policy", "no-referrer");
@@ -1553,14 +1668,27 @@ async function handleLinkRoutes(request, response) {
       const viewRef = link.ref.collection("views").doc(visitor);
       const existing = await viewRef.get();
       if (!existing.exists) { response.status(204).end(); return true; }
+      const now = new Date();
       const dwell = dwellDecision({
         currentSeconds: existing.data()?.seconds || 0,
         lastSeenAt: existing.data()?.lastSeenAt?.toDate?.(),
+        now,
       });
-      await viewRef.set({
+      const writes = [viewRef.set({
         lastSeenAt: FieldValue.serverTimestamp(),
         seconds: FieldValue.increment(dwell.addedSeconds),
-      }, { merge: true });
+      }, { merge: true })];
+      if (dwell.addedSeconds > 0) {
+        const day = dayKey(now);
+        writes.push(link.ref.collection("dailyActivity").doc(day).set({
+          day,
+          opens: FieldValue.increment(0),
+          seconds: FieldValue.increment(dwell.addedSeconds),
+          downloads: FieldValue.increment(0),
+          updatedAt: FieldValue.serverTimestamp(),
+        }, { merge: true }));
+      }
+      await Promise.all(writes);
       response.status(204).end();
       return true;
     }
@@ -1571,8 +1699,23 @@ async function handleLinkRoutes(request, response) {
       if (request.query?.download === "1") {
         const visitor = existingVisitor(request, pdfMatch[1], link.data);
         if (visitor) {
-          await link.ref.collection("views").doc(visitor)
-            .set({ downloadedPDF: true, lastSeenAt: FieldValue.serverTimestamp() }, { merge: true });
+          const viewRef = link.ref.collection("views").doc(visitor);
+          const existing = await viewRef.get();
+          const isFirstDownload = existing.exists && !existing.data()?.downloadedPDF;
+          const writes = [viewRef.set(
+            { downloadedPDF: true, lastSeenAt: FieldValue.serverTimestamp() }, { merge: true }
+          )];
+          if (isFirstDownload) {
+            const day = dayKey();
+            writes.push(link.ref.collection("dailyActivity").doc(day).set({
+              day,
+              opens: FieldValue.increment(0),
+              seconds: FieldValue.increment(0),
+              downloads: FieldValue.increment(1),
+              updatedAt: FieldValue.serverTimestamp(),
+            }, { merge: true }));
+          }
+          await Promise.all(writes);
         }
         response.set("Content-Disposition", `attachment; filename="${(link.data.resumeTitle || "Resume").replace(/[^A-Za-z0-9 _.-]/g, "")}.pdf"`);
       }
@@ -1611,8 +1754,342 @@ async function handleLinkRoutes(request, response) {
   }
 }
 
+/**
+ * The hosted personal CV page: a permanent, handle-based vanity URL
+ * (/p/<handle>) an authenticated owner publishes, updates, and withdraws.
+ * Unlike a trackable link it is evergreen, search-indexable by default, and
+ * shows the person's name — so publishing requires a signed-in account that
+ * owns the handle. Free pages carry a "Made with ResumeStudio" footer; Go and
+ * Pro remove it.
+ */
+async function handleProfileRoutes(request, response) {
+  const rootMatch = request.path === "/v1/profile";
+  const handleMatch = request.path.match(/^\/v1\/profile\/handle\/([A-Za-z0-9-]{1,40})$/);
+  const publicMatch = request.path.match(/^\/p\/([a-z0-9-]{3,30})$/);
+  const pdfMatch = request.path.match(/^\/p\/([a-z0-9-]{3,30})\/pdf$/);
+  const pageMatch = request.path.match(/^\/p\/([a-z0-9-]{3,30})\/page\/(\d+)$/);
+  if (!rootMatch && !handleMatch && !publicMatch && !pdfMatch && !pageMatch) {
+    return false;
+  }
+
+  try {
+    // Handle availability — used by the editor as the owner types.
+    if (handleMatch && request.method === "GET") {
+      if (!(await verifyAppCheck(request, response))) return true;
+      const handle = handleMatch[1].toLowerCase();
+      if (!validHandle(handle)) {
+        response.status(200).json({ available: false, reason: "invalid" });
+        return true;
+      }
+      const authUser = await optionalAuthenticatedUser(request);
+      const claim = await db.collection("profileHandles").doc(handle).get();
+      const available = !claim.exists || claim.data().uid === authUser?.uid;
+      response.status(200).json({ available });
+      return true;
+    }
+
+    // Publish or update my page.
+    if (rootMatch && request.method === "POST") {
+      if (!(await verifyAppCheck(request, response))) return true;
+      const user = await requiredAuthenticatedUser(request);
+      const rawLength = Math.max(
+        Number(request.header("content-length") || 0),
+        Buffer.byteLength(JSON.stringify(request.body || {}))
+      );
+      if (rawLength > REVIEW_MAX_BYTES) {
+        response.status(413).json({ error: "The résumé PDF is too large to host." });
+        return true;
+      }
+      const body = request.body || {};
+      const handle = typeof body.handle === "string" ? body.handle.toLowerCase() : "";
+      if (typeof body.clientID !== "string" || !validHandle(handle)
+        || typeof body.pdfBase64 !== "string" || !body.pdfBase64) {
+        response.status(400).json({ error: "Invalid profile request." });
+        return true;
+      }
+      const pdf = Buffer.from(body.pdfBase64, "base64");
+      if (!pdf.length || pdf.length > 5_000_000 || pdf.subarray(0, 4).toString() !== "%PDF") {
+        response.status(400).json({ error: "The uploaded document is not a valid PDF." });
+        return true;
+      }
+      const pageImages = linkPageImages(body.pageImages);
+      const access = await resolveMonetizationAccess(body.clientID, body.entitlement, user.uid);
+      const branded = profileIsBranded(access.tier);
+
+      const handleRef = db.collection("profileHandles").doc(handle);
+      const profileRef = db.collection("profiles").doc(user.uid);
+      // Claim the handle atomically: reject if another account holds it, and
+      // release the owner's previous handle when they rename.
+      let previousCreatedAt = null;
+      try {
+        await db.runTransaction(async (tx) => {
+          const [handleSnap, profileSnap] = await Promise.all([tx.get(handleRef), tx.get(profileRef)]);
+          if (handleSnap.exists && handleSnap.data().uid !== user.uid) {
+            const error = new Error("That address is taken. Try another one.");
+            error.statusCode = 409;
+            error.publicCode = "handle_taken";
+            throw error;
+          }
+          const previous = profileSnap.exists ? profileSnap.data() : null;
+          previousCreatedAt = previous?.createdAt || null;
+          tx.set(handleRef, { uid: user.uid, updatedAt: FieldValue.serverTimestamp() });
+          if (previous?.handle && previous.handle !== handle) {
+            tx.delete(db.collection("profileHandles").doc(previous.handle));
+          }
+        });
+      } catch (error) {
+        if (error.publicCode === "handle_taken") {
+          response.status(409).json({ error: error.message, code: "handle_taken" });
+          return true;
+        }
+        throw error;
+      }
+
+      const filePath = `profiles/${user.uid}.pdf`;
+      await storage.bucket(REVIEW_BUCKET).file(filePath).save(pdf, {
+        resumable: false,
+        metadata: { contentType: "application/pdf", cacheControl: "public, max-age=300" },
+      });
+      // Replace the previous render wholesale so a shorter résumé cannot leave
+      // stale trailing page images behind.
+      await storage.bucket(REVIEW_BUCKET).deleteFiles({ prefix: `profiles/${user.uid}/` }).catch(() => {});
+      await Promise.all(pageImages.map((image, index) =>
+        storage.bucket(REVIEW_BUCKET).file(`profiles/${user.uid}/page-${index}.png`).save(image, {
+          resumable: false,
+          metadata: { contentType: "image/png", cacheControl: "public, max-age=300" },
+        })
+      ));
+
+      await profileRef.set({
+        ownerUID: user.uid,
+        ownerSubjectHash: access.subjectHash,
+        ownerTier: access.tier,
+        handle,
+        displayName: cleanText(body.displayName, 120) || "Résumé",
+        headline: cleanText(body.headline, 160),
+        location: cleanText(body.location, 120),
+        links: sanitizeProfileLinks(body.links),
+        filePath,
+        pageCount: pageImages.length,
+        searchable: body.searchable !== false,
+        branded,
+        status: "published",
+        createdAt: previousCreatedAt || FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+
+      response.status(200).json({
+        hostedURL: `${publicOrigin(request)}/p/${handle}`,
+        handle,
+        branded,
+        searchable: body.searchable !== false,
+      });
+      return true;
+    }
+
+    // Fetch my page so the app can show its live state.
+    if (rootMatch && request.method === "GET") {
+      if (!(await verifyAppCheck(request, response))) return true;
+      const user = await requiredAuthenticatedUser(request);
+      const snapshot = await db.collection("profiles").doc(user.uid).get();
+      if (!snapshot.exists || snapshot.data().status !== "published") {
+        response.status(200).json({ profile: null });
+        return true;
+      }
+      response.status(200).json({ profile: profilePayload(request, snapshot.data()) });
+      return true;
+    }
+
+    // Withdraw my page.
+    if (rootMatch && request.method === "DELETE") {
+      if (!(await verifyAppCheck(request, response))) return true;
+      const user = await requiredAuthenticatedUser(request);
+      await deleteProfile(user.uid);
+      response.status(200).json({ deleted: true });
+      return true;
+    }
+
+    // Public, indexable page.
+    if (publicMatch && request.method === "GET") {
+      const profile = await activeProfile(publicMatch[1]);
+      response.set("Content-Type", "text/html; charset=utf-8");
+      if (!profile) {
+        response.set("X-Robots-Tag", "noindex, nofollow");
+        response.status(404).send(profileUnavailablePage());
+        return true;
+      }
+      if (profile.searchable === false) {
+        response.set("X-Robots-Tag", "noindex, nofollow");
+      }
+      response.set("Cache-Control", "public, max-age=120");
+      response.status(200).send(renderProfilePage(request, profile));
+      return true;
+    }
+
+    // Public PDF download.
+    if (pdfMatch && request.method === "GET") {
+      const profile = await activeProfile(pdfMatch[1]);
+      if (!profile) { response.status(404).end(); return true; }
+      const [pdf] = await storage.bucket(REVIEW_BUCKET).file(profile.filePath).download();
+      response.set("Content-Type", "application/pdf");
+      if (request.query.download) {
+        response.set("Content-Disposition", `attachment; filename="${profile.handle}.pdf"`);
+      }
+      response.set("Cache-Control", "public, max-age=300");
+      response.send(pdf);
+      return true;
+    }
+
+    // Public pre-rendered page image.
+    if (pageMatch && request.method === "GET") {
+      const profile = await activeProfile(pageMatch[1]);
+      if (!profile) { response.status(404).end(); return true; }
+      const index = Number(pageMatch[2]);
+      if (!Number.isInteger(index) || index < 0 || index >= Number(profile.pageCount || 0)) {
+        response.status(404).end();
+        return true;
+      }
+      const [image] = await storage.bucket(REVIEW_BUCKET)
+        .file(`profiles/${profile.ownerUID}/page-${index}.png`).download();
+      response.set("Content-Type", "image/png");
+      response.set("Cache-Control", "public, max-age=300");
+      response.send(image);
+      return true;
+    }
+
+    response.status(405).json({ error: "Method not allowed." });
+    return true;
+  } catch (error) {
+    logger.error("Profile request failed", { name: error?.name, message: error?.message });
+    const status = Number.isInteger(error?.statusCode) ? error.statusCode : 500;
+    response.status(status).json({
+      error: status === 401 ? error.message : "Unable to complete the profile request.",
+    });
+    return true;
+  }
+}
+
+function profilePayload(request, value) {
+  return {
+    handle: value.handle,
+    displayName: value.displayName || "",
+    headline: value.headline || "",
+    location: value.location || "",
+    links: Array.isArray(value.links) ? value.links : [],
+    searchable: value.searchable !== false,
+    branded: Boolean(value.branded),
+    pageCount: Number(value.pageCount || 0),
+    hostedURL: `${publicOrigin(request)}/p/${value.handle}`,
+    updatedAt: value.updatedAt?.toDate?.()?.toISOString?.() || null,
+  };
+}
+
+async function activeProfile(handle) {
+  const normalized = String(handle || "").toLowerCase();
+  if (!validHandle(normalized)) return null;
+  const claim = await db.collection("profileHandles").doc(normalized).get();
+  if (!claim.exists) return null;
+  const snapshot = await db.collection("profiles").doc(claim.data().uid).get();
+  if (!snapshot.exists) return null;
+  const value = snapshot.data();
+  // Guard against a stale handle mapping pointing at a renamed or withdrawn page.
+  if (value.status !== "published" || value.handle !== normalized) return null;
+  return value;
+}
+
+async function deleteProfile(uid) {
+  const ref = db.collection("profiles").doc(uid);
+  const snapshot = await ref.get();
+  if (!snapshot.exists) return;
+  const value = snapshot.data();
+  if (value.handle) {
+    await db.collection("profileHandles").doc(value.handle).delete().catch(() => {});
+  }
+  const bucket = storage.bucket(REVIEW_BUCKET);
+  await bucket.deleteFiles({ prefix: `profiles/${uid}/` }).catch(() => {});
+  await bucket.file(`profiles/${uid}.pdf`).delete({ ignoreNotFound: true }).catch(() => {});
+  await ref.delete();
+}
+
+function profileUnavailablePage() {
+  return "<!doctype html><meta name=viewport content='width=device-width'><title>Page unavailable</title><style>body{font-family:system-ui;background:#08111f;color:#fff;display:grid;place-items:center;min-height:100vh;margin:0}main{max-width:32rem;padding:2rem;text-align:center}p{color:#aab2c0}</style><main><h1>This page is unavailable</h1><p>It may have been withdrawn by its owner, or the address is wrong.</p></main>";
+}
+
+function renderProfilePage(request, profile) {
+  const name = escapeHTML(profile.displayName || "Résumé");
+  const headline = escapeHTML(profile.headline || "");
+  const location = escapeHTML(profile.location || "");
+  const title = profile.headline ? `${name} — ${profile.headline}` : name;
+  const description = [profile.headline, profile.location].filter(Boolean).join(" · ").slice(0, 200);
+  const canonical = `${publicOrigin(request)}/p/${profile.handle}`;
+  const robots = profile.searchable === false ? "noindex,nofollow" : "index,follow";
+
+  const meta = [
+    profile.headline ? `<p class=headline>${headline}</p>` : "",
+    profile.location ? `<p class=location>📍 ${location}</p>` : "",
+  ].join("");
+
+  const links = (Array.isArray(profile.links) ? profile.links : [])
+    .map((link) => `<a class=link href="${escapeHTML(link.url)}" target=_blank rel="noopener nofollow">${escapeHTML(link.label)}</a>`)
+    .join("");
+
+  // Asset URLs are relative to the /p/<handle> page, so they resolve whether
+  // the function is mounted at a domain root or under an emulator prefix.
+  const pages = Number(profile.pageCount || 0);
+  const preview = pages > 0
+    ? Array.from({ length: pages }, (_, index) =>
+      `<img class=page loading=lazy alt="Résumé page ${index + 1}" src="${profile.handle}/page/${index}">`).join("")
+    : `<iframe title="Résumé PDF" src="${profile.handle}/pdf"></iframe>`;
+
+  const appStoreID = process.env.APP_APPLE_ID;
+  const footer = profile.branded
+    ? (appStoreID
+      ? `<footer><a href="https://apps.apple.com/app/id${escapeHTML(appStoreID)}">Made with ResumeStudio — build your own free</a></footer>`
+      : "<footer>Made with ResumeStudio</footer>")
+    : "<footer>Résumé hosted with Resume Studio.</footer>";
+
+  return `<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=robots content="${robots}"><title>${escapeHTML(title)}</title><meta name=description content="${escapeHTML(description)}"><link rel=canonical href="${escapeHTML(canonical)}"><meta property="og:type" content="profile"><meta property="og:title" content="${escapeHTML(title)}"><meta property="og:description" content="${escapeHTML(description)}"><meta property="og:url" content="${escapeHTML(canonical)}"><style>:root{color-scheme:light}body{margin:0;background:#f4f1ea;color:#0a1220;font:16px/1.5 system-ui,-apple-system,sans-serif;display:flex;flex-direction:column;min-height:100vh}header{max-width:820px;width:100%;margin:0 auto;box-sizing:border-box;padding:32px 20px 12px}h1{font-size:30px;margin:0 0 4px}.headline{font-size:18px;color:#334155;margin:0 0 2px;font-weight:600}.location{color:#5d6675;margin:0;font-size:14px}.links{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}a.link{background:#fff;border:1px solid #d8d2c6;color:#0a1220;text-decoration:none;font-weight:600;padding:8px 14px;border-radius:999px;font-size:14px}a.download{display:inline-block;margin-top:14px;background:#e94b00;color:#fff;text-decoration:none;font-weight:700;padding:11px 22px;border-radius:999px;font-size:15px}main{flex:1;max-width:820px;width:100%;margin:0 auto;box-sizing:border-box;padding:16px}.page{display:block;width:100%;height:auto;margin:0 auto 14px;border:1px solid #d8d2c6;border-radius:12px;background:#fff;box-shadow:0 1px 6px rgba(10,18,32,.08)}iframe{width:100%;min-height:82vh;border:1px solid #d8d2c6;border-radius:14px;background:#fff}footer{text-align:center;color:#8a92a1;font-size:12px;padding:18px 20px 26px}footer a{color:#8a5a3a}</style></head><body><header><h1>${name}</h1>${meta}<div class=links>${links}</div><a class=download href="${profile.handle}/pdf?download=1">Download PDF</a></header><main>${preview}</main>${footer}</body></html>`;
+}
+
+async function resumeLinkActivityPayload(snapshot) {
+  const link = snapshot.data();
+  const expired = link.expiresAt?.toDate?.() < new Date();
+  const [views, dailyActivity] = await Promise.all([
+    snapshot.ref.collection("views").orderBy("lastSeenAt", "desc").limit(50).get(),
+    snapshot.ref.collection("dailyActivity").orderBy("day", "asc").limit(100).get(),
+  ]);
+  return {
+    status: link.status === "open" && expired ? "expired" : link.status,
+    expiresAt: link.expiresAt?.toDate?.()?.toISOString?.() || null,
+    views: views.docs.map((doc) => {
+      const value = doc.data();
+      return {
+        id: doc.id,
+        firstOpenedAt: value.firstOpenedAt?.toDate?.()?.toISOString?.() || null,
+        lastSeenAt: value.lastSeenAt?.toDate?.()?.toISOString?.() || null,
+        opens: value.opens || 0,
+        seconds: value.seconds || 0,
+        viewer: value.viewer || "Unknown device",
+        downloadedPDF: Boolean(value.downloadedPDF),
+      };
+    }),
+    dailyActivity: dailyActivity.docs.map((doc) => {
+      const value = doc.data();
+      return {
+        day: value.day || doc.id,
+        opens: value.opens || 0,
+        seconds: value.seconds || 0,
+        downloads: value.downloads || 0,
+      };
+    }),
+  };
+}
+
 async function deleteResumeLink(ref, link) {
-  await deleteCollection(ref.collection("views"));
+  await Promise.all([
+    deleteCollection(ref.collection("views")),
+    deleteCollection(ref.collection("dailyActivity")),
+  ]);
   await deleteLinkAssets(ref.id, link?.filePath);
   await ref.delete();
 }

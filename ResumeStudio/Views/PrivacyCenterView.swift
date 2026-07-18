@@ -6,6 +6,9 @@ struct PrivacyCenterView: View {
   @AppStorage(CareerPrivacySetting.aiEnabledKey) private var aiEnabled = true
   @AppStorage(CareerPrivacySetting.shareVerifiedEvidenceKey) private var shareEvidence = true
   @AppStorage(CareerPrivacySetting.keepHistoryKey) private var keepHistory = true
+  @AppStorage(CareerPrivacySetting.onDeviceAIKey) private var onDeviceAIEnabled = true
+  @AppStorage(CareerPrivacySetting.connectedFallbackKey) private var connectedFallbackEnabled = false
+  @AppStorage(ProductInsights.enabledKey) private var productInsightsEnabled = false
   @State private var shareBundle: PrivacyExportBundle?
   @State private var confirmsReset = false
   @State private var errorMessage: String?
@@ -26,7 +29,22 @@ struct PrivacyCenterView: View {
       Section("AI controls") {
         Toggle("Allow AI career tools", isOn: $aiEnabled)
         Toggle("Include verified Evidence Vault items", isOn: $shareEvidence).disabled(!aiEnabled)
+        Toggle("Use on-device intelligence", isOn: $onDeviceAIEnabled).disabled(!aiEnabled)
+        Toggle("Allow connected fallback on Free", isOn: $connectedFallbackEnabled)
+          .disabled(!aiEnabled || !onDeviceAIEnabled)
+          .accessibilityIdentifier("privacy.connectedFallback")
         Toggle("Keep a local processing history", isOn: $keepHistory)
+        LabeledContent("Apple Intelligence", value: OnDeviceAIService.availabilityDescription)
+          .font(.caption)
+        Text("Free uses the private on-device model first for lightweight tasks. Connected fallback is optional and may use the credits shown before each action. Go and Pro keep the connected quality model first and use on-device intelligence mainly as a fallback.")
+          .font(.caption).foregroundStyle(Theme.mutedInk)
+      }
+
+      Section("Anonymous product insights") {
+        Toggle("Help improve ResumeStudio", isOn: $productInsightsEnabled)
+        Text("Only aggregate counters, plan, AI route and app version are shared—never identity, document content, job details, URLs or a persistent device ID.")
+          .font(.caption).foregroundStyle(Theme.mutedInk)
+        Link("Data-collection summary", destination: ResumeStudioLinks.dataCollection)
       }
 
       Section("Never included in writing requests") {
@@ -45,6 +63,7 @@ struct PrivacyCenterView: View {
             Image(systemName: "sparkles").foregroundStyle(resumeStore.document.accent.color)
             VStack(alignment: .leading) {
               Text(record.purpose).font(.headline)
+              if let provider = record.provider { AIRouteBadge(provider: provider) }
               Text("Verified evidence \(record.includedVerifiedEvidence ? "included" : "not included") · \(record.completedAt.formatted(date: .abbreviated, time: .shortened))")
                 .font(.caption).foregroundStyle(Theme.mutedInk)
             }
@@ -67,6 +86,9 @@ struct PrivacyCenterView: View {
       if let errorMessage { Section { Label(errorMessage, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange) } }
     }
     .navigationTitle("Privacy Centre")
+    .onChange(of: productInsightsEnabled) { _, enabled in
+      if enabled { ProductInsights.flushPending() }
+    }
     .sheet(item: $shareBundle) { ShareSheet(activityItems: [$0.url]) }
     .sheet(isPresented: $confirmsReset) {
       PremiumConfirmationSheet(

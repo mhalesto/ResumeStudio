@@ -6,6 +6,178 @@ import Foundation
 /// Entirely on device: no network, no credits, and it works the same offline.
 enum RecruiterScanService {
 
+  // MARK: - Guided repair
+
+  /// Builds an editable repair copy without inventing career facts. The only
+  /// content change made automatically is moving an existing quantified result
+  /// into the first, most-read bullet. Empty rows are temporary form slots and
+  /// are removed again by `finalizeRepairDraft` if the user leaves them blank.
+  static func makeRepairDraft(
+    document: ResumeDocument,
+    report: RecruiterScanReport
+  ) -> ResumeDocument {
+    var draft = document
+    let issueIDs = Set(report.findings.filter { $0.severity != .pass }.map(\.id))
+
+    // These two fields can be completed from facts already present elsewhere
+    // in the CV. They remain editable in review, but do not depend on network
+    // AI and never introduce a new employer, qualification, skill or result.
+    if issueIDs.contains("identity"), draft.personal.headline.isBlank,
+      let headline = localHeadline(for: draft)
+    {
+      draft.personal.headline = headline
+    }
+    if issueIDs.contains("profile-skim"), draft.professionalProfile.isBlank,
+      let profile = localProfile(for: draft)
+    {
+      draft.professionalProfile = profile
+    }
+
+    if !draft.experience.isEmpty, issueIDs.contains("evidence") {
+      let highlights = draft.experience[0].highlights
+      if highlights.first.map(isQuantified) != true,
+        let quantifiedIndex = highlights.dropFirst().firstIndex(where: isQuantified)
+      {
+        let quantified = draft.experience[0].highlights.remove(at: quantifiedIndex)
+        draft.experience[0].highlights.insert(quantified, at: 0)
+      }
+    }
+
+    let needsCurrentRole = !issueIDs.isDisjoint(with: ["current-role", "current-dates", "evidence"])
+    if needsCurrentRole, draft.experience.isEmpty {
+      draft.experience.append(ExperienceEntry(role: "", company: "", period: "", highlights: []))
+    }
+    if issueIDs.contains("trajectory"), draft.experience.count < 2 {
+      while draft.experience.count < 2 {
+        draft.experience.append(ExperienceEntry(role: "", company: "", period: "", highlights: []))
+      }
+    }
+    if issueIDs.contains("evidence"), !draft.experience.isEmpty,
+      draft.experience[0].highlights.isEmpty
+    {
+      draft.experience[0].highlights = [""]
+    }
+    if issueIDs.contains("education"), draft.education.isEmpty {
+      draft.education.append(EducationEntry(
+        qualification: "", institution: "", period: "", details: ""))
+    }
+    return draft
+  }
+
+  /// Removes untouched form placeholders before committing the reviewed copy.
+  static func finalizeRepairDraft(_ draft: ResumeDocument) -> ResumeDocument {
+    var result = draft
+    result.experience = result.experience.compactMap { entry in
+      var clean = entry
+      clean.highlights = clean.highlights.filter { !$0.isBlank }
+      let hasIdentity = !clean.role.isBlank || !clean.company.isBlank || !clean.period.isBlank
+      return hasIdentity || !clean.highlights.isEmpty ? clean : nil
+    }
+    result.education = result.education.filter {
+      !$0.qualification.isBlank || !$0.institution.isBlank || !$0.period.isBlank || !$0.details.isBlank
+    }
+    return result
+  }
+
+  /// A network-free headline assembled only from the latest role and skills.
+  static func localHeadline(for document: ResumeDocument) -> String? {
+    guard let role = document.experience.first?.role.nilIfBlank else { return nil }
+    let skills = document.competencies
+      .compactMap(\.nilIfBlank)
+      .filter { $0.localizedCaseInsensitiveCompare(role) != .orderedSame }
+    if skills.isEmpty { return role }
+    return ([role] + Array(skills.prefix(2))).joined(separator: " | ")
+  }
+
+  /// A concise professional profile built from CV facts. This is intentionally
+  /// deterministic: it works offline and cannot embellish what the user wrote.
+  static func localProfile(for document: ResumeDocument) -> String? {
+    var sentences: [String] = []
+    if let current = document.experience.first,
+      let role = current.role.nilIfBlank
+    {
+      var opening = role
+      if let company = current.company.nilIfBlank { opening += " at \(company)" }
+      if let proof = current.highlights.first?.nilIfBlank {
+        opening += " with experience in \(sentenceFragment(proof))"
+      }
+      sentences.append(opening + ".")
+    }
+
+    if document.experience.count > 1,
+      let previousRole = document.experience[1].role.nilIfBlank
+    {
+      var previous = "Previous experience includes \(previousRole)"
+      if let company = document.experience[1].company.nilIfBlank {
+        previous += " at \(company)"
+      }
+      sentences.append(previous + ".")
+    }
+
+    let skills = document.competencies.compactMap(\.nilIfBlank)
+    if !skills.isEmpty {
+      sentences.append("Core strengths include \(naturalList(Array(skills.prefix(4)))).")
+    }
+
+    if let education = document.education.first(where: {
+      !$0.qualification.isBlank || !$0.institution.isBlank
+    }) {
+      let qualification = education.qualification.nilIfBlank
+      let institution = education.institution.nilIfBlank
+      if let qualification, let institution {
+        sentences.append("Education includes \(qualification) from \(institution).")
+      } else if let qualification {
+        sentences.append("Education includes \(qualification).")
+      } else if let institution {
+        sentences.append("Education includes study at \(institution).")
+      }
+    }
+
+    guard !sentences.isEmpty else { return nil }
+    // Keep the fallback safely below the strictest 55-word scan limit.
+    var result = ""
+    for sentence in sentences {
+      let candidate = result.isEmpty ? sentence : "\(result) \(sentence)"
+      if candidate.split(whereSeparator: \.isWhitespace).count > 52 { break }
+      result = candidate
+    }
+    return result.nilIfBlank
+  }
+
+  /// Combines user-supplied proof with the existing bullet. Both the metric and
+  /// outcome are required so a bare number can never be mistaken for a fix.
+  static func addingVerifiedMetric(
+    _ metric: String,
+    outcome: String,
+    context: String = "",
+    to bullet: String
+  ) -> String? {
+    let cleanMetric = metric.trimmed
+    let cleanOutcome = outcome.trimmed
+    guard !cleanMetric.isEmpty, !cleanOutcome.isEmpty else { return nil }
+    var base = bullet.trimmed
+    while base.last == "." || base.last == ";" { base.removeLast() }
+    var proof = "\(cleanMetric) \(cleanOutcome)"
+    if let cleanContext = context.nilIfBlank { proof += " \(cleanContext)" }
+    return base.isEmpty ? "Delivered \(proof)." : "\(base), delivering \(proof)."
+  }
+
+  private static func sentenceFragment(_ value: String) -> String {
+    var clean = value.trimmed
+    while clean.last == "." || clean.last == ";" { clean.removeLast() }
+    guard let first = clean.first else { return clean }
+    return first.lowercased() + String(clean.dropFirst())
+  }
+
+  private static func naturalList(_ values: [String]) -> String {
+    switch values.count {
+    case 0: ""
+    case 1: values[0]
+    case 2: values.joined(separator: " and ")
+    default: values.dropLast().joined(separator: ", ") + ", and " + values.last!
+    }
+  }
+
   // MARK: - Audit
 
   static func analyze(

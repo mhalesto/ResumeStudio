@@ -24,7 +24,7 @@ BUILD AND DESIGN
 
 TAILOR EVERY APPLICATION
 
-- Import an existing PDF, DOCX, text file or LinkedIn data export.
+- Import an existing PDF, scanned PDF, image, DOCX, text file or LinkedIn data export; OCR runs on device.
 - Compare your résumé with a job description.
 - Check ATS readiness and identify missing job-language evidence.
 - Draft targeted profiles, achievement bullets and cover letters.
@@ -46,7 +46,7 @@ MANAGE YOUR JOB SEARCH
 
 PRIVACY AND CONTROL
 
-Resume Studio works without an account. Résumé versions, applications and cover letters can sync through your private iCloud workspace. Contact details, references, profile photographs and attached source files are excluded from AI writing requests. You can pause AI tools, inspect local processing history, export career-intelligence data or erase it at any time.
+Resume Studio works without an account. Résumé versions, applications and cover letters can sync through your private iCloud workspace. Supported Apple Intelligence devices handle lightweight writing and extraction privately on device; Free uses that route first, while Go and Pro use the connected quality model first with an on-device fallback. Contact details, references, profile photographs and attached source files are excluded from connected AI writing requests. You can pause AI tools, disable on-device intelligence, opt out of anonymous aggregate product counters, inspect local processing history, export career-intelligence data or erase it at any time.
 
 CORE TOOLS STAY FREE
 
@@ -74,16 +74,21 @@ To review the in-app purchases, open Settings > Plans and purchases > View plans
 
 Each purchase uses StoreKit and the Plans screen includes Restore Purchases. Manual résumé editing, ATS checks, application tracking and unwatermarked PDF, DOCX and text exports remain available without payment.
 
-AI writing requests are sent through our Firebase backend. The app excludes contact details, references, profile photographs and attached source files from writing requests. Microphone and speech-recognition permission are requested only when the reviewer starts voice interview practice. Notification permission is requested only when enabling reminders.
+Complex AI writing requests are sent through our Firebase backend. Lightweight writing and extraction can use Apple's on-device Foundation Models framework on supported devices. The app excludes contact details, references, profile photographs and attached source files from connected writing requests. Microphone and speech-recognition permission are requested only when the reviewer starts voice interview practice. Notification permission is requested only when enabling reminders.
+
+## URLs
+
+- Marketing URL: https://www.halalisani.com/projects/resumestudio-ios/
+- Support URL: https://www.halalisani.com/projects/resumestudio-ios/support/
+- Privacy Policy URL: https://www.halalisani.com/projects/resumestudio-ios/privacy/
+- Data collection summary: https://www.halalisani.com/projects/resumestudio-ios/data-collection/
 
 ## Fields intentionally left blank
 
-- Marketing URL: optional; leave blank until a public marketing site is available.
 - Routing App Coverage File: not applicable.
 - Game Center: not used.
 - Sign-in credentials: not applicable; uncheck Sign-in required.
 
-## Still required from the developer
+## Still required in App Store Connect
 
-- A public Support URL containing genuine contact information.
 - App Review contact phone number and email address.

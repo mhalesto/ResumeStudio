@@ -7,6 +7,7 @@ struct SavedAIArtifact: Identifiable, Codable, Equatable {
   var action: ResumeAIAction
   var createdAt: Date
   var context: String?
+  var provider: ProductInsightSource?
   var outputJSON: String
   var previewLines: [String]
 
@@ -15,6 +16,7 @@ struct SavedAIArtifact: Identifiable, Codable, Equatable {
     action: ResumeAIAction,
     createdAt: Date = Date(),
     context: String? = nil,
+    provider: ProductInsightSource? = nil,
     outputJSON: String,
     previewLines: [String]
   ) {
@@ -22,6 +24,7 @@ struct SavedAIArtifact: Identifiable, Codable, Equatable {
     self.action = action
     self.createdAt = createdAt
     self.context = context
+    self.provider = provider
     self.outputJSON = outputJSON
     self.previewLines = previewLines
   }

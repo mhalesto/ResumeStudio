@@ -115,7 +115,7 @@ struct NetworkingStudioView: View {
         }
         ScrollView(.horizontal, showsIndicators: false) {
           HStack(spacing: 10) {
-            ForEach(careerStore.contacts) { value in
+            ForEach(careerStore.contacts.sorted(by: contactPriority)) { value in
               Button { contactID = value.id } label: {
                 ContactChip(contact: value, selected: contactID == value.id, accent: resumeStore.document.accent.color)
               }.buttonStyle(.plain).contextMenu {
@@ -174,6 +174,13 @@ struct NetworkingStudioView: View {
     CareerContact(name: "", role: "", company: "", email: "", linkedInURL: "", kind: .recruiter, notes: "")
   }
 
+  private func contactPriority(_ left: CareerContact, _ right: CareerContact) -> Bool {
+    let leftDate = left.followUpAt ?? .distantFuture
+    let rightDate = right.followUpAt ?? .distantFuture
+    if leftDate != rightDate { return leftDate < rightDate }
+    return left.name.localizedCaseInsensitiveCompare(right.name) == .orderedAscending
+  }
+
   @MainActor private func generate() async {
     isLoading = true; errorMessage = nil
     do {
@@ -210,6 +217,7 @@ struct NetworkingStudioView: View {
     interactions.append(ContactInteraction(kind: .email, summary: value.title))
     contact.interactions = interactions
     contact.lastContactedAt = Date()
+    contact.followUpAt = nil
     contact.relationshipStrength = min(5, max(1, (contact.relationshipStrength ?? 1) + 1))
     careerStore.upsert(contact)
   }
@@ -227,6 +235,11 @@ private struct ContactChip: View {
       }
       Text(contact.name.nilIfBlank ?? "Unnamed").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ink)
       Text(contact.kind.title).font(.caption).foregroundStyle(Theme.mutedInk)
+      if let followUp = contact.followUpAt {
+        Text(followUp <= Date() ? "Follow-up due" : followUp.formatted(date: .abbreviated, time: .omitted))
+          .font(.caption2.bold())
+          .foregroundStyle(followUp <= Date() ? .orange : Theme.mutedInk)
+      }
     }.padding(12).frame(width: 128, alignment: .leading)
       .background(Theme.muted.opacity(selected ? 1 : 0.55), in: RoundedRectangle(cornerRadius: 16))
       .overlay { RoundedRectangle(cornerRadius: 16).strokeBorder(selected ? accent : Color.clear, lineWidth: 2) }
@@ -235,8 +248,17 @@ private struct ContactChip: View {
 
 private struct ContactEditorView: View {
   @Environment(\.dismiss) private var dismiss
+  @EnvironmentObject private var applicationStore: ApplicationStore
   @State var contact: CareerContact
+  @State private var followUpEnabled: Bool
   let onSave: (CareerContact) -> Void
+
+  init(contact: CareerContact, onSave: @escaping (CareerContact) -> Void) {
+    _contact = State(initialValue: contact)
+    _followUpEnabled = State(initialValue: contact.followUpAt != nil)
+    self.onSave = onSave
+  }
+
   var body: some View {
     NavigationStack {
       Form {
@@ -250,13 +272,32 @@ private struct ContactEditorView: View {
           TextField("Email", text: $contact.email).textInputAutocapitalization(.never).keyboardType(.emailAddress)
           TextField("LinkedIn URL", text: $contact.linkedInURL).textInputAutocapitalization(.never).keyboardType(.URL)
           TextField("Notes", text: $contact.notes, axis: .vertical).lineLimit(3...7)
-          DatePicker("Follow up", selection: Binding(
-            get: { contact.followUpAt ?? Calendar.current.date(byAdding: .day, value: 3, to: Date())! },
-            set: { contact.followUpAt = $0 }
-          ), displayedComponents: .date)
+          Toggle("Schedule a follow-up", isOn: $followUpEnabled)
+            .onChange(of: followUpEnabled) { _, enabled in
+              contact.followUpAt = enabled
+                ? (contact.followUpAt ?? Calendar.current.date(byAdding: .day, value: 3, to: Date()))
+                : nil
+            }
+          if followUpEnabled {
+            DatePicker("Follow up", selection: Binding(
+              get: { contact.followUpAt ?? Calendar.current.date(byAdding: .day, value: 3, to: Date())! },
+              set: { contact.followUpAt = $0 }
+            ), displayedComponents: .date)
+          }
           Stepper("Relationship strength: \(contact.relationshipStrength ?? 1)/5", value: Binding(
             get: { contact.relationshipStrength ?? 1 }, set: { contact.relationshipStrength = $0 }
           ), in: 1...5)
+        }
+        Section("Opportunity") {
+          Picker("Related application", selection: $contact.applicationID) {
+            Text("No specific application").tag(Optional<UUID>.none)
+            ForEach(applicationStore.applications) { application in
+              Text([application.role, application.company].filter { !$0.isBlank }.joined(separator: " — "))
+                .tag(Optional(application.id))
+            }
+          }
+          Text("Linking a person to an opportunity keeps relationship context with the application.")
+            .font(.caption).foregroundStyle(Theme.mutedInk)
         }
       }
       .navigationTitle("Career contact").navigationBarTitleDisplayMode(.inline)

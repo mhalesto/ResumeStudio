@@ -1,4 +1,5 @@
 import Foundation
+import FirebaseAppCheck
 import PDFKit
 
 enum TemplateRecommendationEngine {
@@ -308,9 +309,222 @@ enum ResumeMarketLocalizationService {
   }
 }
 
+enum TodayActionPriority: Int, Comparable {
+  case campaign = 20
+  case resumeReadiness = 60
+  case smartLink = 70
+  case application = 80
+  case dueFollowUp = 90
+  case imminentInterview = 95
+  case expiringHostedWork = 100
+
+  static func < (left: TodayActionPriority, right: TodayActionPriority) -> Bool {
+    left.rawValue < right.rawValue
+  }
+}
+
+struct WeeklyCampaignProgress: Equatable {
+  let applications: Int
+  let networking: Int
+  let practice: Int
+}
+
+enum WeeklyCampaignService {
+  static func progress(
+    applications: [JobApplication],
+    contacts: [CareerContact],
+    voiceAttempts: [VoicePracticeAttempt],
+    since start: Date
+  ) -> WeeklyCampaignProgress {
+    let progressedApplications = applications.filter { application in
+      application.createdAt >= start
+        || application.activityTimeline.contains { $0.occurredAt >= start }
+    }.count
+    let networking = contacts.reduce(0) { total, contact in
+      total + (contact.interactions ?? []).filter { $0.occurredAt >= start }.count
+    }
+    let practice = voiceAttempts.filter { $0.createdAt >= start }.count
+    return WeeklyCampaignProgress(
+      applications: progressedApplications,
+      networking: networking,
+      practice: practice
+    )
+  }
+}
+
 private extension Double {
   func rounded(toPlaces places: Int) -> Double {
     let divisor = pow(10, Double(places))
     return (self * divisor).rounded() / divisor
+  }
+}
+
+enum ProductInsightEvent: String {
+  case onboardingGoalSelected = "onboarding_goal_selected"
+  case documentExported = "document_exported"
+  case jobCaptured = "job_captured"
+  case aiCompleted = "ai_completed"
+  case plansPresented = "plans_presented"
+  case feedbackOpened = "feedback_opened"
+}
+
+enum ProductInsightSource: String, Codable {
+  case app
+  case serverAI = "server_ai"
+  case onDeviceAI = "on_device_ai"
+
+  var title: String {
+    switch self {
+    case .app: "ResumeStudio"
+    case .serverAI: "Connected quality AI"
+    case .onDeviceAI: "Processed on this iPhone"
+    }
+  }
+
+  var systemImage: String {
+    switch self {
+    case .app: "app.fill"
+    case .serverAI: "cloud.fill"
+    case .onDeviceAI: "iphone.gen3"
+    }
+  }
+}
+
+/// Sends only allow-listed aggregate product signals. There is deliberately no
+/// installation identifier, résumé content, job data, URL, or user identity in
+/// this request. The backend immediately folds each event into a daily counter.
+enum ProductInsights {
+  static let enabledKey = "privacy.shareAnonymousProductInsights"
+
+  static var isEnabled: Bool {
+    UserDefaults.standard.object(forKey: enabledKey) as? Bool ?? false
+  }
+
+  static func record(
+    _ event: ProductInsightEvent,
+    source: ProductInsightSource = .app,
+    once: Bool = false,
+    goal: String? = nil
+  ) {
+    guard isEnabled else { return }
+    Task { @MainActor in
+      let onceKey = once ? "productInsight.recorded.\(event.rawValue)" : nil
+      if let onceKey, UserDefaults.standard.bool(forKey: onceKey) { return }
+      if let onceKey, pending.contains(where: { $0.onceKey == onceKey }) { return }
+      let payload = ProductInsightPayload(
+        event: event.rawValue,
+        plan: PurchaseManager.shared.plan.rawValue,
+        source: source.rawValue,
+        appVersion: appVersion,
+        goal: goal
+      )
+      await deliver(QueuedProductInsight(payload: payload, onceKey: onceKey))
+    }
+  }
+
+  static func flushPending() {
+    guard isEnabled else { return }
+    Task { @MainActor in
+      for item in pending {
+        if await send(item.payload) {
+          markDelivered(item)
+        } else {
+          break
+        }
+      }
+    }
+  }
+
+  @MainActor private static func deliver(_ item: QueuedProductInsight) async {
+    if await send(item.payload) {
+      markDelivered(item)
+    } else {
+      var queue = pending
+      if !queue.contains(where: { $0.id == item.id || ($0.onceKey != nil && $0.onceKey == item.onceKey) }) {
+        queue.append(item)
+        pending = Array(queue.suffix(30))
+      }
+    }
+  }
+
+  @MainActor private static func send(_ payload: ProductInsightPayload) async -> Bool {
+    guard let baseURL = serviceBaseURL else { return false }
+    let endpoint = baseURL.appendingPathComponent("v1/metrics")
+    guard let token = try? await appCheckToken() else { return false }
+    var request = URLRequest(url: endpoint)
+    request.httpMethod = "POST"
+    request.timeoutInterval = 8
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.setValue(token, forHTTPHeaderField: "X-Firebase-AppCheck")
+    request.httpBody = try? JSONEncoder().encode(payload)
+    guard let (_, response) = try? await URLSession.shared.data(for: request),
+      let http = response as? HTTPURLResponse
+    else { return false }
+    return http.statusCode == 202
+  }
+
+  @MainActor private static func markDelivered(_ item: QueuedProductInsight) {
+    if let onceKey = item.onceKey { UserDefaults.standard.set(true, forKey: onceKey) }
+    pending = pending.filter { $0.id != item.id }
+  }
+
+  @MainActor private static var pending: [QueuedProductInsight] {
+    get {
+      guard let data = UserDefaults.standard.data(forKey: pendingKey) else { return [] }
+      return (try? JSONDecoder().decode([QueuedProductInsight].self, from: data)) ?? []
+    }
+    set {
+      UserDefaults.standard.set(try? JSONEncoder().encode(newValue), forKey: pendingKey)
+    }
+  }
+
+  private static let pendingKey = "privacy.pendingAnonymousProductInsights.v1"
+
+  @MainActor private static func appCheckToken() async throws -> String {
+    try await withCheckedThrowingContinuation { continuation in
+      AppCheck.appCheck().token(forcingRefresh: false) { result, error in
+        if let token = result?.token, !token.isBlank {
+          continuation.resume(returning: token)
+        } else {
+          continuation.resume(throwing: error ?? URLError(.userAuthenticationRequired))
+        }
+      }
+    }
+  }
+
+  private static var serviceBaseURL: URL? {
+    if let override = ProcessInfo.processInfo.environment["AI_SERVICE_BASE_URL"],
+      let url = URL(string: override), !override.isEmpty
+    { return url }
+    guard let raw = Bundle.main.object(forInfoDictionaryKey: "AIServiceBaseURL") as? String,
+      !raw.contains("$(")
+    else { return nil }
+    return URL(string: raw)
+  }
+
+  private static var appVersion: String {
+    let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
+    let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
+    return "\(version)-\(build)"
+  }
+}
+
+private struct ProductInsightPayload: Codable {
+  let event: String
+  let plan: String
+  let source: String
+  let appVersion: String
+  let goal: String?
+}
+
+private struct QueuedProductInsight: Codable, Identifiable {
+  let id: UUID
+  let payload: ProductInsightPayload
+  let onceKey: String?
+
+  init(payload: ProductInsightPayload, onceKey: String?) {
+    id = UUID()
+    self.payload = payload
+    self.onceKey = onceKey
   }
 }

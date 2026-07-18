@@ -77,8 +77,10 @@ final class CareerIntelligenceStore: ObservableObject {
       guard UserDefaults.standard.object(forKey: CareerPrivacySetting.keepHistoryKey) as? Bool ?? true,
         let action = note.userInfo?["action"] as? String
       else { return }
+      let provider = (note.userInfo?["provider"] as? String)
+        .flatMap(ProductInsightSource.init(rawValue:))
       Task { @MainActor [weak self] in
-        self?.addProcessingRecord(action: action)
+        self?.addProcessingRecord(action: action, provider: provider)
       }
     }
   }
@@ -153,7 +155,11 @@ final class CareerIntelligenceStore: ObservableObject {
     Task { try? await CareerReminderService.schedule(contact: contact) }
   }
 
-  func deleteContact(_ id: UUID) { contacts.removeAll { $0.id == id }; save() }
+  func deleteContact(_ id: UUID) {
+    contacts.removeAll { $0.id == id }
+    CareerReminderService.cancel(contactID: id)
+    save()
+  }
 
   func add(_ draft: NetworkingDraft) { networkingDrafts.insert(draft, at: 0); save() }
 
@@ -260,12 +266,13 @@ final class CareerIntelligenceStore: ObservableObject {
     )
   }
 
-  private func addProcessingRecord(action: String) {
+  private func addProcessingRecord(action: String, provider: ProductInsightSource?) {
     let purpose = action.replacingOccurrences(of: "([a-z])([A-Z])", with: "$1 $2", options: .regularExpression).capitalized
     processingRecords.insert(AIProcessingRecord(
       action: action,
       purpose: purpose,
-      includedVerifiedEvidence: UserDefaults.standard.object(forKey: CareerPrivacySetting.shareVerifiedEvidenceKey) as? Bool ?? true
+      includedVerifiedEvidence: UserDefaults.standard.object(forKey: CareerPrivacySetting.shareVerifiedEvidenceKey) as? Bool ?? true,
+      provider: provider
     ), at: 0)
     processingRecords = Array(processingRecords.prefix(100))
     save()

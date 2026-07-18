@@ -1,6 +1,7 @@
 import FirebaseAppCheck
 import FirebaseCore
 import SwiftUI
+import TipKit
 
 @main
 struct ResumeStudioApp: App {
@@ -16,6 +17,14 @@ struct ResumeStudioApp: App {
   @StateObject private var referrals = ReferralStore()
   @StateObject private var network = NetworkMonitor.shared
   @StateObject private var smartLinks = SmartLinkStore()
+  @StateObject private var personalProfile = PersonalProfileStore()
+
+  init() {
+    try? Tips.configure([
+      .displayFrequency(.weekly),
+      .datastoreLocation(.applicationDefault),
+    ])
+  }
 
   var body: some Scene {
     WindowGroup {
@@ -31,6 +40,7 @@ struct ResumeStudioApp: App {
         .environmentObject(referrals)
         .environmentObject(network)
         .environmentObject(smartLinks)
+        .environmentObject(personalProfile)
         .tint(store.document.accent.color)
         .task {
           // Yield the first frame to SplashView before Firebase performs its
@@ -38,6 +48,7 @@ struct ResumeStudioApp: App {
           // soon as the process owns the window, not after SDK configuration.
           await Task.yield()
           configureFirebaseIfNeeded()
+          ProductInsights.flushPending()
           aiArtifacts.configureFirebase()
           cloudSync.configure(
             resumeStore: store,

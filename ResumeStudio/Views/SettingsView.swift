@@ -1,7 +1,16 @@
 import AuthenticationServices
 import SwiftUI
 
+enum ResumeStudioLinks {
+  static let marketing = URL(string: "https://www.halalisani.com/projects/resumestudio-ios/")!
+  static let privacy = URL(string: "https://www.halalisani.com/projects/resumestudio-ios/privacy/")!
+  static let dataCollection = URL(string: "https://www.halalisani.com/projects/resumestudio-ios/data-collection/")!
+  static let support = URL(string: "https://www.halalisani.com/projects/resumestudio-ios/support/")!
+  static let feedback = URL(string: "mailto:currenttech.co.za@gmail.com?subject=ResumeStudio%20feedback")!
+}
+
 struct SettingsView: View {
+  @Environment(\.openURL) private var openURL
   @EnvironmentObject private var cloudSync: ICloudSyncService
   @EnvironmentObject private var purchases: PurchaseManager
   @EnvironmentObject private var account: AccountStore
@@ -117,6 +126,17 @@ struct SettingsView: View {
           Label("Your data and AI", systemImage: "lock.shield")
         }
       }
+
+      Section("Help and legal") {
+        Link(destination: ResumeStudioLinks.marketing) { Label("ResumeStudio website", systemImage: "safari") }
+        Link(destination: ResumeStudioLinks.support) { Label("Support", systemImage: "questionmark.circle") }
+        Link(destination: ResumeStudioLinks.privacy) { Label("Privacy policy", systemImage: "hand.raised") }
+        Link(destination: ResumeStudioLinks.dataCollection) { Label("Data collection", systemImage: "list.bullet.clipboard") }
+        Button("Send feedback", systemImage: "envelope") {
+          ProductInsights.record(.feedbackOpened)
+          openURL(ResumeStudioLinks.feedback)
+        }
+      }
     }
     .scrollContentBackground(.hidden)
     .background(Theme.paper)
@@ -217,6 +237,10 @@ private struct CloudConflictResolutionView: View {
 }
 
 private struct PrivacySettingsView: View {
+  @AppStorage(CareerPrivacySetting.onDeviceAIKey) private var onDeviceAIEnabled = true
+  @AppStorage(CareerPrivacySetting.connectedFallbackKey) private var connectedFallbackEnabled = false
+  @AppStorage(ProductInsights.enabledKey) private var productInsightsEnabled = false
+
   var body: some View {
     List {
       Section("On this device") {
@@ -228,12 +252,35 @@ private struct PrivacySettingsView: View {
       Section("AI actions") {
         Label("AI runs only after you choose an AI action.", systemImage: "hand.tap")
         Label("Only the résumé text needed for that action is sent.", systemImage: "text.document")
+        Toggle("Use on-device intelligence", isOn: $onDeviceAIEnabled)
+        Toggle("Allow connected fallback on Free", isOn: $connectedFallbackEnabled)
+          .disabled(!onDeviceAIEnabled)
+          .accessibilityIdentifier("settings.connectedFallback")
+        LabeledContent("Apple Intelligence", value: OnDeviceAIService.availabilityDescription)
+          .font(.caption)
+        Text("Free uses supported on-device intelligence first for lightweight writing and extraction. If you enable connected fallback, a failed on-device attempt may use the credits shown for that action. Go and Pro use the connected quality model first, with on-device intelligence as a private fallback when it can help.")
+          .font(.caption).foregroundStyle(Theme.mutedInk)
+      }
+
+      Section("Anonymous product insights") {
+        Toggle("Help improve ResumeStudio", isOn: $productInsightsEnabled)
+        Text("Shares only aggregate event counters, plan, AI route and app version. It never includes your identity, résumé text, job data, URLs or a persistent device identifier.")
+          .font(.caption).foregroundStyle(Theme.mutedInk)
+        Link("Read the data-collection summary", destination: ResumeStudioLinks.dataCollection)
+      }
+
+      Section("Policies") {
+        Link("Privacy policy", destination: ResumeStudioLinks.privacy)
+        Link("Support", destination: ResumeStudioLinks.support)
       }
     }
     .scrollContentBackground(.hidden)
     .background(Theme.paper)
     .navigationTitle("Your data and AI")
     .navigationBarTitleDisplayMode(.inline)
+    .onChange(of: productInsightsEnabled) { _, enabled in
+      if enabled { ProductInsights.flushPending() }
+    }
   }
 }
 

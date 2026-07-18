@@ -7,8 +7,11 @@ service cloud.firestore {
       allow create, update: if request.auth != null
         && request.auth.uid == userId
         && request.resource.data.keys().hasOnly([
-          'action', 'context', 'createdAt', 'outputJSON', 'previewLines', 'schemaVersion'
+          'action', 'context', 'createdAt', 'outputJSON', 'previewLines', 'provider',
+          'schemaVersion'
         ])
+        && (!('provider' in request.resource.data)
+          || request.resource.data.provider in ['server_ai', 'on_device_ai'])
         && request.resource.data.outputJSON is string
         && request.resource.data.outputJSON.size() <= 200000;
     }

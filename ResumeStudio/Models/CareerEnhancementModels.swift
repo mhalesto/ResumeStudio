@@ -89,6 +89,7 @@ struct AIProcessingRecord: Identifiable, Codable, Equatable {
   var action: String
   var purpose: String
   var includedVerifiedEvidence: Bool
+  var provider: ProductInsightSource? = nil
   var completedAt = Date()
 }
 
@@ -112,5 +113,6 @@ enum CareerPrivacySetting {
   static let aiEnabledKey = "careerAIProcessingEnabled"
   static let shareVerifiedEvidenceKey = "careerAIShareVerifiedEvidence"
   static let keepHistoryKey = "careerAIKeepProcessingHistory"
+  static let onDeviceAIKey = "careerAIUseOnDeviceIntelligence"
+  static let connectedFallbackKey = "careerAIAllowConnectedFallback"
 }
-

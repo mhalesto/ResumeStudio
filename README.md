@@ -18,7 +18,7 @@ ResumeStudio is a native SwiftUI app for building polished, export-ready resumes
 - Application tracker with saved, applied, interview, offer, and rejected stages
 - Live ATS coaching with a readiness score, matched and missing job-language evidence, and links back to the exact résumé section
 - A Recruiter Scan that replays the eye-tracking research's 7.4-second first pass on the rendered page — an animated gaze spotlight adapted to the template's layout, a dwell-time heatmap, a first-impression score weighted by gaze share with low, medium, and high strictness, and what the recruiter left with versus looked for and never found — computed entirely on device
-- Trackable résumé links: send a hosted link instead of an attachment and know when it is opened — per-viewer opens, honest visible-tab reading time, and PDF-download flags, with refresh-driven alerts, a Today-queue follow-up nudge, and one-tap revoke; the viewer page states plainly that opens are visible to the sender, and viewers are never identified
+- Trackable résumé links: send a hosted link instead of an attachment and know when it is opened — per-viewer opens, honest visible-tab reading time, PDF-save flags, privacy-safe daily trends with 7/30/90/all ranges and bar/line/area views, link filters, engagement insights, refresh-driven alerts, a Today-queue follow-up nudge, and one-tap revoke; the viewer page states plainly that opens are visible to the sender, and viewers are never identified
 - A role-, seniority-, market-, portrait-, page-, plan-, and ATS-aware Template Finder with favorites, recent styles, and three-way comparison
 - Per-application packets that keep the selected résumé, cover letter, application email, follow-up email, notes, and interview checklist together
 - Outcome analytics for application-to-interview and interview-to-offer conversion, response time, source performance, and résumé-version performance
@@ -27,7 +27,8 @@ ResumeStudio is a native SwiftUI app for building polished, export-ready resumes
 - AI marking with saved totals, percentages, strengths, knowledge gaps, per-question feedback, focus plans, and attempt history
 - A floating animated Career Coach grounded in the saved résumé, applications, interview reflections,
   assessment history, and cover-letter target, with a strict work and job-search scope
-- On-device PDF, DOCX, text, and LinkedIn data-export import
+- On-device PDF, scanned-PDF, image, DOCX, text, and LinkedIn data-export import, including private Vision OCR
+- Goal-first onboarding, a real weekly campaign, due relationship follow-ups, and a ranked Today queue
 - Projects, certifications, languages, awards, volunteering, publications, and custom sections
 - Automatic local draft persistence
 - Reordering and deletion of repeatable sections
@@ -49,7 +50,7 @@ ResumeStudio is a native SwiftUI app for building polished, export-ready resumes
 - `Models/ResumeDocument.swift`: platform-neutral, Codable resume data
 - `Models/CoverLetterDocument.swift`: locally persisted cover-letter content and its styles
 - `Models/TemplatePlan.swift`: what a template does with the *page* — the second column, the timeline rail, the margin dates — as opposed to what it does with the letterhead
-- `Services/ResumeAIService.swift`: redacted client requests to the Firebase AI proxy
+- `Services/ResumeAIService.swift`: plan-aware routing between Apple Foundation Models and redacted Firebase AI requests
 - `Services/CoverLetterPDFRenderer.swift`: searchable, automatically paginated letter PDFs
 - `Services/ResumePDFRenderer.swift`: reusable PDF layout and pagination engine
 - `Services/ResumeStore.swift`: versioned local résumé-library persistence
@@ -68,7 +69,9 @@ The renderer is intentionally separated from the editor so additional templates 
 
 ## AI architecture
 
-The OpenAI API key is never included in the iOS app. ResumeStudio calls a Firebase Cloud Function in the registered `resumestudio-4addf` project. That function:
+The OpenAI API key is never included in the iOS app. Lightweight extraction, rewriting, summarisation and classification can use Apple's Foundation Models framework on supported Apple Intelligence devices. Free routes these supported tasks on device first and transparently falls back to the metered server path when necessary. Go and Pro route to the connected quality model first, using on-device intelligence mainly as an offline or temporary-service fallback. Complex tailoring, interview plans, translation and Career Coach work always use the structured server path.
+
+The connected path calls a Firebase Cloud Function in the registered `resumestudio-4addf` project. That function:
 
 - verifies Firebase App Check in production;
 - rate-limits individual installations;
@@ -76,7 +79,7 @@ The OpenAI API key is never included in the iOS app. ResumeStudio calls a Fireba
 - calls the OpenAI Responses API with `store: false` and strict JSON schemas;
 - returns suggestions for review instead of silently editing a draft.
 
-The client sends a redacted resume snapshot. Names, phone numbers, email addresses, references, and profile photos are not included in AI resume-writing requests.
+The client sends a redacted resume snapshot. Names, phone numbers, email addresses, references, and profile photos are not included in connected AI resume-writing requests. Users can disable on-device intelligence, pause AI entirely, and opt out of anonymous aggregate product counters in Privacy Centre. Metrics never contain content, identity, URLs, or a persistent device identifier.
 
 ## Plans and in-app purchases
 

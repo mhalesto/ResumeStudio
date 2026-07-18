@@ -69,6 +69,7 @@ struct PlansView: View {
     }
     .background(Theme.paper)
     .navigationTitle("Plans")
+    .onAppear { ProductInsights.record(.plansPresented) }
     .navigationBarTitleDisplayMode(.inline)
     .toolbar {
       ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }

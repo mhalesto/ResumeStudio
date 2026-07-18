@@ -11,6 +11,7 @@ struct AITextSuggestionsView: View {
   @State private var errorMessage: String?
   @State private var isOffline = false
   @State private var isLoading = true
+  @State private var provider: ProductInsightSource?
 
   var body: some View {
     NavigationStack {
@@ -27,6 +28,7 @@ struct AITextSuggestionsView: View {
               Text(guidance)
                 .font(.footnote)
                 .foregroundStyle(Theme.mutedInk)
+              if let provider { AIRouteBadge(provider: provider) }
             }
 
             Section("Choose a version") {
@@ -69,6 +71,10 @@ struct AITextSuggestionsView: View {
         }
       }
       .task { await generate() }
+      .onReceive(NotificationCenter.default.publisher(for: .aiRequestDidComplete)) { note in
+        guard let raw = note.userInfo?["provider"] as? String else { return }
+        provider = ProductInsightSource(rawValue: raw)
+      }
     }
   }
 
@@ -97,6 +103,7 @@ struct AICompetencySuggestionsView: View {
   @State private var errorMessage: String?
   @State private var isOffline = false
   @State private var isLoading = true
+  @State private var provider: ProductInsightSource?
 
   var body: some View {
     NavigationStack {
@@ -115,6 +122,9 @@ struct AICompetencySuggestionsView: View {
                   .font(.footnote)
                   .foregroundStyle(Theme.mutedInk)
               }
+            }
+            if let provider {
+              Section("Processing") { AIRouteBadge(provider: provider) }
             }
             Section("Select competencies") {
               ForEach(result.suggestions, id: \.self) { suggestion in
@@ -153,6 +163,10 @@ struct AICompetencySuggestionsView: View {
         }
       }
       .task { await generate() }
+      .onReceive(NotificationCenter.default.publisher(for: .aiRequestDidComplete)) { note in
+        guard let raw = note.userInfo?["provider"] as? String else { return }
+        provider = ProductInsightSource(rawValue: raw)
+      }
     }
   }
 

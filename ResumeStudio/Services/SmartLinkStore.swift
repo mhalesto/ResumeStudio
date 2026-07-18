@@ -10,6 +10,7 @@ final class SmartLinkStore: ObservableObject {
   @Published private(set) var links: [SmartLink] = []
   @Published private(set) var lastRefreshError: String?
   @Published private(set) var isRefreshing = false
+  @Published private(set) var isRecovering = false
 
   private let fileURL: URL
   private let service = SmartLinkService()
@@ -53,7 +54,7 @@ final class SmartLinkStore: ObservableObject {
 
   func revoke(_ id: UUID) async throws {
     guard let index = links.firstIndex(where: { $0.id == id }) else { return }
-    try await service.revoke(token: links[index].token)
+    try await service.revoke(links[index])
     links[index].status = .revoked
     save()
   }
@@ -62,7 +63,7 @@ final class SmartLinkStore: ObservableObject {
     guard let index = links.firstIndex(where: { $0.id == id }) else { return }
     // Best-effort remote delete; the local record goes regardless, and an
     // already-deleted remote link is not an error worth surfacing.
-    try? await service.delete(token: links[index].token)
+    try? await service.delete(links[index])
     links.removeAll { $0.id == id }
     save()
   }
@@ -84,9 +85,12 @@ final class SmartLinkStore: ObservableObject {
       guard force || (links[index].lastRefreshedAt ?? .distantPast) < Date(timeIntervalSinceNow: -60)
       else { continue }
       do {
-        let activity = try await service.activity(token: links[index].token)
+        let activity = try await service.activity(for: links[index])
         let previousOpens = links[index].totalOpens
         links[index].views = activity.views
+        if let dailyActivity = activity.dailyActivity {
+          links[index].activityByDay = dailyActivity
+        }
         links[index].status = SmartLinkStatus(rawValue: activity.status) ?? links[index].status
         links[index].lastRefreshedAt = Date()
         let newOpens = links[index].totalOpens - previousOpens
@@ -98,6 +102,40 @@ final class SmartLinkStore: ObservableObject {
       }
     }
     save()
+  }
+
+  /// Rebuilds a missing or partial local index from links owned by the signed-
+  /// in account. New links recover their share token too; legacy links created
+  /// before server-side recovery retain analytics and management controls.
+  func recoverHostedLinks() async {
+    guard !isRecovering else { return }
+    isRecovering = true
+    defer { isRecovering = false }
+    do {
+      let recovered = try await service.recoverHostedLinks()
+      var added = false
+      for link in recovered {
+        let exists = links.contains { existing in
+          if let remoteID = link.remoteID, existing.remoteID == remoteID { return true }
+          return link.canShare && existing.token == link.token
+        }
+        if !exists {
+          links.append(link)
+          added = true
+        }
+      }
+      if added {
+        links.sort { $0.createdAt > $1.createdAt }
+        save()
+      }
+      lastRefreshError = nil
+    } catch let error as SmartLinkError {
+      // Recovery is additive. A temporary backend/auth failure must not hide
+      // valid local links or replace the more useful activity refresh error.
+      if links.isEmpty { lastRefreshError = error.localizedDescription }
+    } catch {
+      if links.isEmpty { lastRefreshError = error.localizedDescription }
+    }
   }
 
   // MARK: - Notifications

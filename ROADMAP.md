@@ -8,7 +8,7 @@ This roadmap tracks the release-hardening and product-workflow programme agreed 
 - [x] Add in-app account deletion with reauthentication guidance.
 - [x] Delete Firebase Auth, AI artifacts, referral data, credit records, and owned Review Rooms/PDFs.
 - [x] Let the user separately erase local workspace data and the iCloud workspace archive.
-- [ ] Publish public Support and Privacy pages and link them from Settings and App Store metadata.
+- [x] Publish public Support and Privacy pages and link them from Settings and App Store metadata.
 - [x] Add and validate the app privacy manifest.
 - [x] Fix catalogue counts in tests and documentation.
 

@@ -48,6 +48,26 @@ final class ResumeStudioTests: XCTestCase {
     XCTAssertEqual(ResumeAIAction.translateResume.creditCost, 5)
   }
 
+  func testHybridAIRoutingPolicyKeepsComplexQualityChoicePredictable() {
+    XCTAssertEqual(HybridAIRoutingPolicy.initialRoute(plan: .free, onDeviceEnabled: true), .onDevice)
+    XCTAssertEqual(HybridAIRoutingPolicy.initialRoute(plan: .free, onDeviceEnabled: false), .connected)
+    XCTAssertEqual(HybridAIRoutingPolicy.initialRoute(plan: .go, onDeviceEnabled: true), .connected)
+    XCTAssertEqual(HybridAIRoutingPolicy.initialRoute(plan: .pro, onDeviceEnabled: true), .connected)
+  }
+
+  func testOnDeviceQualityGateRejectsWeakOrDuplicateOutput() throws {
+    XCTAssertThrowsError(try OnDeviceAIQualityGate.textAlternatives(["Short", "Short", "Short"]))
+    let alternatives = try OnDeviceAIQualityGate.textAlternatives([
+      "Led cross-functional planning for the supported programme.",
+      "Coordinated cross-functional planning for the supported programme.",
+      "Directed cross-functional planning for the supported programme.",
+    ])
+    XCTAssertEqual(alternatives.count, 3)
+    XCTAssertThrowsError(try OnDeviceAIQualityGate.competencies(
+      ["Leadership", "Leadership", "Planning"], excluding: []))
+    XCTAssertFalse(OnDeviceAIQualityGate.isReviewableJob(role: "", company: "", description: "Too short"))
+  }
+
   func testOfflineAccessNeverInventsOrExtendsPaidAccess() {
     let now = Date(timeIntervalSince1970: 2_000_000_000)
     XCTAssertEqual(
@@ -75,6 +95,32 @@ final class ResumeStudioTests: XCTestCase {
     XCTAssertEqual(
       OfflineAccessPolicy.resolve(designPack, now: now),
       OfflineAccessDecision(plan: .free, hasDesignPack: true, subscriptionExpiry: nil))
+  }
+
+  func testOfflineEntitlementCacheRetainsServerVerifiableProofAndDecodesLegacyData() throws {
+    let expiry = Date(timeIntervalSince1970: 2_000_086_400)
+    let cached = OfflineEntitlements(
+      plan: .pro,
+      subscriptionExpiry: expiry,
+      hasDesignPack: false,
+      verifiedAt: Date(timeIntervalSince1970: 2_000_000_000),
+      signedTransactions: [ResumeStudioProduct.proMonthly: "signed-pro-jws"],
+      signedAppTransaction: "signed-app-jws"
+    )
+    let encoder = JSONEncoder()
+    encoder.dateEncodingStrategy = .iso8601
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .iso8601
+    let decoded = try decoder.decode(OfflineEntitlements.self, from: encoder.encode(cached))
+    XCTAssertEqual(decoded.signedTransactions?[ResumeStudioProduct.proMonthly], "signed-pro-jws")
+    XCTAssertEqual(decoded.signedAppTransaction, "signed-app-jws")
+
+    let legacy = Data("""
+      {"plan":"pro","subscriptionExpiry":"2033-05-19T03:33:20Z","hasDesignPack":false,"verifiedAt":"2033-05-18T03:33:20Z"}
+      """.utf8)
+    let legacyDecoded = try decoder.decode(OfflineEntitlements.self, from: legacy)
+    XCTAssertNil(legacyDecoded.signedTransactions)
+    XCTAssertNil(legacyDecoded.signedAppTransaction)
   }
 
   func testEntitlementContinuityDistinguishesMissingFromRevokedStoreData() {
@@ -607,7 +653,7 @@ final class ResumeStudioTests: XCTestCase {
     }
   }
 
-  func testJobSpecImportReadsPDFDOCXAndText() throws {
+  func testJobSpecImportReadsPDFDOCXAndText() async throws {
     let directory = FileManager.default.temporaryDirectory
       .appendingPathComponent(UUID().uuidString, isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -621,20 +667,114 @@ final class ResumeStudioTests: XCTestCase {
           .draw(at: CGPoint(x: 40, y: 40))
       }
     try pdfData.write(to: pdfURL)
-    let pdf = try JobSpecImportService.importDocument(from: pdfURL)
+    let pdf = try await JobSpecImportService.importDocument(from: pdfURL)
     XCTAssertTrue(pdf.text.contains("workforce planning"))
     XCTAssertEqual(pdf.fileName, "People Lead Spec.pdf")
 
     let docxURL = directory.appendingPathComponent("Role.docx")
     try ResumeDOCXRenderer.render(document: .example).write(to: docxURL)
-    let docx = try JobSpecImportService.importDocument(from: docxURL)
+    let docx = try await JobSpecImportService.importDocument(from: docxURL)
     XCTAssertTrue(docx.text.contains("People Operations Manager"))
 
     let textURL = directory.appendingPathComponent("Role.txt")
     try "Own hiring operations and coach senior managers".write(
       to: textURL, atomically: true, encoding: .utf8)
-    let text = try JobSpecImportService.importDocument(from: textURL)
+    let text = try await JobSpecImportService.importDocument(from: textURL)
     XCTAssertEqual(text.text, "Own hiring operations and coach senior managers")
+  }
+
+  func testJobSpecImportUsesOnDeviceOCRForAnImage() async throws {
+    let url = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString).appendingPathExtension("png")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let image = UIGraphicsImageRenderer(size: CGSize(width: 1_400, height: 420)).image { context in
+      UIColor.white.setFill()
+      context.fill(CGRect(x: 0, y: 0, width: 1_400, height: 420))
+      NSAttributedString(
+        string: "Senior Product Designer",
+        attributes: [.font: UIFont.systemFont(ofSize: 86, weight: .semibold), .foregroundColor: UIColor.black]
+      ).draw(at: CGPoint(x: 55, y: 145))
+    }
+    try XCTUnwrap(image.pngData()).write(to: url)
+
+    let imported = try await JobSpecImportService.importDocument(from: url)
+    XCTAssertTrue(imported.text.localizedCaseInsensitiveContains("Product Designer"))
+    XCTAssertEqual(imported.ocrPageCount, 0)
+  }
+
+  func testJobSpecImportCombinesSelectableAndScannedPDFPages() async throws {
+    let url = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString).appendingPathExtension("pdf")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let scannedPage = UIGraphicsImageRenderer(size: CGSize(width: 1_200, height: 500)).image { context in
+      UIColor.white.setFill()
+      context.fill(CGRect(x: 0, y: 0, width: 1_200, height: 500))
+      NSAttributedString(
+        string: "Lead customer research programmes",
+        attributes: [.font: UIFont.systemFont(ofSize: 66, weight: .bold), .foregroundColor: UIColor.black]
+      ).draw(at: CGPoint(x: 45, y: 190))
+    }
+    let data = UIGraphicsPDFRenderer(bounds: CGRect(x: 0, y: 0, width: 595, height: 842)).pdfData { context in
+      context.beginPage()
+      NSAttributedString(string: "Senior Product Designer role and team context")
+        .draw(at: CGPoint(x: 40, y: 40))
+      context.beginPage()
+      scannedPage.draw(in: CGRect(x: 30, y: 160, width: 535, height: 223))
+    }
+    try data.write(to: url)
+
+    let imported = try await JobSpecImportService.importDocument(from: url)
+    XCTAssertTrue(imported.text.localizedCaseInsensitiveContains("Senior Product Designer"))
+    XCTAssertTrue(imported.text.localizedCaseInsensitiveContains("customer research"), imported.text)
+    XCTAssertEqual(imported.ocrPageCount, 1)
+    XCTAssertFalse(imported.wasPageLimited)
+  }
+
+  func testJobSpecImportReportsItsTwentyPageSafetyLimit() async throws {
+    let url = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString).appendingPathExtension("pdf")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let data = UIGraphicsPDFRenderer(bounds: CGRect(x: 0, y: 0, width: 595, height: 842)).pdfData { context in
+      for page in 1...21 {
+        context.beginPage()
+        NSAttributedString(string: "Job pack page \(page) with responsibilities and requirements")
+          .draw(at: CGPoint(x: 40, y: 40))
+      }
+    }
+    try data.write(to: url)
+
+    let imported = try await JobSpecImportService.importDocument(from: url)
+    XCTAssertTrue(imported.wasPageLimited)
+    XCTAssertTrue(imported.wasTruncated)
+    XCTAssertTrue(imported.text.contains("page 20"))
+    XCTAssertFalse(imported.text.contains("page 21"))
+  }
+
+  func testTodayPriorityAndWeeklyCampaignProgressPreferRealActivity() {
+    XCTAssertGreaterThan(TodayActionPriority.imminentInterview, .campaign)
+    XCTAssertGreaterThan(TodayActionPriority.dueFollowUp, .resumeReadiness)
+    let start = Date().addingTimeInterval(-3_600)
+    let resumeID = UUID()
+    var application = JobApplication(
+      company: "Example", role: "Designer", jobDescription: "Role", sourceURL: "",
+      status: .applied, notes: "", baseResumeID: resumeID,
+      tailoredResumeID: nil, matchAnalysis: nil, interviewPlan: nil)
+    application.createdAt = start.addingTimeInterval(-86_400)
+    application.activities = [ApplicationActivity(
+      kind: .followUp, title: "Followed up", detail: "Email", occurredAt: Date())]
+    let contact = CareerContact(
+      name: "Sam", role: "Recruiter", company: "Example", email: "", linkedInURL: "",
+      kind: .recruiter, applicationID: nil, notes: "", lastContactedAt: Date(), followUpAt: nil,
+      interactions: [ContactInteraction(kind: .email, summary: "Introduced", occurredAt: Date())])
+    let attempt = VoicePracticeAttempt(
+      applicationID: nil, question: "Tell me about yourself", transcript: "Answer",
+      durationSeconds: 30, wordsPerMinute: 120, fillerWords: [], starCoverage: [], strengths: [],
+      improvements: [], suggestedAnswerShape: "", claimsRequiringConfirmation: [], createdAt: Date())
+
+    XCTAssertEqual(
+      WeeklyCampaignService.progress(
+        applications: [application], contacts: [contact], voiceAttempts: [attempt], since: start),
+      WeeklyCampaignProgress(applications: 1, networking: 1, practice: 1))
   }
 
   /// A red square, encoded as a JPEG — enough for the renderer to draw and crop.
@@ -1278,6 +1418,82 @@ final class ResumeStudioTests: XCTestCase {
     XCTAssertFalse(json.contains(interview.interviewerNames))
   }
 
+  // MARK: - Interview Live Activity eligibility
+
+  /// The count-down Live Activity surfaces exactly one interview: the soonest
+  /// whose window is open — starting 24h before, lingering 30m past its end.
+  func testInterviewLiveActivitySurfacesTheSoonestOpenInterview() {
+    let now = Date(timeIntervalSince1970: 1_700_000_000)
+    func interview(inHours hours: Double, durationMinutes: Int = 60, role: String) -> InterviewEvent {
+      InterviewEvent(
+        applicationID: nil, role: role, company: "Acme",
+        scheduledAt: now.addingTimeInterval(hours * 3600), durationMinutes: durationMinutes,
+        format: .video, locationOrLink: "", interviewerNames: "", reminderEnabled: true,
+        preparationNotes: "", outcome: .pending, selfRating: 0,
+        whatWentWell: "", needsImprovement: "", followUpNotes: "")
+    }
+
+    // Nothing to show when there are no interviews.
+    XCTAssertNil(InterviewLiveActivityController.eligibleInterview(from: [], now: now))
+
+    // Beyond the 24h lead window it is not surfaced yet.
+    XCTAssertNil(InterviewLiveActivityController.eligibleInterview(
+      from: [interview(inHours: 30, role: "Too far")], now: now))
+
+    // Among open interviews, the soonest wins regardless of array order.
+    XCTAssertEqual(
+      InterviewLiveActivityController.eligibleInterview(
+        from: [interview(inHours: 10, role: "Later"), interview(inHours: 2, role: "Soon")],
+        now: now)?.role,
+      "Soon")
+
+    // An interview currently underway is still surfaced.
+    XCTAssertEqual(
+      InterviewLiveActivityController.eligibleInterview(
+        from: [interview(inHours: -0.25, role: "Underway")], now: now)?.role,
+      "Underway")
+
+    // Ended 15m ago (inside the 30m grace) → still surfaced.
+    XCTAssertEqual(
+      InterviewLiveActivityController.eligibleInterview(
+        from: [interview(inHours: -1.25, role: "Just ended")], now: now)?.role,
+      "Just ended")
+
+    // Ended 60m ago (past the 30m grace) → gone.
+    XCTAssertNil(InterviewLiveActivityController.eligibleInterview(
+      from: [interview(inHours: -2, role: "Long gone")], now: now))
+  }
+
+  // MARK: - Personal CV page handles
+
+  /// The client-side handle rules must mirror the backend's `validHandle`, so
+  /// the editor never fires a request the server will only reject.
+  func testProfileHandleValidationMatchesBackendRules() {
+    XCTAssertTrue(PersonalProfile.isValidHandle("halalisani"))
+    XCTAssertTrue(PersonalProfile.isValidHandle("jane-doe"))
+    XCTAssertTrue(PersonalProfile.isValidHandle("a1b"))
+    XCTAssertFalse(PersonalProfile.isValidHandle("ab")) // too short
+    XCTAssertFalse(PersonalProfile.isValidHandle(String(repeating: "a", count: 31))) // too long
+    XCTAssertFalse(PersonalProfile.isValidHandle("-jane")) // leading hyphen
+    XCTAssertFalse(PersonalProfile.isValidHandle("jane-")) // trailing hyphen
+    XCTAssertFalse(PersonalProfile.isValidHandle("ja--ne")) // doubled hyphen
+    XCTAssertFalse(PersonalProfile.isValidHandle("Jane")) // uppercase not folded
+    XCTAssertFalse(PersonalProfile.isValidHandle("jane.doe")) // illegal character
+  }
+
+  /// Suggested and typed handles are always backend-legal: separators collapse
+  /// to single hyphens, illegal characters drop, and trailing hyphens are trimmed.
+  func testProfileHandleSuggestionAndNormalization() {
+    XCTAssertEqual(PersonalProfile.suggestedHandle(from: "Jane Doe"), "jane-doe")
+    XCTAssertEqual(PersonalProfile.suggestedHandle(from: "  Thabo   M. Nkosi "), "thabo-m-nkosi")
+    XCTAssertEqual(PersonalProfile.suggestedHandle(from: "Jane_Doe 99!"), "jane-doe-99")
+    XCTAssertTrue(PersonalProfile.isValidHandle(PersonalProfile.suggestedHandle(from: "Jane Doe")))
+
+    XCTAssertEqual(PersonalProfileView.normalizeHandle("Jane   Doe"), "jane-doe")
+    XCTAssertEqual(PersonalProfileView.normalizeHandle("a_b.c"), "a-b-c")
+    XCTAssertEqual(PersonalProfileView.normalizeHandle("HELLO"), "hello")
+  }
+
   // MARK: - Career coach replies
 
   /// A quiz exactly as the coach writes one. It used to reach the screen as a
@@ -1753,6 +1969,78 @@ final class ResumeStudioTests: XCTestCase {
     XCTAssertTrue(evidence?.detail.contains("Move it up") == true)
   }
 
+  func testRecruiterRepairPreparesOnlySupportedChangesAndDropsBlankSlots() {
+    var buried = ResumeDocument.example
+    buried.experience[0].highlights[2] = "Lifted engagement scores by 12 points."
+    let buriedReport = RecruiterScanService.analyze(document: buried)
+    let reordered = RecruiterScanService.makeRepairDraft(
+      document: buried, report: buriedReport)
+
+    XCTAssertEqual(
+      reordered.experience[0].highlights.first,
+      "Lifted engagement scores by 12 points.")
+    XCTAssertEqual(reordered.experience[0].highlights.count, buried.experience[0].highlights.count)
+    XCTAssertEqual(
+      RecruiterScanService.finalizeRepairDraft(reordered).experience[0].highlights.first,
+      "Lifted engagement scores by 12 points.")
+
+    let blankReport = RecruiterScanService.analyze(document: .blank)
+    var repair = RecruiterScanService.makeRepairDraft(document: .blank, report: blankReport)
+    XCTAssertEqual(repair.experience.count, 2)
+    XCTAssertEqual(repair.education.count, 1)
+    XCTAssertEqual(RecruiterScanService.finalizeRepairDraft(repair), .blank)
+
+    repair.experience[0].role = "Operations Analyst"
+    repair.education[0].qualification = "Bachelor of Commerce"
+    let finalized = RecruiterScanService.finalizeRepairDraft(repair)
+    XCTAssertEqual(finalized.experience.count, 1)
+    XCTAssertEqual(finalized.experience[0].role, "Operations Analyst")
+    XCTAssertEqual(finalized.education.count, 1)
+    XCTAssertEqual(finalized.education[0].qualification, "Bachelor of Commerce")
+  }
+
+  func testRecruiterRepairImprovesMissingHeadlineAndProfileWithoutNetworkAI() {
+    var document = ResumeDocument.example
+    document.personal.headline = ""
+    document.professionalProfile = ""
+    let originalBullet = document.experience[0].highlights[0]
+    let before = RecruiterScanService.analyze(document: document)
+
+    let repair = RecruiterScanService.makeRepairDraft(document: document, report: before)
+    let after = RecruiterScanService.analyze(document: repair)
+
+    XCTAssertTrue(repair.personal.headline.contains(document.experience[0].role))
+    XCTAssertTrue(repair.professionalProfile.contains(document.experience[0].role))
+    XCTAssertTrue(repair.professionalProfile.contains(document.experience[0].company))
+    XCTAssertLessThanOrEqual(
+      repair.professionalProfile.split(whereSeparator: \.isWhitespace).count, 52)
+    XCTAssertFalse(repair.professionalProfile.contains(document.personal.email))
+    XCTAssertFalse(repair.professionalProfile.contains(document.personal.phone))
+    XCTAssertEqual(repair.experience[0].highlights[0], originalBullet)
+    XCTAssertEqual(before.score, 82)
+    XCTAssertEqual(after.score, 92)
+    XCTAssertEqual(after.findings.first { $0.id == "identity" }?.severity, .pass)
+    XCTAssertEqual(after.findings.first { $0.id == "profile-skim" }?.severity, .pass)
+  }
+
+  func testRecruiterRepairBuildsOnlyUserSuppliedMetricIntoBullet() {
+    let original = "Built mobile monitoring features."
+    XCTAssertNil(RecruiterScanService.addingVerifiedMetric(
+      "", outcome: "fewer false alarms", to: original))
+    XCTAssertNil(RecruiterScanService.addingVerifiedMetric(
+      "30%", outcome: "", to: original))
+
+    let improved = RecruiterScanService.addingVerifiedMetric(
+      "30%",
+      outcome: "fewer false alarms",
+      context: "across 3 releases",
+      to: original)
+    XCTAssertEqual(
+      improved,
+      "Built mobile monitoring features, delivering 30% fewer false alarms across 3 releases.")
+    XCTAssertTrue(RecruiterScanService.isQuantified(improved ?? ""))
+  }
+
   func testRecruiterScanStrictnessMovesTheBar() {
     // The example carries no numbers anywhere in its latest role, so the three
     // levels read the same page differently: low forgives the prose bullets,
@@ -1854,6 +2142,7 @@ final class ResumeStudioTests: XCTestCase {
 
   func testSmartLinkAccountingAndUnseenOpens() {
     var link = SmartLink(
+      remoteID: String(repeating: "a", count: 64),
       token: SmartLink.newToken(),
       url: URL(string: "https://example.com/cv/x")!,
       title: "Avery Sample Resume",
@@ -1870,7 +2159,14 @@ final class ResumeStudioTests: XCTestCase {
     ]
     XCTAssertEqual(link.totalOpens, 3)
     XCTAssertEqual(link.totalSeconds, 120)
+    XCTAssertEqual(link.totalDownloads, 1)
     XCTAssertEqual(link.unseenOpens, 3)
+
+    link.activityByDay = [
+      SmartLinkDailyActivity(day: "2026-07-17", opens: 3, seconds: 120, downloads: 1)
+    ]
+    XCTAssertEqual(link.dailyActivity.first?.opens, 3)
+    XCTAssertNotNil(link.dailyActivity.first?.date)
 
     link.acknowledgedOpens = link.totalOpens
     XCTAssertEqual(link.unseenOpens, 0)
@@ -1886,6 +2182,7 @@ final class ResumeStudioTests: XCTestCase {
 
     let store = SmartLinkStore(fileURL: fileURL)
     var link = SmartLink(
+      remoteID: String(repeating: "a", count: 64),
       token: SmartLink.newToken(),
       url: URL(string: "https://example.com/cv/y")!,
       title: "Avery Sample Resume",
@@ -1895,6 +2192,9 @@ final class ResumeStudioTests: XCTestCase {
     )
     link.views = [
       SmartLinkView(id: "v", firstOpenedAt: Date(), lastSeenAt: Date(), opens: 1, seconds: 45, viewer: "Mac · Safari", downloadedPDF: false),
+    ]
+    link.activityByDay = [
+      SmartLinkDailyActivity(day: "2026-07-17", opens: 1, seconds: 45, downloads: 0)
     ]
     store.add(link)
     XCTAssertEqual(store.activeCount, 1)
@@ -1907,7 +2207,9 @@ final class ResumeStudioTests: XCTestCase {
     let reloaded = SmartLinkStore(fileURL: fileURL)
     XCTAssertEqual(reloaded.links.count, 1)
     XCTAssertEqual(reloaded.links.first?.company, "Northstar Works")
+    XCTAssertEqual(reloaded.links.first?.remoteID, String(repeating: "a", count: 64))
     XCTAssertEqual(reloaded.links.first?.acknowledgedOpens, 1)
+    XCTAssertEqual(reloaded.links.first?.dailyActivity.first?.seconds, 45)
     XCTAssertEqual(reloaded.unseenOpens, 0)
   }
 

@@ -76,7 +76,9 @@ private struct AppShellView: View {
   @EnvironmentObject private var applicationStore: ApplicationStore
   @EnvironmentObject private var purchases: PurchaseManager
   @EnvironmentObject private var referralStore: ReferralStore
+  @EnvironmentObject private var network: NetworkMonitor
   @EnvironmentObject private var smartLinks: SmartLinkStore
+  @EnvironmentObject private var personalProfile: PersonalProfileStore
   @Environment(\.horizontalSizeClass) private var horizontalSizeClass
   @StateObject private var careerCoachStore = CareerCoachStore()
   @AppStorage("careerCoachIntroDismissed") private var coachIntroDismissed = false
@@ -146,19 +148,17 @@ private struct AppShellView: View {
       guard url.scheme == "resumestudio" else { return }
       switch url.host {
       case "capture-job":
-        selectedTab = .home
-        NotificationCenter.default.post(name: .openSharedJobCapture, object: nil)
+        openHome(notification: .openSharedJobCapture)
       case "applications":
         selectedTab = .applications
       case "ats":
-        selectedTab = .home
-        NotificationCenter.default.post(name: .openHomeRoute, object: HomeRoute.atsChecker)
+        openHome(route: .atsChecker)
       case "interviews":
-        selectedTab = .home
-        NotificationCenter.default.post(name: .openHomeRoute, object: HomeRoute.interviewCenter)
+        openHome(route: .interviewCenter)
       case "templates":
-        selectedTab = .home
-        NotificationCenter.default.post(name: .openHomeRoute, object: HomeRoute.gallery)
+        openHome(route: .gallery)
+      case "links":
+        openHome(route: .smartLinks)
       case "plans":
         isPlansPresented = true
       case "referral":
@@ -182,7 +182,8 @@ private struct AppShellView: View {
     .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
       Task {
         await purchases.refreshEntitlements()
-        await smartLinks.refresh()
+        if network.isOnline { await smartLinks.refresh() }
+        publishSharedSnapshot()
       }
     }
     .task {
@@ -190,7 +191,11 @@ private struct AppShellView: View {
       // so the first refresh doesn't fail soft and wait for the next
       // foreground to try again.
       try? await Task.sleep(nanoseconds: 2_000_000_000)
-      await smartLinks.refresh()
+      if network.isOnline {
+        await smartLinks.refresh()
+        await personalProfile.load()
+      }
+      publishSharedSnapshot()
     }
     .onReceive(NotificationCenter.default.publisher(for: .selectAppTab)) { notification in
       guard let value = notification.object as? String, let tab = AppTab(rawValue: value) else { return }
@@ -205,7 +210,9 @@ private struct AppShellView: View {
     PlatformIntegrationService.publishWidgetSnapshot(
       applications: applicationStore.applications,
       interviews: applicationStore.interviews,
-      resume: store.document)
+      resume: store.document,
+      smartLinks: smartLinks.links)
+    InterviewLiveActivityController.reconcile(with: applicationStore.interviews)
   }
 
   private func consumeShortcutRoute() {
@@ -214,13 +221,26 @@ private struct AppShellView: View {
     case "applications":
       selectedTab = .applications
     case "ats":
-      selectedTab = .home
-      NotificationCenter.default.post(name: .openHomeRoute, object: HomeRoute.atsChecker)
+      openHome(route: .atsChecker)
     case "templates":
-      selectedTab = .home
-      NotificationCenter.default.post(name: .openHomeRoute, object: HomeRoute.gallery)
+      openHome(route: .gallery)
     default:
       break
+    }
+  }
+
+  /// Changing the selected tab and that tab's NavigationStack path in one
+  /// render pass can make SwiftUI issue two navigation requests for the same
+  /// frame. Hand the route to HomeView after the tab selection has settled.
+  private func openHome(route: HomeRoute) {
+    openHome(notification: .openHomeRoute, object: route)
+  }
+
+  private func openHome(notification: Notification.Name, object: Any? = nil) {
+    selectedTab = .home
+    Task { @MainActor in
+      await Task.yield()
+      NotificationCenter.default.post(name: notification, object: object)
     }
   }
 

@@ -6,6 +6,9 @@ import Foundation
 /// tells you what happened *after* you pressed send.
 struct SmartLink: Identifiable, Codable, Equatable {
   var id = UUID()
+  /// Stable backend document identifier used to recover and manage a link
+  /// when the app's local capability token is no longer available.
+  var remoteID: String? = nil
   /// The capability: whoever holds the token holds the link. Generated on
   /// device, never derived from the résumé or the person.
   var token: String
@@ -19,6 +22,9 @@ struct SmartLink: Identifiable, Codable, Equatable {
   var status: SmartLinkStatus = .open
   /// The last activity feed fetched from the backend.
   var views: [SmartLinkView] = []
+  /// Privacy-safe day totals from the backend. Optional keeps links persisted
+  /// by older app versions decodable; use `dailyActivity` everywhere else.
+  var activityByDay: [SmartLinkDailyActivity]? = nil
   var lastRefreshedAt: Date?
   /// How many opens the user has been told about (notification + badge),
   /// so only genuinely new activity alerts.
@@ -26,9 +32,12 @@ struct SmartLink: Identifiable, Codable, Equatable {
 
   var totalOpens: Int { views.reduce(0) { $0 + $1.opens } }
   var totalSeconds: Int { views.reduce(0) { $0 + $1.seconds } }
+  var totalDownloads: Int { views.count(where: \.downloadedPDF) }
+  var dailyActivity: [SmartLinkDailyActivity] { activityByDay ?? [] }
   var lastSeenAt: Date? { views.compactMap(\.lastSeenAt).max() }
   var unseenOpens: Int { max(0, totalOpens - acknowledgedOpens) }
   var isActive: Bool { status == .open && expiresAt > Date() }
+  var canShare: Bool { !token.isBlank }
 }
 
 enum SmartLinkStatus: String, Codable {
@@ -55,6 +64,28 @@ struct SmartLinkView: Identifiable, Codable, Equatable {
   var seconds: Int
   var viewer: String
   var downloadedPDF: Bool
+}
+
+/// Aggregate activity for one UTC calendar day. The backend never stores an
+/// event trail, IP address, location, or viewer identity: charts only need
+/// these three totals.
+struct SmartLinkDailyActivity: Identifiable, Codable, Equatable {
+  var day: String
+  var opens: Int
+  var seconds: Int
+  var downloads: Int
+
+  var id: String { day }
+
+  /// Charts need a Date axis. Interpret the backend's date-only key as a local
+  /// calendar label so it never slides into an adjacent day on the device.
+  var date: Date? {
+    let components = day.split(separator: "-").compactMap { Int($0) }
+    guard components.count == 3 else { return nil }
+    return Calendar.current.date(from: DateComponents(
+      year: components[0], month: components[1], day: components[2], hour: 12
+    ))
+  }
 }
 
 extension SmartLink {

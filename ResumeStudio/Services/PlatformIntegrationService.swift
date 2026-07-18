@@ -94,7 +94,8 @@ enum PlatformIntegrationService {
   static func publishWidgetSnapshot(
     applications: [JobApplication],
     interviews: [InterviewEvent],
-    resume: ResumeDocument
+    resume: ResumeDocument,
+    smartLinks: [SmartLink] = []
   ) {
     guard let defaults = UserDefaults(suiteName: appGroup) else { return }
     let next = interviews.filter { !$0.isPast }.sorted { $0.scheduledAt < $1.scheduledAt }.first
@@ -105,7 +106,42 @@ enum PlatformIntegrationService {
     defaults.set(next?.role ?? "", forKey: "widgetNextRole")
     defaults.set(next?.company ?? "", forKey: "widgetNextCompany")
     defaults.set(next?.scheduledAt.timeIntervalSince1970 ?? 0, forKey: "widgetNextDate")
+
+    // Trackable-links ("Smart Links") stats power the large widget's dashboard
+    // and its last-7-days opens graph.
+    defaults.set(smartLinks.count(where: \.isActive), forKey: "widgetLinksActive")
+    defaults.set(smartLinks.reduce(0) { $0 + $1.totalOpens }, forKey: "widgetLinkOpens")
+    defaults.set(smartLinks.reduce(0) { $0 + $1.totalSeconds } / 60, forKey: "widgetLinkReadMinutes")
+    defaults.set(smartLinks.reduce(0) { $0 + $1.totalDownloads }, forKey: "widgetLinkDownloads")
+    let trend = widgetLinkTrend(from: smartLinks, days: 7)
+    defaults.set(trend.map(\.opens), forKey: "widgetLinkTrendOpens")
+    defaults.set(trend.map(\.label), forKey: "widgetLinkTrendLabels")
+
     WidgetCenter.shared.reloadAllTimelines()
+  }
+
+  /// Total opens per calendar day for the last `days` days (oldest first),
+  /// labelled with a single-letter weekday for the widget's bar chart.
+  private static func widgetLinkTrend(
+    from links: [SmartLink], days: Int
+  ) -> [(label: String, opens: Int)] {
+    var opensByDay: [String: Int] = [:]
+    for activity in links.flatMap(\.dailyActivity) {
+      opensByDay[activity.day, default: 0] += activity.opens
+    }
+    let calendar = Calendar.current
+    let today = calendar.startOfDay(for: Date())
+    let formatter = DateFormatter()
+    formatter.dateFormat = "EEEEE" // single-letter weekday
+    return (0..<days).compactMap { offset in
+      guard let date = calendar.date(byAdding: .day, value: offset - days + 1, to: today)
+      else { return nil }
+      let components = calendar.dateComponents([.year, .month, .day], from: date)
+      guard let year = components.year, let month = components.month, let day = components.day
+      else { return nil }
+      let key = String(format: "%04d-%02d-%02d", year, month, day)
+      return (formatter.string(from: date), opensByDay[key] ?? 0)
+    }
   }
 }
 

@@ -2,12 +2,15 @@ import Foundation
 import PDFKit
 import UIKit
 import UniformTypeIdentifiers
+import Vision
 import ZIPFoundation
 
 struct ImportedJobSpec: Equatable {
   let fileName: String
   let text: String
   let wasTruncated: Bool
+  let ocrPageCount: Int
+  let wasPageLimited: Bool
 
   var wordCount: Int { text.split(whereSeparator: \.isWhitespace).count }
 }
@@ -19,9 +22,9 @@ enum JobSpecImportError: LocalizedError {
   var errorDescription: String? {
     switch self {
     case .emptyDocument:
-      "No readable text was found in that file. Scanned PDFs need selectable text or OCR first."
+      "No readable text was found in that file. Try a clearer scan or image."
     case .unsupportedFormat(let extensionName):
-      "The .\(extensionName) format is not supported. Choose a PDF, DOCX, RTF, or text file."
+      "The .\(extensionName) format is not supported. Choose a PDF, image, DOCX, RTF, or text file."
     }
   }
 }
@@ -32,23 +35,32 @@ enum JobSpecImportService {
     .wordProcessingDocument,
     .rtf,
     .plainText,
+    .image,
   ]
 
   /// Leaves enough room under the server's 90 KB request ceiling for the résumé
   /// snapshot and JSON framing while retaining even unusually long job packs.
   private static let maximumCharacters = 45_000
 
-  static func importDocument(from url: URL) throws -> ImportedJobSpec {
+  static func importDocument(
+    from url: URL,
+    progress: ((Double) async -> Void)? = nil
+  ) async throws -> ImportedJobSpec {
     let accessed = url.startAccessingSecurityScopedResource()
     defer { if accessed { url.stopAccessingSecurityScopedResource() } }
 
+    await progress?(0)
+    try Task.checkCancellation()
     let rawText: String
+    var ocrPageCount = 0
+    var wasPageLimited = false
     switch url.pathExtension.lowercased() {
     case "pdf":
       guard let document = PDFDocument(url: url) else { throw CocoaError(.fileReadCorruptFile) }
-      rawText = (0..<document.pageCount)
-        .compactMap { document.page(at: $0)?.string }
-        .joined(separator: "\n\n")
+      let result = try await recognizePDF(document, progress: progress)
+      rawText = result.text
+      ocrPageCount = result.ocrPageCount
+      wasPageLimited = result.wasPageLimited
     case "docx":
       rawText = try extractDOCX(from: url)
     case "rtf":
@@ -61,16 +73,76 @@ enum JobSpecImportService {
     case "txt", "text", "md":
       rawText = try String(contentsOf: url, encoding: .utf8)
     default:
-      throw JobSpecImportError.unsupportedFormat(url.pathExtension.lowercased())
+      let contentType = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType
+      guard contentType?.conforms(to: .image) == true,
+            let image = UIImage(contentsOfFile: url.path),
+            let cgImage = image.cgImage
+      else { throw JobSpecImportError.unsupportedFormat(url.pathExtension.lowercased()) }
+      rawText = try await recognizeText(in: cgImage)
     }
 
+    try Task.checkCancellation()
+    await progress?(1)
     let cleaned = clean(rawText)
     guard !cleaned.isBlank else { throw JobSpecImportError.emptyDocument }
-    let wasTruncated = cleaned.count > maximumCharacters
+    let wasTruncated = cleaned.count > maximumCharacters || wasPageLimited
     let text = wasTruncated
       ? String(cleaned.prefix(maximumCharacters)) + "\n\n[Long job specification shortened for analysis.]"
       : cleaned
-    return ImportedJobSpec(fileName: url.lastPathComponent, text: text, wasTruncated: wasTruncated)
+    return ImportedJobSpec(
+      fileName: url.lastPathComponent,
+      text: text,
+      wasTruncated: wasTruncated,
+      ocrPageCount: ocrPageCount,
+      wasPageLimited: wasPageLimited
+    )
+  }
+
+  private static func recognizePDF(
+    _ document: PDFDocument,
+    progress: ((Double) async -> Void)?
+  ) async throws -> (text: String, ocrPageCount: Int, wasPageLimited: Bool) {
+    // Job packs are normally short. Capping OCR avoids turning an accidental
+    // book upload into a long-running task while retaining the useful pages.
+    let pageLimit = min(document.pageCount, 20)
+    var pages: [String] = []
+    var ocrPageCount = 0
+    for index in 0..<pageLimit {
+      try Task.checkCancellation()
+      guard let page = document.page(at: index) else { continue }
+      let selectableText = clean(page.string ?? "")
+      let text: String
+      if selectableText.count >= 20 {
+        text = selectableText
+      } else if let image = autoreleasepool(invoking: {
+        page.thumbnail(of: CGSize(width: 1_400, height: 1_900), for: .mediaBox).cgImage
+      }) {
+        text = try await recognizeText(in: image)
+        ocrPageCount += 1
+      } else {
+        text = selectableText
+      }
+      if !text.isBlank { pages.append(text) }
+      await progress?(Double(index + 1) / Double(max(pageLimit, 1)))
+    }
+    return (pages.joined(separator: "\n\n"), ocrPageCount, document.pageCount > pageLimit)
+  }
+
+  private static func recognizeText(in image: CGImage) async throws -> String {
+    try Task.checkCancellation()
+    return try await Task.detached(priority: .userInitiated) {
+      let request = VNRecognizeTextRequest()
+      request.recognitionLevel = .accurate
+      request.usesLanguageCorrection = true
+      request.automaticallyDetectsLanguage = true
+      try VNImageRequestHandler(cgImage: image).perform([request])
+      let observations = (request.results ?? []).sorted { left, right in
+        let verticalDifference = abs(left.boundingBox.midY - right.boundingBox.midY)
+        if verticalDifference > 0.02 { return left.boundingBox.midY > right.boundingBox.midY }
+        return left.boundingBox.minX < right.boundingBox.minX
+      }
+      return observations.compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\n")
+    }.value
   }
 
   private static func extractDOCX(from url: URL) throws -> String {

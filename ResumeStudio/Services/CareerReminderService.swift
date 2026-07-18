@@ -3,6 +3,10 @@ import Foundation
 import UserNotifications
 
 enum CareerReminderService {
+  static func cancel(contactID: UUID) {
+    cancel("contact-follow-up-\(contactID.uuidString)")
+  }
+
   static func schedule(contact: CareerContact) async throws {
     let identifier = "contact-follow-up-\(contact.id.uuidString)"
     cancel(identifier)
@@ -74,4 +78,3 @@ enum CalendarError: LocalizedError {
   case permissionDenied
   var errorDescription: String? { "Calendar access is disabled. Enable it in Settings to add interviews." }
 }
-

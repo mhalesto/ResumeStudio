@@ -274,11 +274,22 @@ final class PurchaseManager: ObservableObject {
     }
 
     if resolvedPlan != .free || resolvedDesignPack {
+      // A cached subscription is valid offline until its verified expiry, but
+      // hosted services still need the signed StoreKit proof. Keep the last
+      // verified JWS alongside the access decision instead of replacing it
+      // with an empty refresh during a network/StoreKit startup gap.
+      let proofTransactions = resolvedTransactions.isEmpty
+        ? (cachedEntitlements?.signedTransactions ?? signedTransactions)
+        : resolvedTransactions
+      let proofAppTransaction = signedAppTransaction
+        ?? cachedEntitlements?.signedAppTransaction
       let cache = OfflineEntitlements(
         plan: resolvedPlan,
         subscriptionExpiry: subscriptionExpiry,
         hasDesignPack: resolvedDesignPack,
-        verifiedAt: Date()
+        verifiedAt: Date(),
+        signedTransactions: proofTransactions,
+        signedAppTransaction: proofAppTransaction
       )
       cachedEntitlements = cache
       OfflineEntitlementCache.save(cache)
@@ -287,7 +298,8 @@ final class PurchaseManager: ObservableObject {
         designPack: resolvedDesignPack,
         source: usedCachedAccess ? .cached(until: subscriptionExpiry) : .verified
       )
-      signedTransactions = resolvedTransactions
+      signedTransactions = proofTransactions
+      signedAppTransaction = proofAppTransaction
     } else {
       cachedEntitlements = nil
       OfflineEntitlementCache.clear()
@@ -387,6 +399,8 @@ final class PurchaseManager: ObservableObject {
 
   private func applyCachedAccess() {
     let decision = OfflineAccessPolicy.resolve(cachedEntitlements, now: Date())
+    signedTransactions = cachedEntitlements?.signedTransactions ?? [:]
+    signedAppTransaction = cachedEntitlements?.signedAppTransaction
     let hasAccess = decision.plan != .free || decision.hasDesignPack
     apply(
       plan: decision.plan,
@@ -419,6 +433,26 @@ struct OfflineEntitlements: Codable {
   let subscriptionExpiry: Date?
   let hasDesignPack: Bool
   let verifiedAt: Date
+  /// Server-verifiable StoreKit proofs are cached with the access decision so
+  /// paid hosted features do not silently fall back to Free while offline.
+  let signedTransactions: [String: String]?
+  let signedAppTransaction: String?
+
+  init(
+    plan: ResumeStudioPlan,
+    subscriptionExpiry: Date?,
+    hasDesignPack: Bool,
+    verifiedAt: Date,
+    signedTransactions: [String: String]? = nil,
+    signedAppTransaction: String? = nil
+  ) {
+    self.plan = plan
+    self.subscriptionExpiry = subscriptionExpiry
+    self.hasDesignPack = hasDesignPack
+    self.verifiedAt = verifiedAt
+    self.signedTransactions = signedTransactions
+    self.signedAppTransaction = signedAppTransaction
+  }
 
   var hasUsableAccess: Bool {
     hasDesignPack || (plan != .free && subscriptionExpiry.map { $0 > Date() } == true)

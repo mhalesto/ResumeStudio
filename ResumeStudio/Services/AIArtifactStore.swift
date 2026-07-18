@@ -40,7 +40,8 @@ final class AIArtifactStore: ObservableObject {
 
   @discardableResult
   func record<Result: Encodable>(
-    _ result: Result, action: ResumeAIAction, context: String? = nil
+    _ result: Result, action: ResumeAIAction, context: String? = nil,
+    provider: ProductInsightSource? = nil
   ) -> SavedAIArtifact? {
     do {
       let data = try Self.outputEncoder.encode(result)
@@ -48,6 +49,7 @@ final class AIArtifactStore: ObservableObject {
       let artifact = SavedAIArtifact(
         action: action,
         context: context,
+        provider: provider,
         outputJSON: json,
         previewLines: Self.previewLines(from: data)
       )
@@ -171,6 +173,7 @@ final class AIArtifactStore: ObservableObject {
       "schemaVersion": 1,
     ]
     if let context = artifact.context { value["context"] = context }
+    if let provider = artifact.provider { value["provider"] = provider.rawValue }
     return value
   }
 
@@ -186,6 +189,7 @@ final class AIArtifactStore: ObservableObject {
       action: action,
       createdAt: (value["createdAt"] as? Timestamp)?.dateValue() ?? .distantPast,
       context: value["context"] as? String,
+      provider: (value["provider"] as? String).flatMap(ProductInsightSource.init(rawValue:)),
       outputJSON: outputJSON,
       previewLines: value["previewLines"] as? [String] ?? []
     )

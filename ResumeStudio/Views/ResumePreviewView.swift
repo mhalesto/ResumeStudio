@@ -3,7 +3,8 @@ import SwiftUI
 import UIKit
 
 struct ResumePreviewView: View {
-  let document: ResumeDocument
+  private let sourceDocument: ResumeDocument
+  @State private var document: ResumeDocument
 
   @State private var pdfData: Data?
   @State private var renderError: String?
@@ -15,6 +16,11 @@ struct ResumePreviewView: View {
   @State private var atsSafe = false
   @State private var showRecruiterScan = false
   @State private var showCreateLink = false
+
+  init(document: ResumeDocument) {
+    sourceDocument = document
+    _document = State(initialValue: document)
+  }
 
   /// What actually gets rendered and exported: the chosen design, or an
   /// ATS-safe transform of it when the toggle is on.
@@ -142,6 +148,9 @@ struct ResumePreviewView: View {
     .task(id: renderDocument) {
       await renderPreview()
     }
+    .onChange(of: sourceDocument) { _, updated in
+      document = updated
+    }
     .fileExporter(
       isPresented: $isExporting,
       document: PDFFile(data: pdfData ?? Data()),
@@ -160,8 +169,9 @@ struct ResumePreviewView: View {
     .sheet(isPresented: $showRecruiterScan) {
       NavigationStack {
         RecruiterScanView(
-          document: renderDocument, pdfData: pdfData, showsDone: true,
-          fixRouting: .dismissToHome)
+          document: document, pdfData: pdfData, showsDone: true,
+          fixRouting: .dismissToHome,
+          onDocumentUpdated: { document = $0 })
       }
     }
     .sheet(isPresented: $showCreateLink) {
@@ -198,6 +208,7 @@ struct ResumePreviewView: View {
         .appendingPathExtension("pdf")
       try pdfData.write(to: url, options: .atomic)
       shareItem = ShareItem(url: url)
+      ProductInsights.record(.documentExported, once: true)
     } catch {
       renderError = error.localizedDescription
     }
@@ -207,6 +218,7 @@ struct ResumePreviewView: View {
     do {
       docxData = try ResumeDOCXRenderer.render(document: renderDocument)
       isExportingDOCX = true
+      ProductInsights.record(.documentExported, once: true)
     } catch {
       renderError = error.localizedDescription
     }
@@ -221,6 +233,7 @@ struct ResumePreviewView: View {
     let controller = UIPrintInteractionController.shared
     controller.printInfo = info
     controller.printingItem = pdfData
+    ProductInsights.record(.documentExported, once: true)
     controller.present(animated: true, completionHandler: nil)
   }
 
@@ -250,4 +263,6 @@ private struct ShareItem: Identifiable {
   NavigationStack {
     ResumePreviewView(document: .example)
   }
+  .environmentObject(ResumeStore(initialDocument: .example))
+  .environmentObject(CareerIntelligenceStore())
 }

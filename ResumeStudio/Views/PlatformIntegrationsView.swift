@@ -4,6 +4,7 @@ import SwiftUI
 struct PlatformIntegrationsView: View {
   @EnvironmentObject private var resumeStore: ResumeStore
   @EnvironmentObject private var applicationStore: ApplicationStore
+  @EnvironmentObject private var smartLinks: SmartLinkStore
   @State private var message: String?
 
   var body: some View {
@@ -42,7 +43,8 @@ struct PlatformIntegrationsView: View {
           PlatformIntegrationService.publishWidgetSnapshot(
             applications: applicationStore.applications,
             interviews: applicationStore.interviews,
-            resume: resumeStore.document)
+            resume: resumeStore.document,
+            smartLinks: smartLinks.links)
           message = "Widgets refreshed."
         }
         Label("Open Applications", systemImage: "briefcase.fill")
