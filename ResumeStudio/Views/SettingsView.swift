@@ -15,6 +15,7 @@ struct SettingsView: View {
   @EnvironmentObject private var purchases: PurchaseManager
   @EnvironmentObject private var account: AccountStore
   @EnvironmentObject private var aiArtifacts: AIArtifactStore
+  @StateObject private var answerVault = ApplicationAnswerVaultStore()
   @AppStorage("appAppearance") private var appearanceRawValue = AppAppearance.system.rawValue
   @State private var isCloudConflictPresented = false
 
@@ -111,7 +112,30 @@ struct SettingsView: View {
         cloudStatus
       }
 
+      Section {
+        // iOS builds the per-app language picker itself once the app ships more
+        // than one localization; this only points at it, because a custom
+        // in-app picker would have to override AppleLanguages and would then
+        // fight the system setting.
+        Button {
+          if let url = URL(string: UIApplication.openSettingsURLString) {
+            UIApplication.shared.open(url)
+          }
+        } label: {
+          Label("Language", systemImage: "globe")
+        }
+      } header: {
+        Text("Language")
+      } footer: {
+        Text("Opens iOS Settings, where you can set the language Resume Studio uses.")
+      }
+
       Section("Integrations") {
+        NavigationLink {
+          ApplicationAnswerVaultView(store: answerVault)
+        } label: {
+          Label("Application Answer Vault", systemImage: "text.page.badge.magnifyingglass")
+        }
         NavigationLink {
           PlatformIntegrationsView()
         } label: {

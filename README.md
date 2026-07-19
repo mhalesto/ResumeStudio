@@ -40,6 +40,7 @@ ResumeStudio is a native SwiftUI app for building polished, export-ready resumes
 - An ATS check that warns when a template puts content in a second column, because some parsers read columns out of order
 - Fourteen accurately previewed accent colours: four free originals and ten premium Signature and Atelier tones
 - Calendar deadline/interview export, Mail handoff, App Shortcuts, a Career Momentum widget, and explicit-action Safari application autofill backed by the private app group
+- A private Application Answer Vault for reusable screening answers, with built-in matching for work authorization, sponsorship, availability, salary expectations, relocation, work arrangement and role motivation; Safari shows reviewable Fill controls and never submits a form
 - Data-driven, automatically paginated PDF generation
 - Live PDFKit preview
 - Searchable PDF and editable DOCX export, Files export, and iOS share-sheet support
@@ -61,6 +62,7 @@ ResumeStudio is a native SwiftUI app for building polished, export-ready resumes
 - `Services/SmartLinkService.swift` and `Services/SmartLinkStore.swift`: hosted trackable-link publishing, activity polling, and view alerts
 - `Services/ProductivityServices.swift`: template recommendations, packet export, analytics, auto-fit, and market localization
 - `Services/PlatformIntegrationService.swift`: Calendar, Mail, widget, Shortcut, and Safari-profile bridges
+- `Services/ApplicationAnswerVaultStore.swift`: local reusable-answer persistence for review-first Safari application autofill
 - `Services/ResumeDocumentInterchange.swift`: DOCX export and local document import
 - `Services/ICloudSyncService.swift`: private iCloud Documents workspace sync
 - `Views/`: SwiftUI editor and PDF preview flows
@@ -86,9 +88,9 @@ The client sends a redacted resume snapshot. Names, phone numbers, email address
 
 The résumé builder remains useful without payment: manual editing, ATS checks, application tracking, iCloud sync, privacy controls, unlimited on-device import previews, and unwatermarked PDF, DOCX, and text export are free. AI-assisted résumé import has a separate daily allowance and never spends monthly AI credits.
 
-- **Free**: three saved résumé versions, five AI-assisted imports per day, 34 résumé templates, 16 cover-letter templates, one active trackable résumé link, 10 introductory AI credits, then five credits per month.
-- **Go — R49.99/month**: all templates, unlimited versions, 20 AI-assisted imports per day, 35 AI credits per month, one active hosted Review Room, and five active trackable links.
-- **Pro — R129.99/month**: everything in Go, 30 AI-assisted imports per day, 150 AI credits per month, up to ten active hosted Review Rooms, and 25 active trackable links.
+- **Free**: three saved résumé versions, one AI-assisted import per day with up to two résumé photos, 34 résumé templates, 16 cover-letter templates, one active trackable résumé link, 10 introductory AI credits, then five credits per month.
+- **Go — R49.99/month**: all templates, unlimited versions, one AI-assisted import per day with up to five résumé photos, 35 AI credits per month, one active hosted Review Room, and five active trackable links.
+- **Pro — R129.99/month**: everything in Go, two AI-assisted imports per day with up to five résumé photos each, 150 AI credits per month, up to ten active hosted Review Rooms, and 25 active trackable links.
 - **Design Pack Forever — R299.99 once-off**: all current and future templates plus unlimited local versions. AI and hosted-service allowances remain on the user's active Free, Go, or Pro plan.
 
 Verified members can share a referral link. A new member who claims it during their first 30 days receives 10 bonus AI credits, while the inviter receives 5. Rewards are enforced by Firebase, limited to three successful referrals per UTC day and 20 in a rolling 90-day window, and exclude duplicate and self-referrals.

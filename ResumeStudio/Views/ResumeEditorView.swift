@@ -429,7 +429,7 @@ struct ResumeEditorView: View {
           ExperienceEditorView(entry: $entry)
         } label: {
           EditorRow(
-            title: entry.role.isEmpty ? "New Role" : entry.role,
+            title: entry.role.isEmpty ? String(localized: "New Role") : entry.role,
             subtitle: entry.company,
             systemImage: "briefcase.fill"
           )
@@ -456,7 +456,8 @@ struct ResumeEditorView: View {
           EducationEditorView(entry: $entry)
         } label: {
           EditorRow(
-            title: entry.qualification.isEmpty ? "New Qualification" : entry.qualification,
+            title: entry.qualification.isEmpty
+              ? String(localized: "New Qualification") : entry.qualification,
             subtitle: entry.institution,
             systemImage: "graduationcap.fill"
           )
@@ -521,7 +522,7 @@ struct ResumeEditorView: View {
           ReferenceEditorView(reference: $reference)
         } label: {
           EditorRow(
-            title: reference.name.isEmpty ? "New Reference" : reference.name,
+            title: reference.name.isEmpty ? String(localized: "New Reference") : reference.name,
             subtitle: reference.company,
             systemImage: "person.crop.circle.fill"
           )

@@ -112,7 +112,7 @@ struct TemplateGalleryView: View {
     HStack(spacing: 10) {
       Image(systemName: "magnifyingglass")
         .foregroundStyle(Theme.mutedInk)
-      TextField("Search \(documentKind.searchTitle)", text: $searchText)
+      TextField("Search \(String(localized: documentKind.searchTitle))", text: $searchText)
         .textInputAutocapitalization(.never)
         .autocorrectionDisabled()
       if !searchText.isEmpty {
@@ -367,7 +367,7 @@ struct TemplateGalleryView: View {
 
   private var filteredCoverLetterTemplates: [CoverLetterTemplate] {
     CoverLetterTemplate.allCases.filter { template in
-      matchesSearch(template.title, template.subtitle, tags: template.styleTags)
+      matchesSearch(template.title, String(localized: template.subtitle), tags: template.styleTags)
         && matchesTags(template.styleTags)
     }
   }
@@ -375,7 +375,9 @@ struct TemplateGalleryView: View {
   private func matchesSearch(_ title: String, _ subtitle: String, tags: Set<TemplateStyleTag>) -> Bool {
     let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !query.isEmpty else { return true }
-    let searchable = ([title, subtitle] + tags.map(\.title)).joined(separator: " ")
+    // Tags are localized, so search matches the words on screen.
+    let searchable = ([title, subtitle] + tags.map { String(localized: $0.title) })
+      .joined(separator: " ")
     return searchable.localizedCaseInsensitiveContains(query)
   }
 
@@ -470,8 +472,10 @@ private enum TemplateDocumentKind: String, CaseIterable, Identifiable {
   case coverLetter
 
   var id: String { rawValue }
-  var title: String { self == .resume ? "Résumés" : "Cover letters" }
-  var searchTitle: String { self == .resume ? "résumé templates" : "cover-letter templates" }
+  var title: LocalizedStringResource { self == .resume ? "Résumés" : "Cover letters" }
+  var searchTitle: LocalizedStringResource {
+    self == .resume ? "résumé templates" : "cover-letter templates"
+  }
 }
 
 #Preview {

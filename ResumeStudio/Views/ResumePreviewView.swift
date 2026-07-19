@@ -69,7 +69,7 @@ struct ResumePreviewView: View {
             .font(.headline)
           Text(atsSafe
             ? "ATS-safe layout"
-            : "\(document.template.title) · \(document.accent.title)")
+            : "\(document.template.title) · \(String(localized: document.accent.title))")
             .font(.caption2)
             .foregroundStyle(Theme.mutedInk)
             .lineLimit(1)

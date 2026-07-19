@@ -13,9 +13,9 @@ final class ResumeStudioTests: XCTestCase {
     XCTAssertEqual(ResumeStudioPlan.free.hostedReviewRoomLimit, 0)
     XCTAssertEqual(ResumeStudioPlan.go.hostedReviewRoomLimit, 1)
     XCTAssertEqual(ResumeStudioPlan.pro.hostedReviewRoomLimit, 10)
-    XCTAssertEqual(ResumeStudioPlan.free.dailyAIImportLimit, 5)
-    XCTAssertEqual(ResumeStudioPlan.go.dailyAIImportLimit, 20)
-    XCTAssertEqual(ResumeStudioPlan.pro.dailyAIImportLimit, 30)
+    XCTAssertEqual(ResumeStudioPlan.free.dailyAIImportLimit, 1)
+    XCTAssertEqual(ResumeStudioPlan.go.dailyAIImportLimit, 1)
+    XCTAssertEqual(ResumeStudioPlan.pro.dailyAIImportLimit, 2)
 
     XCTAssertEqual(MonetizationCatalog.freeResumeTemplates.count, 34)
     XCTAssertEqual(MonetizationCatalog.freeCoverLetterTemplates.count, 16)
@@ -541,7 +541,7 @@ final class ResumeStudioTests: XCTestCase {
       document.accent = accent
       let pdf = try XCTUnwrap(PDFDocument(data: ResumePDFRenderer.render(document: document)))
       let page = try XCTUnwrap(pdf.page(at: 0))
-      return (accent.title, page.thumbnail(of: CGSize(width: 357, height: 505), for: .mediaBox))
+      return (String(localized: accent.title), page.thumbnail(of: CGSize(width: 357, height: 505), for: .mediaBox))
     }
 
     let sheets = [
@@ -702,6 +702,26 @@ final class ResumeStudioTests: XCTestCase {
     XCTAssertEqual(imported.ocrPageCount, 0)
   }
 
+  func testResumePhotoImportUsesOnDeviceOCR() async throws {
+    let image = UIGraphicsImageRenderer(size: CGSize(width: 1_400, height: 700)).image { context in
+      UIColor.white.setFill()
+      context.fill(CGRect(x: 0, y: 0, width: 1_400, height: 700))
+      NSAttributedString(
+        string: "SAMPLE CANDIDATE\nEXPERIENCE\nProject Coordinator",
+        attributes: [
+          .font: UIFont.systemFont(ofSize: 64, weight: .semibold),
+          .foregroundColor: UIColor.black,
+        ]
+      ).draw(in: CGRect(x: 55, y: 130, width: 1_290, height: 450))
+    }
+
+    let text = try await ResumeImportService.extractText(
+      fromImageData: XCTUnwrap(image.pngData())
+    )
+    XCTAssertTrue(text.localizedCaseInsensitiveContains("SAMPLE CANDIDATE"), text)
+    XCTAssertTrue(text.localizedCaseInsensitiveContains("Project Coordinator"), text)
+  }
+
   func testJobSpecImportCombinesSelectableAndScannedPDFPages() async throws {
     let url = FileManager.default.temporaryDirectory
       .appendingPathComponent(UUID().uuidString).appendingPathExtension("pdf")
@@ -843,7 +863,7 @@ final class ResumeStudioTests: XCTestCase {
       CoverLetterTemplate.allCases.count
     )
     XCTAssertEqual(
-      Set(CoverLetterTemplate.allCases.map(\.subtitle)).count,
+      Set(CoverLetterTemplate.allCases.map { String(localized: $0.subtitle) }).count,
       CoverLetterTemplate.allCases.count
     )
   }
@@ -929,7 +949,9 @@ final class ResumeStudioTests: XCTestCase {
 
   func testAccentsKeepTheirExportColoursAndHaveDistinctNames() {
     // The display names changed with the redesign; the export colours must not.
-    XCTAssertEqual(Set(ResumeAccent.allCases.map(\.title)).count, ResumeAccent.allCases.count)
+    XCTAssertEqual(
+      Set(ResumeAccent.allCases.map { String(localized: $0.title) }).count,
+      ResumeAccent.allCases.count)
     XCTAssertEqual(ResumeAccent.orange.title, "Burnt Orange")
 
     var red: CGFloat = 0
@@ -1223,6 +1245,15 @@ final class ResumeStudioTests: XCTestCase {
     XCTAssertEqual(imported.personal.email, "jordan@example.com")
     XCTAssertEqual(imported.experience.first?.role, "Lead Designer")
     XCTAssertFalse(imported.additionalSections.contains { $0.title == "Imported content" })
+  }
+
+  func testPhotoImportLimitsMatchSubscriptionTiers() {
+    XCTAssertEqual(ResumeStudioPlan.free.photoImportImageLimit, 2)
+    XCTAssertEqual(ResumeStudioPlan.go.photoImportImageLimit, 5)
+    XCTAssertEqual(ResumeStudioPlan.pro.photoImportImageLimit, 5)
+    XCTAssertEqual(ResumeStudioPlan.free.dailyAIImportLimit, 1)
+    XCTAssertEqual(ResumeStudioPlan.go.dailyAIImportLimit, 1)
+    XCTAssertEqual(ResumeStudioPlan.pro.dailyAIImportLimit, 2)
   }
 
   func testPDFStyleImportMapsRealResumeSectionsInsteadOfDumpingImportedContent() {

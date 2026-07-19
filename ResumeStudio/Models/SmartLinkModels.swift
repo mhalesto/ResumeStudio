@@ -45,7 +45,7 @@ enum SmartLinkStatus: String, Codable {
   case revoked
   case expired
 
-  var title: String {
+  var title: LocalizedStringResource {
     switch self {
     case .open: "Live"
     case .revoked: "Revoked"

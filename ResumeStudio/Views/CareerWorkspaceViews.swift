@@ -1,4 +1,5 @@
 import PDFKit
+import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -167,9 +168,9 @@ private struct LibraryPremiumRowBackground: View {
 private struct LibraryPremiumActionCard: View {
   enum Artwork { case templates, importResume }
 
-  let title: String
-  let subtitle: String
-  let detail: String
+  let title: LocalizedStringResource
+  let subtitle: LocalizedStringResource
+  let detail: LocalizedStringResource
   let systemImage: String
   let accent: Color
   let artwork: Artwork
@@ -421,7 +422,11 @@ struct ApplicationTrackerView: View {
             }
           }
         }
-      } header: { Text("\(store.applications(with: status).count) \(status.title.lowercased())") }
+      } header: {
+        Text(
+          "\(store.applications(with: status).count) \(String(localized: status.title).lowercased())"
+        )
+      }
 
       Section {
         NavigationLink(value: HomeRoute.jobTargeting) {
@@ -532,7 +537,7 @@ struct ApplicationDetailView: View {
       guard var draft else { return }
       if let originalStatus, originalStatus != draft.status {
         var activities = draft.activities ?? []
-        activities.append(ApplicationActivity(kind: .statusChanged, title: "Moved to \(draft.status.title)", detail: "Previously \(originalStatus.title)"))
+        activities.append(ApplicationActivity(kind: .statusChanged, title: "Moved to \(String(localized: draft.status.title))", detail: "Previously \(originalStatus.title)"))
         draft.activities = activities
       }
       store.update(draft)
@@ -554,7 +559,8 @@ struct ApplicationDetailView: View {
     var activities = current.activities ?? []
     activities.append(ApplicationActivity(
       kind: status == .applied ? .applied : status == .offer ? .offer : .statusChanged,
-      title: "Moved to \(status.title)", detail: "Previously \(previous.title)"
+      title: "Moved to \(String(localized: status.title))",
+      detail: "Previously \(String(localized: previous.title))"
     ))
     current.activities = activities
     draft = current
@@ -571,7 +577,9 @@ struct ResumeImportView: View {
   @EnvironmentObject private var purchases: PurchaseManager
   @EnvironmentObject private var network: NetworkMonitor
   @Environment(\.dismiss) private var dismiss
+  @StateObject private var answerVault = ApplicationAnswerVaultStore()
   @State private var isChoosingFiles = false
+  @State private var selectedResumePhotos: [PhotosPickerItem] = []
   @State private var imported: ResumeDocument?
   @State private var title = "Imported Résumé"
   @State private var errorMessage: String?
@@ -610,6 +618,25 @@ struct ResumeImportView: View {
       }
 
       Section {
+        PhotosPicker(
+          selection: $selectedResumePhotos,
+          maxSelectionCount: purchases.plan.photoImportImageLimit,
+          selectionBehavior: .ordered,
+          matching: .images,
+          photoLibrary: .shared()
+        ) {
+          Label("Choose photos", systemImage: "photo.stack.fill")
+        }
+        .disabled(isStructuringWithAI)
+        .onChange(of: selectedResumePhotos) { _, items in
+          guard !items.isEmpty else { return }
+          structureWithAI(items)
+        }
+        Text(
+          "Select up to \(purchases.plan.photoImportImageLimit) clear résumé page photos in page order. Text recognition happens privately on this iPhone."
+        )
+        .font(.caption).foregroundStyle(Theme.mutedInk)
+
         Button {
           isChoosingFiles = true
         } label: {
@@ -624,6 +651,22 @@ struct ResumeImportView: View {
         }
         .disabled(isStructuringWithAI)
         Text(importStatus).font(.caption).foregroundStyle(Theme.mutedInk)
+      }
+
+      Section {
+        NavigationLink {
+          ApplicationAnswerVaultView(store: answerVault)
+        } label: {
+          VStack(alignment: .leading, spacing: 6) {
+            Label("Application Answer Vault", systemImage: "text.page.badge.magnifyingglass")
+              .font(.headline)
+              .foregroundStyle(store.document.accent.color)
+            Text("Save answers you repeatedly type into job applications. Safari suggests a matching answer only after you tap the Resume Studio extension, and it never submits a form.")
+              .font(.caption)
+              .foregroundStyle(Theme.mutedInk)
+          }
+          .padding(.vertical, 4)
+        }
       }
 
       if let imported {
@@ -760,13 +803,7 @@ struct ResumeImportView: View {
   }
 
   private func structureWithAI(_ urls: [URL]) {
-    imported = nil
-    title = "Imported Résumé"
-    errorMessage = nil
-    importWarnings = []
-    isAIEnhanced = false
-    isStructuringWithAI = true
-    importStatus = "Reading your file privately on this device…"
+    beginImport()
 
     Task {
       do {
@@ -776,49 +813,106 @@ struct ResumeImportView: View {
             document: try ResumeImportService.importDocuments(from: urls)
           )
         }.value
-        applyImportedDocument(local.document)
-        importStatus = "Local preview ready."
-
-        guard network.isOnline else {
-          importWarnings = ["You are offline, so this preview uses on-device import. Reconnect and choose the file again for AI-assisted structuring."]
-          isStructuringWithAI = false
-          return
-        }
-
-        let allowance = purchases.currentImportAllowance
-        guard allowance.importsRemaining > 0 else {
-          importWarnings = ["Your AI-assisted import allowance resets tomorrow. This local preview can still be saved, replaced or edited now."]
-          isStructuringWithAI = false
-          return
-        }
-
-        importStatus = "Local preview ready. AI is improving the section mapping…"
-        do {
-          let aiImport = try await ResumeAIService.shared.importResume(text: local.text)
-          let document = aiImport.document
-          guard !document.personal.fullName.isBlank
-            || !document.experience.isEmpty
-            || !document.education.isEmpty
-          else {
-            throw ResumeAIError.server(
-              message: aiImport.warnings.first ?? "AI could not identify résumé content in this file."
-            )
-          }
-          applyImportedDocument(document)
-          isAIEnhanced = true
-          importWarnings = aiImport.warnings
-          importStatus = "AI-assisted structure ready. Review it before saving."
-        } catch {
-          importWarnings = ["AI assistance was unavailable: \(error.localizedDescription) Your on-device preview is still ready to use."]
-          importStatus = "Local preview ready."
-        }
-        isStructuringWithAI = false
+        await enhanceImport(
+          text: local.text,
+          localDocument: local.document,
+          sourceImageCount: nil
+        )
       } catch {
         imported = nil
         errorMessage = error.localizedDescription
         isStructuringWithAI = false
       }
     }
+  }
+
+  private func structureWithAI(_ photoItems: [PhotosPickerItem]) {
+    beginImport()
+
+    Task {
+      defer { selectedResumePhotos = [] }
+      do {
+        var pages: [String] = []
+        for (index, item) in photoItems.enumerated() {
+          importStatus = "Reading photo \(index + 1) of \(photoItems.count) privately on this device…"
+          guard let data = try await item.loadTransferable(type: Data.self) else {
+            throw ResumePhotoImportError.unreadableImage
+          }
+          let text = try await ResumeImportService.extractText(fromImageData: data)
+          pages.append("SOURCE PHOTO: PAGE \(index + 1)\n\(text)")
+        }
+        let extractedText = pages.joined(separator: "\n\n")
+        let localDocument = await Task.detached(priority: .userInitiated) {
+          ResumeImportService.parseResumeText(extractedText)
+        }.value
+        await enhanceImport(
+          text: extractedText,
+          localDocument: localDocument,
+          sourceImageCount: photoItems.count
+        )
+      } catch {
+        imported = nil
+        errorMessage = error.localizedDescription
+        isStructuringWithAI = false
+      }
+    }
+  }
+
+  private func beginImport() {
+    imported = nil
+    title = "Imported Résumé"
+    errorMessage = nil
+    importWarnings = []
+    isAIEnhanced = false
+    isStructuringWithAI = true
+    importStatus = "Reading your file privately on this device…"
+  }
+
+  private func enhanceImport(
+    text: String,
+    localDocument: ResumeDocument,
+    sourceImageCount: Int?
+  ) async {
+    applyImportedDocument(localDocument)
+    importStatus = "Local preview ready."
+
+    guard network.isOnline else {
+      importWarnings = ["You are offline, so this preview uses on-device import. Reconnect and choose the source again for AI-assisted structuring."]
+      isStructuringWithAI = false
+      return
+    }
+
+    let allowance = purchases.currentImportAllowance
+    guard allowance.importsRemaining > 0 else {
+      importWarnings = ["Your AI-assisted import allowance resets tomorrow. This local preview can still be saved, replaced or edited now."]
+      isStructuringWithAI = false
+      return
+    }
+
+    importStatus = "Local preview ready. AI is improving the section mapping…"
+    do {
+      let aiImport = try await ResumeAIService.shared.importResume(
+        text: text,
+        sourceImageCount: sourceImageCount
+      )
+      let document = aiImport.document
+      guard !document.personal.fullName.isBlank
+        || !document.experience.isEmpty
+        || !document.education.isEmpty
+      else {
+        throw ResumeAIError.server(
+          message: aiImport.warnings.first ?? "AI could not identify résumé content in this source."
+        )
+      }
+      applyImportedDocument(document)
+      isAIEnhanced = true
+      importWarnings = aiImport.warnings
+      importStatus = "AI-assisted structure ready. Review it before saving."
+    } catch {
+      importWarnings = ["AI assistance was unavailable: \(error.localizedDescription) Your on-device preview is still ready to use."]
+      importStatus = "Local preview ready."
+    }
+    isStructuringWithAI = false
   }
 
   private func applyImportedDocument(_ document: ResumeDocument) {
@@ -945,7 +1039,7 @@ private struct ImportVersionChoiceView: View {
 }
 
 private struct ImportSummaryRow: View {
-  let label: String
+  let label: LocalizedStringResource
   let value: String
   var body: some View {
     HStack { Text(label); Spacer(); Text(value).foregroundStyle(Theme.mutedInk) }

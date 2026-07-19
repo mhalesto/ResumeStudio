@@ -97,7 +97,7 @@ struct ProfessionalApplicationsWorkspaceView: View {
           Button { selectedApplicationID = application.id } label: {
             VStack(alignment: .leading, spacing: 4) {
               Text(application.role.nilIfBlank ?? "Untitled role").font(.headline)
-              Text(application.company.nilIfBlank ?? application.status.title)
+              Text(application.company.nilIfBlank ?? String(localized: application.status.title))
                 .font(.caption).foregroundStyle(Theme.mutedInk)
             }
           }

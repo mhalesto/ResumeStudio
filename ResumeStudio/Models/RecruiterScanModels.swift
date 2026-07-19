@@ -22,7 +22,7 @@ enum RecruiterScanStrictness: String, CaseIterable, Identifiable, Codable {
 
   var id: String { rawValue }
 
-  var title: String {
+  var title: LocalizedStringResource {
     switch self {
     case .low: "Low"
     case .medium: "Medium"
@@ -30,7 +30,7 @@ enum RecruiterScanStrictness: String, CaseIterable, Identifiable, Codable {
     }
   }
 
-  var detail: String {
+  var detail: LocalizedStringResource {
     switch self {
     case .low: "A generous first read — forgiving of an early career and prose bullets."
     case .medium: "The study's averages, as measured. The default."
@@ -91,7 +91,7 @@ struct RecruiterScanReport: Equatable {
     return Int((Double(earned) / Double(maximum) * 100).rounded())
   }
 
-  var verdict: String {
+  var verdict: LocalizedStringResource {
     switch score {
     case 85...: "Survives the first pass"
     case 65..<85: "Scan-ready, with gaps"
@@ -100,7 +100,7 @@ struct RecruiterScanReport: Equatable {
     }
   }
 
-  var verdictDetail: String {
+  var verdictDetail: LocalizedStringResource {
     switch score {
     case 85...:
       "A recruiter leaves these seven seconds holding your name, your current role, your trajectory and at least one proof point."

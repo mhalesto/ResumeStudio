@@ -19,7 +19,7 @@ struct AppearanceEditorView: View {
     case colour
 
     var id: String { rawValue }
-    var title: String { self == .template ? "Template" : "Colour" }
+    var title: LocalizedStringResource { self == .template ? "Template" : "Colour" }
   }
 
   private var appAppearance: Binding<AppAppearance> {
@@ -81,7 +81,9 @@ struct AppearanceEditorView: View {
     let query = templateQuery.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !query.isEmpty else { return ResumeTemplate.allCases }
     return ResumeTemplate.allCases.filter { option in
-      ([option.title, option.subtitle] + option.styleTags.map(\.title))
+      // Style tags are localized, so search matches what the reader can see.
+      ([option.title, option.subtitle]
+        + option.styleTags.map { String(localized: $0.title) })
         .joined(separator: " ")
         .localizedCaseInsensitiveContains(query)
     }
@@ -189,7 +191,7 @@ struct AppearanceEditorView: View {
           }
           .buttonStyle(.plain)
           .accessibilityLabel(
-            "\(option.title) accent colour\(option.isPremium ? ", premium" : "")")
+            "\(String(localized: option.title)) accent colour\(option.isPremium ? ", premium" : "")")
           .accessibilityHint(unlocked ? "" : "Available with Go, Pro, or the Design Pack")
           .accessibilityAddTraits(accent == option ? .isSelected : [])
         }

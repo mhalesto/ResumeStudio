@@ -6,7 +6,7 @@ enum ResumePageTarget: String, CaseIterable, Codable, Identifiable {
   case two
 
   var id: String { rawValue }
-  var title: String {
+  var title: LocalizedStringResource {
     switch self {
     case .automatic: "Automatic"
     case .one: "One page"
@@ -38,7 +38,7 @@ enum ResumeFontChoice: String, CaseIterable, Codable, Identifiable {
   case technicalMono
 
   var id: String { rawValue }
-  var title: String {
+  var title: LocalizedStringResource {
     switch self {
     case .template: "Template default"
     case .cleanSans: "Clean Sans"
@@ -108,7 +108,7 @@ enum TemplateSeniority: String, CaseIterable, Codable, Identifiable {
   case executive
 
   var id: String { rawValue }
-  var title: String {
+  var title: LocalizedStringResource {
     switch self {
     case .earlyCareer: "Early career"
     case .experienced: "Experienced"

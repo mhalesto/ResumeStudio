@@ -197,7 +197,9 @@ private struct OutcomeReviewHero: View {
       Circle().fill(accent.opacity(0.34)).frame(width: 190, height: 190)
         .blur(radius: 35).offset(x: 190, y: -70)
       VStack(alignment: .leading, spacing: 8) {
-        Label(application.status.title.uppercased(), systemImage: application.status.systemImage)
+        Label(
+          String(localized: application.status.title).uppercased(),
+          systemImage: application.status.systemImage)
           .eyebrow().foregroundStyle(accent)
         Text(application.role.nilIfBlank ?? "Application outcome")
           .font(Theme.display(30)).foregroundStyle(Theme.heroInk)

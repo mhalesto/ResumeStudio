@@ -1,7 +1,12 @@
-export const DAILY_IMPORT_LIMITS = Object.freeze({ free: 5, go: 20, pro: 30 });
+export const DAILY_IMPORT_LIMITS = Object.freeze({ free: 1, go: 1, pro: 2 });
+export const PHOTO_IMPORT_IMAGE_LIMITS = Object.freeze({ free: 2, go: 5, pro: 5 });
 
 export function dailyImportLimit(tier) {
   return DAILY_IMPORT_LIMITS[tier] || DAILY_IMPORT_LIMITS.free;
+}
+
+export function photoImportImageLimit(tier) {
+  return PHOTO_IMPORT_IMAGE_LIMITS[tier] || PHOTO_IMPORT_IMAGE_LIMITS.free;
 }
 
 export function dayKey(date = new Date()) {

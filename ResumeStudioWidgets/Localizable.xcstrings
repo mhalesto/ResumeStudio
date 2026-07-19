@@ -1,0 +1,106 @@
+{
+  "sourceLanguage" : "en",
+  "version" : "1.0",
+  "strings" : {
+    "applications tracked" : {
+      "comment" : "Home-screen widget: label under the tracked-application count.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bewerbungen verfolgt"
+          }
+        }
+      }
+    },
+    "Career Momentum" : {
+      "comment" : "Widget gallery: the widget's display name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Karriere-Schwung"
+          }
+        }
+      }
+    },
+    "Done" : {
+      "comment" : "Live Activity: the interview window has passed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fertig"
+          }
+        }
+      }
+    },
+    "LAST 7 DAYS" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LETZTE 7 TAGE"
+          }
+        }
+      }
+    },
+    "NEXT INTERVIEW" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "NÄCHSTES GESPRÄCH"
+          }
+        }
+      }
+    },
+    "Now" : {
+      "comment" : "Live Activity: the interview is happening right now.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jetzt"
+          }
+        }
+      }
+    },
+    "Resume Studio" : {
+      "comment" : "Product name — deliberately not translated.",
+      "shouldTranslate" : false
+    },
+    "résumé opens" : {
+      "comment" : "Home-screen widget: label under the trackable-link open count.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lebenslauf-Aufrufe"
+          }
+        }
+      }
+    },
+    "See application progress, offers, your next interview and trackable-link opens." : {
+      "comment" : "Widget gallery: the widget's description.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sehen Sie Bewerbungsfortschritt, Angebote, Ihr nächstes Gespräch und Aufrufe verfolgbarer Links."
+          }
+        }
+      }
+    },
+    "Share a link to see opens here" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Teilen Sie einen Link, um Aufrufe hier zu sehen"
+          }
+        }
+      }
+    }
+  }
+}

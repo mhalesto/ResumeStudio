@@ -74,7 +74,11 @@ final class PurchaseManager: ObservableObject {
   var displayedCreditBalance: Int { currentUsage?.creditsRemaining ?? defaultCreditAllowance }
   var displayedCreditLimit: Int { currentUsage?.creditsLimit ?? defaultCreditAllowance }
   var currentImportAllowance: DailyImportAllowance {
-    if let importAllowance, importAllowance.resetAt > Date(), importAllowance.tier == plan {
+    if let importAllowance,
+      importAllowance.resetAt > Date(),
+      importAllowance.tier == plan,
+      importAllowance.importsLimit == plan.dailyAIImportLimit
+    {
       return importAllowance
     }
     return DailyImportAllowance(

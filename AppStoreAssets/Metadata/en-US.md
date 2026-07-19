@@ -6,7 +6,7 @@ CVs, cover letters and AI
 
 ## Promotional Text
 
-Build an ATS-ready résumé, tailor every application, practise interviews and track your job search—all from one private career workspace.
+Build an ATS-ready résumé, tailor every application, practice interviews and track your job search—all from one private career workspace.
 
 ## Description
 
@@ -28,12 +28,13 @@ TAILOR EVERY APPLICATION
 - Compare your résumé with a job description.
 - Check ATS readiness and identify missing job-language evidence.
 - Draft targeted profiles, achievement bullets and cover letters.
+- Save common screening responses in the private Application Answer Vault and review matched suggestions while completing forms in Safari.
 - Review every AI suggestion before applying it.
 
 PREPARE FOR INTERVIEWS
 
 - Build role-specific interview plans.
-- Practise spoken answers and save feedback.
+- Practice spoken answers and save feedback.
 - Complete résumé-based interview assessments.
 - Track interview dates, outcomes, reflections and reminders.
 
@@ -41,17 +42,17 @@ MANAGE YOUR JOB SEARCH
 
 - Track saved, applied, interview, offer and rejected applications.
 - Turn interviews, offers and rejections into a private debrief and one evidence-based next improvement.
-- Keep career evidence, offers and application details organised.
+- Keep career evidence, offers and application details organized.
 - Invite trusted reviewers through hosted Review Rooms on eligible plans.
 - Use the focused Career Coach for guidance grounded in your saved career information.
 
 PRIVACY AND CONTROL
 
-Resume Studio works without an account. Résumé versions, applications and cover letters can sync through your private iCloud workspace. Supported Apple Intelligence devices handle lightweight writing and extraction privately on device; Free uses that route first, while Go and Pro use the connected quality model first with an on-device fallback. Contact details, references, profile photographs and attached source files are excluded from connected AI writing requests. You can pause AI tools, disable on-device intelligence, opt out of anonymous aggregate product counters, inspect local processing history, export career-intelligence data or erase it at any time.
+Resume Studio works without an account. Résumé versions, applications and cover letters can sync through your private iCloud workspace. Application Answer Vault entries remain in the app sandbox and are copied to the private app group only when you explicitly publish Safari autofill data; the extension requires a tap to show matched answers and never submits a form. Supported Apple Intelligence devices handle lightweight writing and extraction privately on device; Free uses that route first, while Go and Pro use the connected quality model first with an on-device fallback. Contact details, references, profile photographs and attached source files are excluded from connected AI writing requests. You can pause AI tools, disable on-device intelligence, opt out of anonymous aggregate product counters, inspect local processing history, export career-intelligence data or erase it at any time.
 
 CORE TOOLS STAY FREE
 
-Manual editing, ATS checks, application tracking, privacy controls, unlimited on-device import previews and unwatermarked PDF, DOCX and text exports remain free. Free includes five AI-assisted résumé imports per day; these use a separate daily allowance and never consume monthly AI credits. Free also includes 10 AI credits in the first calendar month, then 5 credits every month. Verified members can share a referral link: the new member receives 10 AI credits and the inviter receives 5. Optional Go and Pro subscriptions provide larger monthly AI allowances and hosted Review Rooms. Design Pack Forever is a separate one-time purchase for all current and future templates and unlimited local document versions.
+Manual editing, ATS checks, application tracking, privacy controls, unlimited on-device import previews and unwatermarked PDF, DOCX and text exports remain free. Free includes one AI-assisted résumé import per day with up to two résumé photos; this uses a separate daily allowance and never consumes monthly AI credits. Free also includes 10 AI credits in the first calendar month, then 5 credits every month. Verified members can share a referral link: the new member receives 10 AI credits and the inviter receives 5. Optional Go and Pro subscriptions provide larger monthly AI allowances and hosted Review Rooms. Design Pack Forever is a separate one-time purchase for all current and future templates and unlimited local document versions.
 
 Subscriptions renew monthly unless cancelled in App Store settings. Monthly AI credits reset each billing period; résumé-import allowances reset daily at 00:00 UTC.
 
@@ -69,13 +70,13 @@ Resume Studio does not require an account or sign-in. On first launch, reviewers
 
 To review the in-app purchases, open Settings > Plans and purchases > View plans:
 
-- Go Monthly unlocks all templates, unlimited document versions, 20 AI-assisted résumé imports per day, 35 AI credits per billing period and one active hosted Review Room.
-- Pro Monthly includes 30 AI-assisted résumé imports per day, 150 AI credits per billing period and up to ten active hosted Review Rooms.
+- Go Monthly unlocks all templates, unlimited document versions, one AI-assisted résumé import per day with up to five résumé photos, 35 AI credits per billing period and one active hosted Review Room.
+- Pro Monthly includes two AI-assisted résumé imports per day with up to five résumé photos each, 150 AI credits per billing period and up to ten active hosted Review Rooms.
 - Design Pack Forever is a one-time non-consumable purchase that unlocks all current and future templates and unlimited local document versions. It does not add subscription AI or hosted-service allowances.
 
 Each purchase uses StoreKit and the Plans screen includes Restore Purchases. Manual résumé editing, ATS checks, application tracking and unwatermarked PDF, DOCX and text exports remain available without payment.
 
-Complex AI writing requests are sent through our Firebase backend. Lightweight writing and extraction can use Apple's on-device Foundation Models framework on supported devices. The app excludes contact details, references, profile photographs and attached source files from connected writing requests. Microphone and speech-recognition permission are requested only when the reviewer starts voice interview practice. Notification permission is requested only when enabling reminders.
+Complex AI writing requests are sent through our Firebase backend. Lightweight writing and extraction can use Apple's on-device Foundation Models framework on supported devices. The app excludes contact details, references, profile photographs and attached source files from connected writing requests. The optional Safari extension fills published profile fields only after the reviewer taps it, and each matched Answer Vault suggestion requires an additional Fill action; it never submits an application. Microphone and speech-recognition permission are requested only when the reviewer starts voice interview practice. Notification permission is requested only when enabling reminders.
 
 ## URLs
 

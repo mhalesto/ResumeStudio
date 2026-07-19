@@ -67,7 +67,7 @@ actor ResumeAIService {
     self.session = session
   }
 
-  func importResume(text: String) async throws -> AIImportedResume {
+  func importResume(text: String, sourceImageCount: Int? = nil) async throws -> AIImportedResume {
     let cleanText = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !cleanText.isEmpty else { throw ResumeAIError.invalidResponse }
     let submittedText = String(cleanText.prefix(55_000))
@@ -83,7 +83,10 @@ actor ResumeAIService {
     return try await request(
       action: .importResume,
       artifactContext: cacheKey,
-      payload: AIResumeImportPayload(resumeText: submittedText)
+      payload: AIResumeImportPayload(
+        resumeText: submittedText,
+        sourceImageCount: sourceImageCount
+      )
     )
   }
 
@@ -161,9 +164,9 @@ actor ResumeAIService {
         recommendation: recommendation.detail,
         signals: related.map { _, review in
           AIOutcomeLearningSignal(
-            stage: review.stage.title,
-            reason: review.reason.title,
-            feedbackSource: review.feedbackSource.title,
+            stage: aiPayloadLabel(review.stage.title),
+            reason: aiPayloadLabel(review.reason.title),
+            feedbackSource: aiPayloadLabel(review.feedbackSource.title),
             feedback: includingPrivateNotes ? String(review.feedback.prefix(1_200)) : "",
             whatWorked: includingPrivateNotes ? String(review.whatWorked.prefix(1_200)) : "",
             nextChange: includingPrivateNotes ? String(review.nextChange.prefix(1_200)) : ""
@@ -225,7 +228,7 @@ actor ResumeAIService {
       payload: ResumeTranslationPayload(
         resume: AIResumeSnapshot(document: document),
         targetLanguage: String(targetLanguage.prefix(80)),
-        market: market.title
+        market: aiPayloadLabel(market.title)
       )
     )
   }
@@ -407,7 +410,7 @@ actor ResumeAIService {
         company: application?.company ?? "",
         jobDescription: String((application?.jobDescription ?? "").prefix(7_000)),
         recipient: String(recipient.prefix(220)),
-        market: market.title,
+        market: aiPayloadLabel(market.title),
         userRequest: String(request.prefix(2_000))
       )
     )
@@ -527,7 +530,8 @@ actor ResumeAIService {
         // spend a Free user's credits on fallback without explicit approval.
         guard Self.connectedFallbackEnabled else {
           throw ResumeAIError.connectedFallbackRequiresApproval(
-            action: action.title.lowercased(), credits: action.creditCost)
+            action: String(localized: action.title).lowercased(),
+            credits: action.creditCost)
         }
       }
     }

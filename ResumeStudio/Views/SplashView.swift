@@ -195,8 +195,8 @@ struct SplashView: View {
     // icon's accent.
     let font = Theme.display(36)
 
-    return (Text("Resume ").foregroundColor(.white)
-      + Text("Studio").foregroundColor(BrandPalette.splashAccent))
+    return (Text(verbatim: "Resume ").foregroundColor(.white)
+      + Text(verbatim: "Studio").foregroundColor(BrandPalette.splashAccent))
       .font(font)
       .overlay(
         // A light sweep across the glyphs, clipped to them by the mask below.
@@ -217,9 +217,9 @@ struct SplashView: View {
   private var tagline: some View {
     let muted = Color.white.opacity(0.45)
 
-    return (Text("CRAFT · ").foregroundColor(muted)
-      + Text("STYLE").foregroundColor(BrandPalette.splashAccent)
-      + Text(" · EXPORT").foregroundColor(muted))
+    return (Text(verbatim: "CRAFT · ").foregroundColor(muted)
+      + Text(verbatim: "STYLE").foregroundColor(BrandPalette.splashAccent)
+      + Text(verbatim: " · EXPORT").foregroundColor(muted))
       .font(.system(size: 11, weight: .semibold, design: .rounded))
       .tracking(2.6)
       .opacity(taglineIn ? 1 : 0)

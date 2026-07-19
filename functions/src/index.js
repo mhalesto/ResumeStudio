@@ -10,7 +10,7 @@ import { getStorage } from "firebase-admin/storage";
 import { onRequest } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
 import { logger } from "firebase-functions";
-import { dailyImportDecision, dayKey } from "./import-policy.js";
+import { dailyImportDecision, dayKey, photoImportImageLimit } from "./import-policy.js";
 import {
   dwellDecision,
   linkExpiryDecision,
@@ -614,6 +614,15 @@ export const api = onRequest(
       const authUser = await optionalAuthenticatedUser(request);
       const access = await resolveMonetizationAccess(clientID, entitlement, authUser?.uid);
       if (action === "importResume") {
+        const sourceImageCount = Math.max(0, Number(payload.sourceImageCount || 0));
+        const imageLimit = photoImportImageLimit(access.tier);
+        if (!Number.isInteger(sourceImageCount) || sourceImageCount > imageLimit) {
+          response.status(422).json({
+            error: `${access.tier === "free" ? "Free" : access.tier === "go" ? "Go" : "Pro"} imports support up to ${imageLimit} résumé photos at a time.`,
+            code: "photo_import_image_limit",
+          });
+          return;
+        }
         importReservation = await reserveDailyImport(access);
         if (!importReservation.allowed) {
           response.status(429).json({

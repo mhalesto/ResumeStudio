@@ -68,7 +68,11 @@ enum InterviewLiveActivityController {
         eventID: targetID,
         role: target.role,
         company: target.company,
-        format: target.format.title,
+        // ActivityKit attributes are Codable and shared with the widget target,
+        // so the label is resolved to a String here rather than carried as a
+        // resource. It is resolved in the user's language at the time the
+        // activity starts.
+        format: String(localized: target.format.title),
         locationOrLink: target.locationOrLink)
       // `request` is synchronous and throwing; a denial or rate-limit is not
       // actionable here, so a failure just leaves no activity on screen.

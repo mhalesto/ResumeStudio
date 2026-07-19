@@ -48,7 +48,8 @@ final class ApplicationStore: ObservableObject {
     var activities = applications[index].activities ?? []
     activities.append(ApplicationActivity(
       kind: status == .applied ? .applied : status == .offer ? .offer : .statusChanged,
-      title: "Moved to \(status.title)", detail: "Previously \(previous.title)"
+      title: "Moved to \(String(localized: status.title))",
+      detail: "Previously \(String(localized: previous.title))"
     ))
     applications[index].activities = activities
     save()
@@ -69,7 +70,10 @@ final class ApplicationStore: ObservableObject {
       activities.append(ApplicationActivity(
         kind: .note,
         title: "Outcome reviewed",
-        detail: updatedReview.reason.title
+        // The activity log is a persisted historical record, so the reason is
+        // resolved to text at the moment it is written rather than re-translated
+        // later. Entries stay in the language they were created in.
+        detail: String(localized: updatedReview.reason.title)
       ))
       applications[index].activities = activities
     }

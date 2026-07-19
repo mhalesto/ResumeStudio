@@ -82,7 +82,7 @@ struct EvidenceVaultView: View {
     }
   }
 
-  private func filterChip(_ title: String, value: CareerEvidenceKind?) -> some View {
+  private func filterChip(_ title: LocalizedStringResource, value: CareerEvidenceKind?) -> some View {
     Button(title) { withAnimation(.easeInOut(duration: 0.2)) { filter = value } }
       .font(.caption.weight(.semibold))
       .foregroundStyle(filter == value ? Color.white : Theme.ink)
@@ -137,7 +137,7 @@ private struct EvidenceRow: View {
       }.frame(width: 42, height: 42)
       VStack(alignment: .leading, spacing: 4) {
         HStack {
-          Text(item.title.nilIfBlank ?? item.kind.title).font(.headline).foregroundStyle(Theme.ink)
+          Text(item.title.nilIfBlank ?? String(localized: item.kind.title)).font(.headline).foregroundStyle(Theme.ink)
           if item.isVerified { Image(systemName: "checkmark.seal.fill").font(.caption).foregroundStyle(.green) }
         }
         Text(item.detail).font(.subheadline).foregroundStyle(Theme.inkSoft).lineLimit(3)
@@ -579,8 +579,8 @@ private struct AIChangeOptionCard: View {
 }
 
 struct PremiumFeatureHero: View {
-  let eyebrow: String
-  let title: String
+  let eyebrow: LocalizedStringResource
+  let title: LocalizedStringResource
   let subtitle: String
   let icon: String
   let accent: Color

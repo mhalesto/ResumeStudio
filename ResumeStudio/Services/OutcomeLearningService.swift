@@ -73,7 +73,7 @@ enum OutcomeLearningService {
         pendingApplicationIDs: [],
         recommendation: OutcomeLearningRecommendation(
           id: "improve-\(focus.rawValue)-\(signal.application.id.uuidString)",
-          title: focus.title,
+          title: String(localized: focus.title),
           detail: explanation,
           evidence: evidenceLabel(count: count, reason: signal.review.reason),
           actionTitle: "Create reviewed improvement",
@@ -156,10 +156,14 @@ enum OutcomeLearningService {
   }
 
   private static func evidenceLabel(count: Int, reason: ApplicationOutcomeReason) -> String {
+    // Resolved before interpolation so the reason reads in the user's language.
+    // Lower-casing suits the English sentence; German capitalises nouns, so this
+    // sentence is a candidate for a per-language form if it ever reads oddly.
+    let reasonText = String(localized: reason.title).lowercased()
     if count == 1 {
-      return "One recorded outcome points to “\(reason.title.lowercased())”. Treat it as a hypothesis to test, not a verdict."
+      return "One recorded outcome points to “\(reasonText)”. Treat it as a hypothesis to test, not a verdict."
     }
-    return "\(count) recorded outcomes point to “\(reason.title.lowercased())”."
+    return "\(count) recorded outcomes point to “\(reasonText)”."
   }
 
   private struct ResumeResult {

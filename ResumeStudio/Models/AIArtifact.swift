@@ -31,7 +31,7 @@ struct SavedAIArtifact: Identifiable, Codable, Equatable {
 }
 
 extension ResumeAIAction {
-  var title: String {
+  var title: LocalizedStringResource {
     switch self {
     case .importResume: "Résumé import"
     case .improveBullet: "Improved résumé bullet"

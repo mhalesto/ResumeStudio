@@ -439,7 +439,9 @@ struct ApplicationCommandCenterView: View {
     }
   }
 
-  private func stageChip(_ status: JobApplicationStatus?, title: String) -> some View {
+  private func stageChip(_ status: JobApplicationStatus?, title: LocalizedStringResource)
+    -> some View
+  {
     Button { withAnimation(.easeInOut(duration: 0.2)) { selectedStatus = status } } label: {
       HStack(spacing: 6) {
         if let status { Image(systemName: status.systemImage) }

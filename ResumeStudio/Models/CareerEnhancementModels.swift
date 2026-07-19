@@ -3,7 +3,7 @@ import Foundation
 enum ApplicationActivityKind: String, CaseIterable, Codable, Identifiable {
   case captured, applied, statusChanged, interview, followUp, note, offer
   var id: String { rawValue }
-  var title: String {
+  var title: LocalizedStringResource {
     switch self {
     case .captured: "Captured"
     case .applied: "Applied"
@@ -49,7 +49,17 @@ struct CapturedJobSnapshot: Codable, Equatable {
 enum ContactInteractionKind: String, CaseIterable, Codable, Identifiable {
   case email, linkedIn, phone, meeting, note
   var id: String { rawValue }
-  var title: String { rawValue == "linkedIn" ? "LinkedIn" : rawValue.capitalized }
+  /// Spelled out rather than derived from `rawValue`, so each label can be
+  /// translated. "LinkedIn" is a product name and stays as it is.
+  var title: LocalizedStringResource {
+    switch self {
+    case .email: "Email"
+    case .linkedIn: "LinkedIn"
+    case .phone: "Phone"
+    case .meeting: "Meeting"
+    case .note: "Note"
+    }
+  }
   var systemImage: String {
     switch self {
     case .email: "envelope.fill"

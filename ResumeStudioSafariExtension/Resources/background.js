@@ -13,7 +13,8 @@ browser.action.onClicked.addListener(async (tab) => {
     }
     await browser.tabs.sendMessage(tab.id, {
       type: "resumeStudioAutofill",
-      profile: response.profile
+      profile: response.profile,
+      answers: response.answers || []
     });
   } catch (error) {
     console.error("Resume Studio autofill failed", error);

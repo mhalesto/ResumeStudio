@@ -5,7 +5,9 @@ struct PlatformIntegrationsView: View {
   @EnvironmentObject private var resumeStore: ResumeStore
   @EnvironmentObject private var applicationStore: ApplicationStore
   @EnvironmentObject private var smartLinks: SmartLinkStore
+  @StateObject private var answerVault = ApplicationAnswerVaultStore()
   @State private var message: String?
+  @State private var isConfirmingSafariRemoval = false
 
   var body: some View {
     List {
@@ -28,13 +30,26 @@ struct PlatformIntegrationsView: View {
       }
 
       Section("Safari application autofill") {
-        Button("Refresh private autofill profile", systemImage: "safari.fill") {
+        NavigationLink {
+          ApplicationAnswerVaultView(store: answerVault)
+        } label: {
+          Label("Application Answer Vault", systemImage: "text.page.badge.magnifyingglass")
+        }
+
+        Button("Publish private autofill data", systemImage: "safari.fill") {
           do {
-            try PlatformIntegrationService.publishAutofillProfile(resumeStore.document)
-            message = "Safari autofill now uses the active résumé's contact details, headline and skills."
+            try PlatformIntegrationService.publishAutofillProfile(
+              resumeStore.document,
+              answers: answerVault.publishableAnswers
+            )
+            let count = answerVault.publishableAnswers.count
+            message = "Safari autofill now uses the active résumé profile and \(count) saved answer\(count == 1 ? "" : "s")."
           } catch { message = error.localizedDescription }
         }
-        Text("The Safari extension reads only the profile you explicitly publish to the private app group. It never submits an application automatically.")
+        Button("Remove published Safari data", systemImage: "trash", role: .destructive) {
+          isConfirmingSafariRemoval = true
+        }
+        Text("The Safari extension reads only the profile and enabled answers you explicitly publish to the private app group. Profile fields fill after you tap the extension; matched screening answers always require a second tap. It never submits an application automatically.")
           .font(.caption).foregroundStyle(Theme.mutedInk)
       }
 
@@ -65,6 +80,21 @@ struct PlatformIntegrationsView: View {
     }
     .navigationTitle("Integrations")
     .navigationBarTitleDisplayMode(.inline)
+    .confirmationDialog(
+      "Remove published Safari data?",
+      isPresented: $isConfirmingSafariRemoval,
+      titleVisibility: .visible
+    ) {
+      Button("Remove from Safari", role: .destructive) {
+        do {
+          try PlatformIntegrationService.clearSafariAutofillData()
+          message = "Published Safari profile and Answer Vault data removed. Your saved answers remain in Resume Studio."
+        } catch { message = error.localizedDescription }
+      }
+      Button("Cancel", role: .cancel) {}
+    } message: {
+      Text("Safari will no longer receive your profile or saved answers. Your Answer Vault stays available in Resume Studio and can be published again later.")
+    }
   }
 
   @MainActor private func addInterview(_ interview: InterviewEvent) async {

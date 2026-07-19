@@ -9,7 +9,7 @@ enum OutcomeFeedbackSource: String, CaseIterable, Codable, Identifiable {
 
   var id: String { rawValue }
 
-  var title: String {
+  var title: LocalizedStringResource {
     switch self {
     case .none: "No direct feedback"
     case .recruiter: "Recruiter"
@@ -37,7 +37,7 @@ enum ApplicationOutcomeReason: String, CaseIterable, Codable, Identifiable {
 
   var id: String { rawValue }
 
-  var title: String {
+  var title: LocalizedStringResource {
     switch self {
     case .strongRoleFit: "Strong role fit"
     case .strongEvidence: "Evidence landed well"
@@ -125,7 +125,7 @@ enum OutcomeLearningFocus: String, Codable, Equatable {
   case targeting
   case preserveStrength
 
-  var title: String {
+  var title: LocalizedStringResource {
     switch self {
     case .collectOutcome: "Review an outcome"
     case .professionalProfile: "Clarify your positioning"

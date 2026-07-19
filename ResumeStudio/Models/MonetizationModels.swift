@@ -7,7 +7,7 @@ enum ResumeStudioPlan: String, Codable, CaseIterable, Identifiable {
 
   var id: String { rawValue }
 
-  var title: String {
+  var title: LocalizedStringResource {
     switch self {
     case .free: "Free"
     case .go: "Go"
@@ -33,9 +33,15 @@ enum ResumeStudioPlan: String, Codable, CaseIterable, Identifiable {
 
   var dailyAIImportLimit: Int {
     switch self {
-    case .free: 5
-    case .go: 20
-    case .pro: 30
+    case .free, .go: 1
+    case .pro: 2
+    }
+  }
+
+  var photoImportImageLimit: Int {
+    switch self {
+    case .free: 2
+    case .go, .pro: 5
     }
   }
 }

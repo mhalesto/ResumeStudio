@@ -103,7 +103,8 @@ struct CoverLetterEditorView: View {
         }
         Picker("Accent", selection: gatedAccent) {
           ForEach(ResumeAccent.allCases) { accent in
-            Text(accent.title + (purchases.canUse(accent) ? "" : "  🔒")).tag(accent)
+            Text(String(localized: accent.title) + (purchases.canUse(accent) ? "" : "  🔒"))
+              .tag(accent)
           }
         }
       }

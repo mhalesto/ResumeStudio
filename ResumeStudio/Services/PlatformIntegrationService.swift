@@ -77,9 +77,25 @@ enum PlatformIntegrationService {
     UIApplication.shared.open(url)
   }
 
-  static func publishAutofillProfile(_ document: ResumeDocument) throws {
+  static func publishAutofillProfile(
+    _ document: ResumeDocument,
+    answers: [ApplicationAnswer] = []
+  ) throws {
     guard let defaults = UserDefaults(suiteName: appGroup) else { throw PlatformIntegrationError.unavailable }
-    let profile: [String: Any] = [
+    let profile = makeSafariAutofillProfile(document)
+    let publishedAnswers = makeSafariApplicationAnswers(answers)
+    defaults.set(try JSONSerialization.data(withJSONObject: profile), forKey: "safariAutofillProfile")
+    defaults.set(try JSONSerialization.data(withJSONObject: publishedAnswers), forKey: "safariApplicationAnswers")
+  }
+
+  static func clearSafariAutofillData() throws {
+    guard let defaults = UserDefaults(suiteName: appGroup) else { throw PlatformIntegrationError.unavailable }
+    defaults.removeObject(forKey: "safariAutofillProfile")
+    defaults.removeObject(forKey: "safariApplicationAnswers")
+  }
+
+  static func makeSafariAutofillProfile(_ document: ResumeDocument) -> [String: Any] {
+    [
       "fullName": document.personal.fullName,
       "email": document.personal.email,
       "phone": document.personal.phone,
@@ -88,7 +104,19 @@ enum PlatformIntegrationService {
       "skills": document.competencies,
       "updatedAt": Date().timeIntervalSince1970,
     ]
-    defaults.set(try JSONSerialization.data(withJSONObject: profile), forKey: "safariAutofillProfile")
+  }
+
+  static func makeSafariApplicationAnswers(_ answers: [ApplicationAnswer]) -> [[String: Any]] {
+    answers.filter(\.canPublish).map { answer in
+      [
+        "id": answer.id.uuidString,
+        "title": answer.title,
+        "answer": answer.answer,
+        "category": answer.category.rawValue,
+        "matchTerms": answer.matchTerms,
+        "updatedAt": answer.updatedAt.timeIntervalSince1970,
+      ]
+    }
   }
 
   static func publishWidgetSnapshot(

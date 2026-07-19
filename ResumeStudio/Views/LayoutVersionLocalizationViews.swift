@@ -119,7 +119,7 @@ struct LayoutStudioView: View {
 private enum ResumeComparisonField: String, CaseIterable, Identifiable {
   case personal, profile, competencies, experience, education, additional, references, appearance
   var id: String { rawValue }
-  var title: String {
+  var title: LocalizedStringResource {
     switch self {
     case .personal: "Personal details"
     case .profile: "Professional profile"

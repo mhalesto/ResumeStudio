@@ -14,7 +14,7 @@ enum ResumeSection: String, CaseIterable, Identifiable, Hashable, Codable {
 
   var id: String { rawValue }
 
-  var title: String {
+  var title: LocalizedStringResource {
     switch self {
     case .personal: "Personal details"
     case .profile: "Professional profile"
@@ -27,7 +27,7 @@ enum ResumeSection: String, CaseIterable, Identifiable, Hashable, Codable {
 
   /// What to do in this section. Kept short: it has to fit on one line in the
   /// hero's "Next up" row, alongside an icon and a chevron.
-  var prompt: String {
+  var prompt: LocalizedStringResource {
     switch self {
     case .personal: "Add your contact details"
     case .profile: "Write a short summary"

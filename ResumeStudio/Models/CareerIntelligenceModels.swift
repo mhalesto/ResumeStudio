@@ -11,7 +11,7 @@ enum CareerEvidenceKind: String, CaseIterable, Codable, Identifiable {
 
   var id: String { rawValue }
 
-  var title: String {
+  var title: LocalizedStringResource {
     switch self {
     case .achievement: "Achievement"
     case .responsibility: "Responsibility"
@@ -59,7 +59,7 @@ enum CareerContactKind: String, CaseIterable, Codable, Identifiable {
   case colleague
 
   var id: String { rawValue }
-  var title: String {
+  var title: LocalizedStringResource {
     switch self {
     case .recruiter: "Recruiter"
     case .hiringManager: "Hiring manager"
@@ -95,7 +95,7 @@ enum NetworkingMessageKind: String, CaseIterable, Codable, Identifiable {
   case reconnect
 
   var id: String { rawValue }
-  var title: String {
+  var title: LocalizedStringResource {
     switch self {
     case .introduction: "Recruiter introduction"
     case .referralRequest: "Referral request"
@@ -161,7 +161,7 @@ enum ReviewRequestStatus: String, CaseIterable, Codable, Identifiable {
   case revoked
 
   var id: String { rawValue }
-  var title: String {
+  var title: LocalizedStringResource {
     switch self {
     case .draft: "Draft"
     case .sent: "Sent"
@@ -210,7 +210,7 @@ enum ResumeMarket: String, CaseIterable, Codable, Identifiable {
   case international
 
   var id: String { rawValue }
-  var title: String {
+  var title: LocalizedStringResource {
     switch self {
     case .southAfrica: "South Africa"
     case .unitedKingdom: "United Kingdom"

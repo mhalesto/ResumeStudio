@@ -47,7 +47,10 @@ private enum AppTab: String, CaseIterable, Identifiable {
 
   var id: String { rawValue }
 
-  var title: String {
+  /// `LocalizedStringResource`, not `String` — a plain `String` handed to `Text`
+  /// takes the `StringProtocol` overload and silently skips the string catalogue,
+  /// which left the whole tab bar in English on a German device.
+  var title: LocalizedStringResource {
     switch self {
     case .home: "Today"
     case .documents: "Documents"

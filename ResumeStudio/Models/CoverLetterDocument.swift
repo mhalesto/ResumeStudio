@@ -265,7 +265,7 @@ enum CoverLetterTemplate: String, CaseIterable, Codable, Identifiable {
     }
   }
 
-  var subtitle: String {
+  var subtitle: LocalizedStringResource {
     switch self {
     case .sidebar: "Contact column in colour, to match Atlas"
     case .iconic: "Icon contact strip, to match Signal"

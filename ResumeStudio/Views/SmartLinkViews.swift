@@ -987,7 +987,7 @@ struct CreateSmartLinkSheet: View {
         await purchases.refreshEntitlements()
         let proof = purchases.entitlementProof()
         if purchases.plan != .free && proof.signedTransaction == nil {
-          errorMessage = "Your \(purchases.plan.title) access is active on this device, but hosted features still need a fresh App Store verification. Refresh access and try again."
+          errorMessage = "Your \(String(localized: purchases.plan.title)) access is active on this device, but hosted features still need a fresh App Store verification. Refresh access and try again."
           canRefreshAccess = true
           return
         }
@@ -1017,7 +1017,7 @@ struct CreateSmartLinkSheet: View {
         publishedURL = url
       } catch {
         if (error as? SmartLinkError)?.suggestsUpgrade == true, purchases.plan != .free {
-          errorMessage = "ResumeStudio recognizes your \(purchases.plan.title) plan, but the hosted-link service could not verify it. Refresh App Store access and try again."
+          errorMessage = "ResumeStudio recognizes your \(String(localized: purchases.plan.title)) plan, but the hosted-link service could not verify it. Refresh App Store access and try again."
           canRefreshAccess = true
         } else {
           errorMessage = error.localizedDescription
@@ -1036,7 +1036,7 @@ struct CreateSmartLinkSheet: View {
       isPublishing = false
       let verified = purchases.entitlementProof().signedTransaction != nil
       if verified {
-        errorMessage = "\(purchases.plan.title) access refreshed. You can create the link now."
+        errorMessage = "\(String(localized: purchases.plan.title)) access refreshed. You can create the link now."
       } else {
         errorMessage = "The App Store has not returned a server-verifiable subscription yet. Check your connection, then try again."
         canRefreshAccess = true

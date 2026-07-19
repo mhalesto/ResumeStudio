@@ -374,7 +374,7 @@ enum ProductInsightSource: String, Codable {
   case serverAI = "server_ai"
   case onDeviceAI = "on_device_ai"
 
-  var title: String {
+  var title: LocalizedStringResource {
     switch self {
     case .app: "ResumeStudio"
     case .serverAI: "Connected quality AI"

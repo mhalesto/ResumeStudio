@@ -381,7 +381,7 @@ enum ResumeAccent: String, CaseIterable, Codable, Identifiable {
   /// Display names. Only "Burnt Orange" comes from the prototype; the rest are
   /// named to match its tone. The colours themselves are unchanged — they are
   /// the app's own, and they drive the exported PDF.
-  var title: String {
+  var title: LocalizedStringResource {
     return switch self {
     case .orange: "Burnt Orange"
     case .blue: "Deep Blue"
@@ -457,7 +457,7 @@ enum TemplateStyleTag: String, CaseIterable, Identifiable, Hashable {
 
   var id: String { rawValue }
 
-  var title: String {
+  var title: LocalizedStringResource {
     switch self {
     // The Showcase Collection: the portfolio-grade, "goes a bit beyond" designs —
     // monogram badges, vertical names, dot ratings. Kept first so someone after a

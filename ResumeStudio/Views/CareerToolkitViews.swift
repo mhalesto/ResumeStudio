@@ -188,7 +188,7 @@ struct NetworkingStudioView: View {
         kind: "networkingMessage", document: resumeStore.document,
         evidence: careerStore.verifiedEvidence, application: application,
         recipient: [contact?.name, contact?.role, contact?.company].compactMap { $0 }.filter { !$0.isBlank }.joined(separator: " · "),
-        request: "\(kind.title). \(context)"
+        request: "\(String(localized: kind.title)). \(context)"
       )
     } catch { errorMessage = error.localizedDescription }
     isLoading = false
@@ -817,7 +817,7 @@ struct MarketGuidanceView: View {
       guidance = try await ResumeAIService.shared.createCareerToolkitDraft(
         kind: "marketGuidance", document: resumeStore.document,
         evidence: careerStore.verifiedEvidence, market: careerStore.preferredMarket,
-        request: "Review this resume for \(careerStore.preferredMarket.title) conventions. The intended document language is \(language). Clearly distinguish convention from law."
+        request: "Review this resume for \(String(localized: careerStore.preferredMarket.title)) conventions. The intended document language is \(language). Clearly distinguish convention from law."
       )
     } catch { errorMessage = error.localizedDescription }
     isLoading = false
@@ -847,7 +847,7 @@ private struct ToolkitScroll<Content: View>: View {
 private struct ToolkitDraftCard: View {
   let draft: AICareerToolkitDraft
   let accent: Color
-  let copyLabel: String
+  let copyLabel: LocalizedStringResource
   @State private var copied = false
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {

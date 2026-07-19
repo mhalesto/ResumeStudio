@@ -246,10 +246,15 @@ struct PlansView: View {
     .background(Color.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 20))
   }
 
-  private func buttonTitle(for plan: ResumeStudioPlan) -> String {
+  private func buttonTitle(for plan: ResumeStudioPlan) -> LocalizedStringResource {
     if purchases.plan == plan { return "Current plan" }
     if purchases.plan == .pro && plan == .go { return "Included with Pro" }
-    return purchases.plan == .go && plan == .pro ? "Upgrade to Pro" : "Choose \(plan.title)"
+    // `plan.title` is resolved before interpolation. Interpolating a
+    // LocalizedStringResource directly compiles, but prints its debug
+    // description instead of the text.
+    return purchases.plan == .go && plan == .pro
+      ? "Upgrade to Pro"
+      : "Choose \(String(localized: plan.title))"
   }
 }
 

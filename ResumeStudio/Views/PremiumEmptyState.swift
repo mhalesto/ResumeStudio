@@ -2,8 +2,8 @@ import SwiftUI
 
 struct PremiumEmptyState: View {
   let image: ImageResource
-  let title: String
-  let detail: String
+  let title: LocalizedStringResource
+  let detail: LocalizedStringResource
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {

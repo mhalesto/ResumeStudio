@@ -4,7 +4,10 @@ struct PremiumConfirmationRow: Identifiable {
   enum Tone { case neutral, accent, destructive }
 
   let id = UUID()
-  let eyebrow: String
+  // Only the eyebrow is always static copy, so it is the only field that goes
+  // through the string catalogue. Callers pass rendered data for `title` and
+  // `detail` — reviewer names, résumé titles, counts and dates.
+  let eyebrow: LocalizedStringResource
   let title: String
   let detail: String
   let systemImage: String
@@ -22,15 +25,15 @@ struct PremiumConfirmationRow: Identifiable {
 struct PremiumConfirmationSheet: View {
   enum ActionRole: Equatable { case primary, destructive }
 
-  let title: String
-  let message: String
+  let title: LocalizedStringResource
+  let message: LocalizedStringResource
   let systemImage: String
   let accent: Color
   var iconIsDestructive = true
   var rows: [PremiumConfirmationRow] = []
-  let safetyNote: String
-  let confirmTitle: String
-  var cancelTitle = "Cancel"
+  let safetyNote: LocalizedStringResource
+  let confirmTitle: LocalizedStringResource
+  var cancelTitle: LocalizedStringResource = "Cancel"
   var actionRole: ActionRole = .destructive
   var isWorking = false
   let onConfirm: () -> Void

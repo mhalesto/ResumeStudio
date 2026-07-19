@@ -148,7 +148,7 @@ struct CareerIntelligenceHubView: View {
 
 private struct IntelligenceStat: View {
   let value: String
-  let label: String
+  let label: LocalizedStringResource
   var body: some View {
     VStack(spacing: 3) {
       Text(value).font(.title2.bold()).foregroundStyle(Theme.ink)

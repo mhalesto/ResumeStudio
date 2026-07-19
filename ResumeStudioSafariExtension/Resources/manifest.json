@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Resume Studio Autofill",
-  "description": "Fill job application fields from the private profile you publish in Resume Studio.",
+  "description": "Fill profile fields and review saved answers from the private data you publish in Resume Studio.",
   "version": "1.0",
   "icons": {
     "48": "icon-48.png",

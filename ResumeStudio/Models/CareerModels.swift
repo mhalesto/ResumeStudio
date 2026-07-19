@@ -8,7 +8,17 @@ enum JobApplicationStatus: String, CaseIterable, Codable, Identifiable {
   case rejected
 
   var id: String { rawValue }
-  var title: String { rawValue.capitalized }
+  /// Spelled out rather than `rawValue.capitalized` — a capitalised raw value is
+  /// an English word by accident and can never be translated.
+  var title: LocalizedStringResource {
+    switch self {
+    case .saved: "Saved"
+    case .applied: "Applied"
+    case .interview: "Interview"
+    case .offer: "Offer"
+    case .rejected: "Rejected"
+    }
+  }
   var systemImage: String {
     switch self {
     case .saved: "bookmark.fill"
@@ -105,7 +115,7 @@ enum InterviewFormat: String, CaseIterable, Codable, Identifiable {
   case assessment
 
   var id: String { rawValue }
-  var title: String {
+  var title: LocalizedStringResource {
     switch self {
     case .video: "Video"
     case .phone: "Phone"
@@ -133,7 +143,7 @@ enum InterviewOutcome: String, CaseIterable, Codable, Identifiable {
   case withdrew
 
   var id: String { rawValue }
-  var title: String {
+  var title: LocalizedStringResource {
     switch self {
     case .pending: "Awaiting result"
     case .progressed: "Progressed"

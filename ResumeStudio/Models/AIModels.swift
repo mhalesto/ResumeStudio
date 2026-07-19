@@ -1,5 +1,14 @@
 import Foundation
 
+/// Resolves a display label to English for AI request payloads. The prompts are
+/// written in English, so a translated app must not quietly change what the
+/// model is asked — only what the user is shown.
+func aiPayloadLabel(_ resource: LocalizedStringResource) -> String {
+  var pinned = resource
+  pinned.locale = Locale(identifier: "en")
+  return String(localized: pinned)
+}
+
 enum ResumeAIAction: String, Codable {
   case importResume
   case improveBullet
@@ -21,6 +30,7 @@ enum ResumeAIAction: String, Codable {
 
 struct AIResumeImportPayload: Codable {
   var resumeText: String
+  var sourceImageCount: Int? = nil
 }
 
 struct AIImportedResume: Codable, Equatable {
@@ -330,7 +340,7 @@ struct CareerCoachApplicationSnapshot: Codable, Equatable {
   init(application: JobApplication) {
     role = application.role.careerCoachLimited(to: 140)
     company = application.company.careerCoachLimited(to: 140)
-    status = application.status.title
+    status = aiPayloadLabel(application.status.title)
     jobDescription = application.jobDescription.careerCoachLimited(to: 3_500)
     notes = application.notes.careerCoachLimited(to: 1_200)
     matchSummary = (application.matchAnalysis?.summary ?? "").careerCoachLimited(to: 800)
@@ -354,8 +364,11 @@ struct CareerCoachInterviewSnapshot: Codable, Equatable {
     role = interview.role.careerCoachLimited(to: 140)
     company = interview.company.careerCoachLimited(to: 140)
     scheduledAt = interview.scheduledAt.ISO8601Format()
-    format = interview.format.title
-    outcome = interview.outcome.title
+    // Machine-facing, not UI: these land in an AI request whose prompts are
+    // written in English. Pinned to English so a translated app doesn't quietly
+    // change what the model is asked.
+    format = aiPayloadLabel(interview.format.title)
+    outcome = aiPayloadLabel(interview.outcome.title)
     selfRating = interview.selfRating
     preparationNotes = interview.preparationNotes.careerCoachLimited(to: 1_200)
     whatWentWell = interview.whatWentWell.careerCoachLimited(to: 1_200)
@@ -421,7 +434,7 @@ struct AICareerEvidenceSnapshot: Codable, Equatable {
   var tags: [String]
 
   init(_ evidence: CareerEvidence) {
-    kind = evidence.kind.title
+    kind = aiPayloadLabel(evidence.kind.title)
     title = evidence.title.careerAILimited(to: 180)
     detail = evidence.detail.careerAILimited(to: 1_200)
     source = evidence.source.careerAILimited(to: 220)

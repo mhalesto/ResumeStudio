@@ -1,5 +1,7 @@
 import Foundation
 import PDFKit
+import UIKit
+import Vision
 import ZIPFoundation
 
 enum ResumeDOCXRenderer {
@@ -163,6 +165,34 @@ enum ResumeImportService {
     }
     if !csvs.isEmpty { return parseLinkedIn(csvs) }
     return parseResumeText(texts.joined(separator: "\n"))
+  }
+
+  static func extractText(fromImageData data: Data) async throws -> String {
+    guard let image = UIImage(data: data), let cgImage = image.cgImage else {
+      throw ResumePhotoImportError.unreadableImage
+    }
+    let orientation = CGImagePropertyOrientation(image.imageOrientation)
+    let text = try await Task.detached(priority: .userInitiated) {
+      let request = VNRecognizeTextRequest()
+      request.recognitionLevel = .accurate
+      request.usesLanguageCorrection = true
+      request.automaticallyDetectsLanguage = true
+      try VNImageRequestHandler(
+        cgImage: cgImage,
+        orientation: orientation,
+        options: [:]
+      ).perform([request])
+      return (request.results ?? [])
+        .sorted { left, right in
+          let verticalDifference = abs(left.boundingBox.midY - right.boundingBox.midY)
+          if verticalDifference > 0.02 { return left.boundingBox.midY > right.boundingBox.midY }
+          return left.boundingBox.minX < right.boundingBox.minX
+        }
+        .compactMap { $0.topCandidates(1).first?.string }
+        .joined(separator: "\n")
+    }.value.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !text.isBlank else { throw ResumePhotoImportError.noReadableText }
+    return text
   }
 
   private static func extractDOCX(_ url: URL) throws -> String {
@@ -476,6 +506,36 @@ enum ResumeImportService {
       }
     }
     return result
+  }
+}
+
+enum ResumePhotoImportError: LocalizedError {
+  case unreadableImage
+  case noReadableText
+
+  var errorDescription: String? {
+    switch self {
+    case .unreadableImage:
+      "One of the selected photos could not be read. Choose a JPG, PNG, or HEIC image."
+    case .noReadableText:
+      "No readable résumé text was found in one of the photos. Retake it in good light and keep the page straight."
+    }
+  }
+}
+
+private extension CGImagePropertyOrientation {
+  init(_ orientation: UIImage.Orientation) {
+    switch orientation {
+    case .up: self = .up
+    case .upMirrored: self = .upMirrored
+    case .down: self = .down
+    case .downMirrored: self = .downMirrored
+    case .left: self = .left
+    case .leftMirrored: self = .leftMirrored
+    case .right: self = .right
+    case .rightMirrored: self = .rightMirrored
+    @unknown default: self = .up
+    }
   }
 }
 

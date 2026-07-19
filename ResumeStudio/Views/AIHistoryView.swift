@@ -59,7 +59,7 @@ struct AIHistoryView: View {
         rows: [
           PremiumConfirmationRow(
             eyebrow: "SAVED RESULT",
-            title: artifact.action.title,
+            title: String(localized: artifact.action.title),
             detail: artifact.previewLines.first ?? artifact.createdAt.formatted(date: .abbreviated, time: .shortened),
             systemImage: artifact.action.systemImage,
             tone: .destructive

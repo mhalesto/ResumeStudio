@@ -370,8 +370,10 @@ struct HomeView: View {
 
   private struct TodayAction: Identifiable {
     let id: String
-    let title: String
-    let detail: String
+    // Copy, not data: call sites pass literals that interpolate names and counts,
+    // so each one keys as e.g. "Follow up with %@" and translates as a whole.
+    let title: LocalizedStringResource
+    let detail: LocalizedStringResource
     let systemImage: String
     let route: HomeRoute
     let priority: TodayActionPriority
@@ -418,7 +420,7 @@ struct HomeView: View {
       actions.append(TodayAction(
         id: "outcome-follow-up-\(due.review.id)",
         title: "Follow up on \(due.application.role.nilIfBlank ?? "an application")",
-        detail: "You scheduled this while reviewing the \(due.review.stage.title.lowercased()) outcome.",
+        detail: "You scheduled this while reviewing the \(String(localized: due.review.stage.title).lowercased()) outcome.",
         systemImage: "arrowshape.turn.up.right.circle.fill",
         route: .applicationPacket(due.application.id),
         priority: .dueFollowUp,
@@ -433,7 +435,7 @@ struct HomeView: View {
     if let interview = applicationStore.upcomingInterviews.first(where: { $0.scheduledAt <= tomorrow }) {
       actions.append(TodayAction(
         id: "interview-\(interview.id)", title: "Prepare for \(interview.company)",
-        detail: "Your \(interview.format.title.lowercased()) interview is \(interview.scheduledAt.formatted(.relative(presentation: .named))).",
+        detail: "Your \(String(localized: interview.format.title).lowercased()) interview is \(interview.scheduledAt.formatted(.relative(presentation: .named))).",
         systemImage: "person.2.wave.2.fill", route: .interviewPrep(interview.applicationID),
         priority: .imminentInterview))
     }
@@ -603,7 +605,9 @@ struct HomeView: View {
     }
   }
 
-  private func campaignProgress(_ title: String, value: Int, goal: Int) -> some View {
+  private func campaignProgress(_ title: LocalizedStringResource, value: Int, goal: Int)
+    -> some View
+  {
     VStack(alignment: .leading, spacing: 6) {
       HStack {
         Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ink)
@@ -668,6 +672,12 @@ struct HomeView: View {
           .font(Theme.display(heroTitleSize))
           .foregroundStyle(Theme.heroInk)
           .lineSpacing(2)
+          // The headline is a two-line composition. Translations run longer —
+          // German needs about 15% more width — so hold it at two lines and let
+          // it scale down, rather than wrapping to three and crowding the
+          // subtitle. A third line is only reachable at accessibility sizes.
+          .lineLimit(2)
+          .minimumScaleFactor(0.7)
           .fixedSize(horizontal: false, vertical: true)
 
         Text("Edit your story, choose a style, and export a polished PDF in minutes.")
@@ -853,8 +863,17 @@ struct HomeView: View {
           Text(next == nil ? "Ready to export" : "Next up")
             .eyebrow()
             .foregroundStyle(Theme.heroMutedInk)
-          Text(next?.prompt ?? "Preview and share your PDF")
-            .font(.footnote.weight(.medium))
+          // Split rather than `??` — coalescing with a model String types the
+          // whole expression as String, which skips the string catalogue and
+          // left this line in English on a translated build.
+          Group {
+            if let prompt = next?.prompt {
+              Text(prompt)
+            } else {
+              Text("Preview and share your PDF")
+            }
+          }
+          .font(.footnote.weight(.medium))
             .foregroundStyle(Theme.heroInk)
             .lineLimit(1)
             .minimumScaleFactor(0.85)
@@ -1345,11 +1364,11 @@ struct HomeView: View {
     store.document.personal.fullName.nilIfBlank ?? "Untitled Résumé"
   }
 
-  private var greeting: String {
+  private var greeting: LocalizedStringResource {
     guard let name = store.document.personal.fullName.nilIfBlank,
       let first = name.split(separator: " ").first
     else { return "Welcome" }
-    return "Welcome back, \(first)"
+    return "Welcome back, \(String(first))"
   }
 
   private var editedRelativeTime: String {
@@ -1430,29 +1449,35 @@ private struct WelcomeSheet: View {
           if isBuildingResume {
             WelcomeChoice(
               title: "Start with an example",
+              identifier: "start-with-an-example",
               subtitle: "A complete sample you can edit into your own",
               systemImage: "sparkles", accent: accent, prominent: true, action: onExample)
             WelcomeChoice(
-              title: "Start blank", subtitle: "Build every section yourself",
+              title: "Start blank", identifier: "start-blank",
+              subtitle: "Build every section yourself",
               systemImage: "plus", accent: accent, prominent: false, action: onBlank)
             WelcomeChoice(
-              title: "Import a résumé", subtitle: "Bring in a PDF, DOCX or LinkedIn export",
+              title: "Import a résumé", identifier: "import-a-résumé",
+              subtitle: "Bring in a PDF, DOCX or LinkedIn export",
               systemImage: "square.and.arrow.down", accent: accent, prominent: false, action: onImport)
             Button("Back to goals", systemImage: "chevron.left") { isBuildingResume = false }
               .font(.subheadline.weight(.semibold))
           } else {
             WelcomeChoice(
               title: "Build or refresh my résumé",
+              identifier: "build-or-refresh-my-résumé",
               subtitle: "Start with one of \(templateCount) templates, a blank page, or an import",
               systemImage: "doc.text.fill", accent: accent, prominent: true
             ) { selectGoal("build"); isBuildingResume = true }
             WelcomeChoice(
               title: "Tailor for a specific role",
+              identifier: "tailor-for-a-specific-role",
               subtitle: "Capture a job advert and turn it into a focused application workflow",
               systemImage: "scope", accent: accent, prominent: false
             ) { selectGoal("tailor"); onTailor() }
             WelcomeChoice(
               title: "Organise my job search",
+              identifier: "organise-my-job-search",
               subtitle: "Track applications, interviews, follow-ups and next actions",
               systemImage: "rectangle.3.group.fill", accent: accent, prominent: false
             ) { selectGoal("organize"); onOrganize() }
@@ -1549,8 +1574,11 @@ private struct CareerCampaignView: View {
 }
 
 private struct WelcomeChoice: View {
-  let title: String
-  let subtitle: String
+  let title: LocalizedStringResource
+  /// Stable across languages — the accessibility identifier below is a test
+  /// hook, so it can't be derived from translated display copy.
+  let identifier: String
+  let subtitle: LocalizedStringResource
   let systemImage: String
   let accent: Color
   let prominent: Bool
@@ -1590,7 +1618,7 @@ private struct WelcomeChoice: View {
       )
     }
     .buttonStyle(.plain)
-    .accessibilityIdentifier("onboarding.choice.\(title.lowercased().replacingOccurrences(of: " ", with: "-"))")
+    .accessibilityIdentifier("onboarding.choice.\(identifier)")
   }
 }
 
@@ -1689,7 +1717,9 @@ private struct ResumeThumbnailWarmKey: Hashable {
 
 private struct HeroLibraryShortcut: View {
   let value: String
-  let label: String
+  // Localizable: `value` is a formatted number and stays a String, but the label
+  // is UI copy and has to reach the string catalogue.
+  let label: LocalizedStringResource
   let systemImage: String
   let accent: Color
   let action: () -> Void
@@ -1974,8 +2004,8 @@ private struct HomeShareItem: Identifiable {
 }
 
 private struct SectionHeading: View {
-  let title: String
-  let subtitle: String?
+  let title: LocalizedStringResource
+  let subtitle: LocalizedStringResource?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 3) {
@@ -1992,8 +2022,8 @@ private struct SectionHeading: View {
 }
 
 private struct QuickStartCard: View {
-  let title: String
-  let subtitle: String
+  let title: LocalizedStringResource
+  let subtitle: LocalizedStringResource
   let systemImage: String
   let badge: Color
   let badgeForeground: Color

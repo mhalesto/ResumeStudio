@@ -26,7 +26,11 @@ final class AccountStore: ObservableObject {
 
   var accountLabel: String {
     if let email, !email.isBlank { return email }
-    return isAnonymous ? "Protected guest account" : "Apple account"
+    // Resolved here rather than typed as a resource: the branch above returns
+    // the user's email address, which is data, not copy.
+    return isAnonymous
+      ? String(localized: "Protected guest account")
+      : String(localized: "Apple account")
   }
 
   var canResetPassword: Bool {

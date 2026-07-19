@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct AITextSuggestionsView: View {
-  let title: String
+  let title: LocalizedStringResource
   let guidance: String
   let load: () async throws -> AITextAlternatives
   let onApply: (String) -> Void

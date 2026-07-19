@@ -2,33 +2,36 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   DAILY_IMPORT_LIMITS,
+  PHOTO_IMPORT_IMAGE_LIMITS,
   dailyImportDecision,
   dailyImportLimit,
   dayKey,
+  photoImportImageLimit,
   startOfNextUTCDay,
 } from "../src/import-policy.js";
 
-test("free imports allow five successful requests each UTC day", () => {
+test("free imports allow one successful request each UTC day", () => {
   const now = new Date("2026-07-16T21:30:00.000Z");
-  let used = 0;
-  for (let attempt = 1; attempt <= 5; attempt += 1) {
-    const decision = dailyImportDecision({ tier: "free", used, now });
-    assert.equal(decision.allowed, true);
-    used = decision.updatedUsed;
-    assert.equal(decision.allowance.importsRemaining, 5 - attempt);
-  }
+  const first = dailyImportDecision({ tier: "free", used: 0, now });
+  assert.equal(first.allowed, true);
+  assert.equal(first.allowance.importsRemaining, 0);
 
-  const sixth = dailyImportDecision({ tier: "free", used, now });
-  assert.equal(sixth.allowed, false);
-  assert.equal(sixth.updatedUsed, 5);
-  assert.equal(sixth.allowance.importsRemaining, 0);
+  const second = dailyImportDecision({ tier: "free", used: first.updatedUsed, now });
+  assert.equal(second.allowed, false);
+  assert.equal(second.updatedUsed, 1);
+  assert.equal(second.allowance.importsRemaining, 0);
 });
 
-test("paid plans and unknown tiers receive the intentional limits", () => {
-  assert.deepEqual(DAILY_IMPORT_LIMITS, { free: 5, go: 20, pro: 30 });
-  assert.equal(dailyImportLimit("go"), 20);
-  assert.equal(dailyImportLimit("pro"), 30);
-  assert.equal(dailyImportLimit("unknown"), 5);
+test("plans receive the intentional daily and per-photo-import limits", () => {
+  assert.deepEqual(DAILY_IMPORT_LIMITS, { free: 1, go: 1, pro: 2 });
+  assert.deepEqual(PHOTO_IMPORT_IMAGE_LIMITS, { free: 2, go: 5, pro: 5 });
+  assert.equal(dailyImportLimit("go"), 1);
+  assert.equal(dailyImportLimit("pro"), 2);
+  assert.equal(dailyImportLimit("unknown"), 1);
+  assert.equal(photoImportImageLimit("free"), 2);
+  assert.equal(photoImportImageLimit("go"), 5);
+  assert.equal(photoImportImageLimit("pro"), 5);
+  assert.equal(photoImportImageLimit("unknown"), 2);
 });
 
 test("daily allowance resets at the next UTC midnight", () => {
