@@ -22,11 +22,12 @@ final class ResumeStudioTests: XCTestCase {
     XCTAssertTrue(MonetizationCatalog.freeResumeTemplates.isSubset(of: Set(ResumeTemplate.allCases)))
     XCTAssertTrue(MonetizationCatalog.freeCoverLetterTemplates.isSubset(of: Set(CoverLetterTemplate.allCases)))
 
-    // The four original accents are free; the ten Signature and Atelier tones
-    // are subscription only, gated the same way the premium templates are.
+    // The four original accents are free; the sixteen Signature, Atelier, and
+    // Luxe tones are subscription only, gated like the premium templates.
     XCTAssertEqual(MonetizationCatalog.freeAccents.count, 4)
     XCTAssertEqual(MonetizationCatalog.freeAccents, [.orange, .blue, .teal, .burgundy])
-    XCTAssertEqual(ResumeAccent.allCases.filter(\.isPremium).count, 10)
+    XCTAssertEqual(ResumeAccent.allCases.count, 20)
+    XCTAssertEqual(ResumeAccent.allCases.filter(\.isPremium).count, 16)
     for accent in ResumeAccent.allCases {
       XCTAssertEqual(accent.isPremium, !MonetizationCatalog.freeAccents.contains(accent))
     }
@@ -3198,5 +3199,435 @@ final class ResumeStudioTests: XCTestCase {
 extension CGSize {
   fileprivate func contains(rect: CGRect) -> Bool {
     rect.minX >= 0 && rect.minY >= 0 && rect.maxX <= width && rect.maxY <= height
+  }
+}
+
+@MainActor
+/// The share extension reads a shared page in Safari and sends back whatever the
+/// board publishes for search engines. These cover the turning of that into the
+/// plain wording the capture step reads.
+final class SharedJobCaptureTests: XCTestCase {
+  private let posting = """
+    {"@context":"https://schema.org","@type":"JobPosting",
+     "title":"Senior React Native Engineer",
+     "hiringOrganization":{"@type":"Organization","name":"Methys Digital"},
+     "jobLocation":{"@type":"Place","address":{"@type":"PostalAddress",
+       "addressLocality":"Durban","addressRegion":"KwaZulu-Natal"}},
+     "employmentType":"FULL_TIME",
+     "description":"<p>Build alarm monitoring apps.</p><ul><li>React Native</li></ul>"}
+    """
+
+  func testAStructuredPostingIsPreferredOverTheSweptUpPageText() {
+    let capture = SharedJobCapture(
+      url: "https://example.com/jobs/1",
+      text: "Cookie preferences Similar jobs Sign in Senior React Native Engineer",
+      title: "Senior React Native Engineer | Methys Digital",
+      posting: posting)
+
+    let read = capture.bestAvailableText
+    XCTAssertTrue(read.contains("Senior React Native Engineer"))
+    XCTAssertTrue(read.contains("Methys Digital"))
+    XCTAssertTrue(read.contains("Durban, KwaZulu-Natal"))
+    XCTAssertTrue(read.contains("Build alarm monitoring apps."))
+    // The page furniture the structured posting lets us skip.
+    XCTAssertFalse(read.contains("Cookie preferences"))
+    XCTAssertFalse(read.contains("Sign in"))
+  }
+
+  func testMarkupInAPostingBecomesReadableLines() {
+    let capture = SharedJobCapture(url: "", text: "", title: nil, posting: posting)
+    let read = capture.bestAvailableText
+    XCTAssertFalse(read.contains("<p>"))
+    XCTAssertFalse(read.contains("</li>"))
+    // Block tags become breaks, so the paragraphing survives the stripping.
+    XCTAssertTrue(read.contains("Build alarm monitoring apps.\nReact Native"))
+  }
+
+  func testPageTextIsUsedWhenABoardPublishesNoStructuredPosting() {
+    // Boards title the page "Role at Company", which is worth keeping in front
+    // of body text that opens with navigation.
+    let titled = SharedJobCapture(
+      url: "https://example.com/jobs/3", text: "Apply now Share Save",
+      title: "Web Developer at Atom Foundation", posting: nil)
+    XCTAssertEqual(
+      titled.bestAvailableText, "Web Developer at Atom Foundation\n\nApply now Share Save")
+
+    // Not repeated when the text already begins with it.
+    let capture = SharedJobCapture(
+      url: "https://example.com/jobs/2", text: "Web Developer at Atom Foundation",
+      title: "Web Developer", posting: nil)
+    XCTAssertEqual(capture.bestAvailableText, "Web Developer at Atom Foundation")
+
+    // Malformed JSON on the page is not a reason to lose the text beside it.
+    let broken = SharedJobCapture(
+      url: "", text: "Fallback wording", title: nil, posting: "{not json")
+    XCTAssertEqual(broken.bestAvailableText, "Fallback wording")
+  }
+
+  /// A capture queued by a build that predates these fields still has to decode.
+  func testAnOlderQueuedCaptureStillDecodes() throws {
+    let legacy = #"{"url":"https://example.com","text":"Role","receivedAt":760000000}"#
+    let capture = try JSONDecoder().decode(
+      SharedJobCapture.self, from: Data(legacy.utf8))
+    XCTAssertEqual(capture.url, "https://example.com")
+    XCTAssertNil(capture.posting)
+    XCTAssertEqual(capture.bestAvailableText, "Role")
+  }
+
+  /// Pay is usually the most buried thing in a posting and the most useful to
+  /// have kept, so a structured salary is carried across whichever way it is set.
+  func testSalaryIsReadAsARangeOrASingleFigure() {
+    func read(_ salary: String) -> String {
+      SharedJobCapture(
+        url: "", text: "", title: nil,
+        posting: #"{"@type":"JobPosting","title":"Engineer","baseSalary":\#(salary)}"#
+      ).bestAvailableText
+    }
+
+    let range = read(
+      #"{"currency":"ZAR","value":{"minValue":600000,"maxValue":840000,"unitText":"YEAR"}}"#)
+    XCTAssertTrue(range.contains("ZAR"), range)
+    XCTAssertTrue(range.contains("per year"), range)
+    XCTAssertTrue(range.contains("–"), range)
+
+    let single = read(#"{"currency":"GBP","value":{"value":450,"unitText":"DAY"}}"#)
+    XCTAssertTrue(single.contains("GBP 450 per day"), single)
+
+    // No salary published is simply no salary line, not a broken one.
+    let none = SharedJobCapture(
+      url: "", text: "", title: nil, posting: #"{"@type":"JobPosting","title":"Engineer"}"#)
+    XCTAssertFalse(none.bestAvailableText.contains("Salary:"))
+  }
+
+  func testARemotePostingSaysSoEvenWhenItListsAnAddress() {
+    let capture = SharedJobCapture(
+      url: "", text: "", title: nil,
+      posting: """
+        {"@type":"JobPosting","title":"Engineer","jobLocationType":"TELECOMMUTE",
+         "jobLocation":{"address":{"addressLocality":"Cape Town",
+         "addressCountry":"South Africa"}},"validThrough":"2026-09-30"}
+        """)
+    let read = capture.bestAvailableText
+    XCTAssertTrue(read.contains("Cape Town, South Africa"), read)
+    XCTAssertTrue(read.contains("Remote"), read)
+    XCTAssertTrue(read.contains("Closing date: 2026-09-30"), read)
+  }
+
+  func testOnlyWebAddressesAreAcceptedAsSavedSearches() {
+    XCTAssertEqual(
+      SavedJobSearchStore.normalised("pnet.co.za/jobs")?.absoluteString,
+      "https://pnet.co.za/jobs")
+    XCTAssertEqual(
+      SavedJobSearchStore.normalised(" https://otta.com/jobs ")?.absoluteString,
+      "https://otta.com/jobs")
+    // A custom scheme must never become a way to reach another app.
+    XCTAssertNil(SavedJobSearchStore.normalised("resumestudio://capture-job"))
+    XCTAssertNil(SavedJobSearchStore.normalised("javascript:alert(1)"))
+    XCTAssertNil(SavedJobSearchStore.normalised("   "))
+  }
+}
+
+/// Sharing several roles in a row is how someone works through a board, and the
+/// app is rarely open while they do it. These cover the queue that holds them.
+final class SharedJobInboxTests: XCTestCase {
+  private var defaults: UserDefaults!
+
+  override func setUp() {
+    super.setUp()
+    defaults = UserDefaults(suiteName: SharedJobInbox.appGroupID)
+    SharedJobInbox.discardAll()
+  }
+
+  override func tearDown() {
+    SharedJobInbox.discardAll()
+    super.tearDown()
+  }
+
+  private func queue(_ captures: [SharedJobCapture]) {
+    captures.forEach(SharedJobInbox.enqueue)
+  }
+
+  private func capture(_ url: String, at offset: TimeInterval) -> SharedJobCapture {
+    SharedJobCapture(
+      url: url, text: "Role at \(url)", title: nil, posting: nil,
+      receivedAt: Date(timeIntervalSince1970: 760_000_000 + offset))
+  }
+
+  func testSharesAreKeptInOrderRatherThanReplacingEachOther() {
+    queue([capture("first", at: 0), capture("second", at: 10), capture("third", at: 20)])
+
+    XCTAssertEqual(SharedJobInbox.pendingCount, 3)
+    XCTAssertEqual(SharedJobInbox.consume()?.url, "first")
+    XCTAssertEqual(SharedJobInbox.consume()?.url, "second")
+    XCTAssertEqual(SharedJobInbox.pendingCount, 1)
+    XCTAssertEqual(SharedJobInbox.consume()?.url, "third")
+    XCTAssertNil(SharedJobInbox.consume())
+  }
+
+  /// Shares can be written out of order; the queue answers by when they arrived.
+  func testTheOldestShareIsAlwaysTakenFirst() {
+    queue([capture("late", at: 90), capture("early", at: 5)])
+    XCTAssertEqual(SharedJobInbox.consume()?.url, "early")
+    XCTAssertEqual(SharedJobInbox.consume()?.url, "late")
+  }
+
+  /// A job shared just before this update installed sat in a single default.
+  func testACaptureLeftInTheOldSingleSlotIsNotStranded() throws {
+    let legacy = SharedJobCapture(
+      url: "https://example.com/legacy", text: "Waiting since the last build",
+      title: nil, posting: nil, receivedAt: Date(timeIntervalSince1970: 760_000_000))
+    defaults.set(try JSONEncoder().encode(legacy), forKey: SharedJobInbox.legacyKey)
+    queue([capture("newer", at: 500)])
+    // The automatic pass runs once per process, so drive it directly here.
+    SharedJobInbox.migrateLegacyStorage()
+
+    XCTAssertEqual(SharedJobInbox.pendingCount, 2)
+    XCTAssertEqual(SharedJobInbox.consume()?.url, "https://example.com/legacy")
+    // Carried into the file, so it is not handed out a second time.
+    XCTAssertNil(defaults.data(forKey: SharedJobInbox.legacyKey))
+    XCTAssertEqual(SharedJobInbox.pendingCount, 1)
+  }
+
+  /// The queue itself lived in defaults for one build before moving to a file.
+  func testAQueueLeftInDefaultsIsCarriedIntoTheFile() throws {
+    let stranded = [capture("one", at: 0), capture("two", at: 10)]
+    defaults.set(try JSONEncoder().encode(stranded), forKey: SharedJobInbox.legacyQueueKey)
+    SharedJobInbox.migrateLegacyStorage()
+
+    XCTAssertEqual(SharedJobInbox.pending().map(\.url), ["one", "two"])
+    XCTAssertNil(defaults.data(forKey: SharedJobInbox.legacyQueueKey))
+    // And still there on the next read, from the file this time.
+    XCTAssertEqual(SharedJobInbox.pending().map(\.url), ["one", "two"])
+  }
+
+  /// The whole point of coordinating: the app draining and the extension
+  /// filling must not lose each other's work.
+  func testConcurrentDrainingAndFillingLosesNothing() {
+    queue((0..<10).map { capture("seeded-\($0)", at: TimeInterval($0)) })
+
+    let drained = NSLock()
+    var taken: [String] = []
+    let group = DispatchGroup()
+
+    for index in 0..<10 {
+      DispatchQueue.global().async(group: group) {
+        if let capture = SharedJobInbox.consume() {
+          drained.lock()
+          taken.append(capture.url)
+          drained.unlock()
+        }
+      }
+      DispatchQueue.global().async(group: group) {
+        SharedJobInbox.enqueue(self.capture("shared-\(index)", at: TimeInterval(100 + index)))
+      }
+    }
+    XCTAssertEqual(group.wait(timeout: .now() + 20), .success)
+
+    // Ten went in and ten came out, so nothing was silently dropped: whatever
+    // was taken plus whatever is left must account for every capture.
+    let remaining = SharedJobInbox.pending().map(\.url)
+    XCTAssertEqual(taken.count + remaining.count, 20)
+    XCTAssertEqual(Set(taken).count, taken.count, "a capture was handed out twice")
+    XCTAssertEqual(Set(remaining).count, remaining.count, "a capture was stored twice")
+    XCTAssertTrue(Set(taken).isDisjoint(with: Set(remaining)))
+  }
+
+  /// The cap holds as shares arrive, and drops the oldest — someone who has
+  /// shared forty roles without opening the app wants the twenty most recent.
+  func testTheQueueStopsGrowingAndKeepsTheMostRecent() {
+    queue((0..<40).map { capture("job-\($0)", at: TimeInterval($0)) })
+
+    let waiting = SharedJobInbox.pending().map(\.url)
+    XCTAssertEqual(waiting.count, SharedJobInbox.limit)
+    XCTAssertEqual(waiting.first, "job-20")
+    XCTAssertEqual(waiting.last, "job-39")
+
+    // The oldest of what was kept is still what comes out next.
+    XCTAssertEqual(SharedJobInbox.consume()?.url, "job-20")
+    XCTAssertEqual(SharedJobInbox.pendingCount, SharedJobInbox.limit - 1)
+  }
+
+  func testDiscardingLeavesTheRestOfTheQueueAlone() {
+    let unwanted = capture("unwanted", at: 10)
+    queue([capture("keep", at: 0), unwanted, capture("also-keep", at: 20)])
+
+    SharedJobInbox.discard(unwanted)
+    XCTAssertEqual(SharedJobInbox.pending().map(\.url), ["keep", "also-keep"])
+  }
+}
+
+final class ResumeQuickEditLocatorTests: XCTestCase {
+  /// The double-tap editor identifies what was tapped by matching the rendered
+  /// line against the résumé's own text, so it has to survive the ways templates
+  /// reprint that text: upper case headings, bullets, pipes, wrapped paragraphs
+  /// and several values sharing one line.
+  private func target(
+    _ line: String, relativeY: CGFloat = 0.5, page: Int = 0
+  ) -> ResumeQuickEditTarget? {
+    ResumeQuickEditLocator.target(
+      forLine: line, relativeY: relativeY, pageIndex: page, in: .example)
+  }
+
+  func testHeadingsAndBulletsResolveToTheFieldTheyCameFrom() {
+    let document = ResumeDocument.example
+    XCTAssertEqual(target(document.personal.fullName.uppercased(), relativeY: 0.05), .name)
+    XCTAssertEqual(target("•  \(document.competencies[0])"), .competencies)
+
+    let role = document.experience[0]
+    XCTAssertEqual(target(role.company), .experience(role.id))
+    XCTAssertEqual(target("•  \(role.highlights[0])"), .experience(role.id))
+
+    let study = document.education[0]
+    XCTAssertEqual(target(study.qualification), .education(study.id))
+  }
+
+  func testWrappedParagraphAndSharedLinesStillResolve() {
+    let document = ResumeDocument.example
+    // A profile is printed wrapped, so a tapped line is only a fragment of it.
+    let fragment = String(document.professionalProfile.prefix(40))
+    XCTAssertEqual(target(fragment), .profile)
+
+    // Two-column competencies put several stored values on one printed line.
+    let shared = "\(document.competencies[0])    \(document.competencies[1])"
+    XCTAssertEqual(target(shared), .competencies)
+  }
+
+  func testTheLetterheadDecidesBetweenAJobTitleAndTheSameWordsAsARole() {
+    var document = ResumeDocument.example
+    document.personal.headline = "Software Engineer"
+    document.experience[0].role = "Software Engineer"
+
+    let atTop = ResumeQuickEditLocator.target(
+      forLine: "Software Engineer", relativeY: 0.06, pageIndex: 0, in: document)
+    let inBody = ResumeQuickEditLocator.target(
+      forLine: "Software Engineer", relativeY: 0.55, pageIndex: 0, in: document)
+
+    XCTAssertEqual(atTop, .headline)
+    XCTAssertEqual(inBody, .experience(document.experience[0].id))
+  }
+
+  func testSectionHeadingsOpenTheSectionTheyLabel() {
+    let document = ResumeDocument.example
+    XCTAssertEqual(target("PROFESSIONAL EXPERIENCE"), .experience(document.experience[0].id))
+    XCTAssertEqual(target("Education"), .education(document.education[0].id))
+    XCTAssertEqual(target("CORE COMPETENCIES"), .competencies)
+    XCTAssertEqual(target("Professional Profile"), .profile)
+    if let reference = document.references.first {
+      XCTAssertEqual(target("REFERENCES"), .reference(reference.id))
+    }
+  }
+
+  func testHeadingWordsInsideBodyTextDoNotHijackTheirSection() {
+    var document = ResumeDocument.example
+    document.experience[0].highlights[0] = "Improved the employee experience across three regions"
+    // The word alone is a heading; a sentence carrying it is still its own bullet.
+    let sentence = ResumeQuickEditLocator.target(
+      forLine: "Improved the employee experience across three regions",
+      relativeY: 0.5, pageIndex: 0, in: document)
+    XCTAssertEqual(sentence, .experience(document.experience[0].id))
+
+    // A user's own section named like a heading wins over the heading list.
+    var custom = ResumeDocument.example
+    custom.additionalSections = [ResumeAdditionalSection(title: "Skills", items: ["Welding"])]
+    XCTAssertEqual(
+      ResumeQuickEditLocator.target(
+        forLine: "Skills", relativeY: 0.5, pageIndex: 0, in: custom),
+      .additional(custom.additionalSections[0].id))
+  }
+
+  func testAContinuedHeadingOpensTheEntryPrintedUnderItNotThePageOneEntry() {
+    var document = ResumeDocument.example
+    document.education = [
+      EducationEntry(
+        qualification: "Bachelor of Business Administration",
+        institution: "Example State University", period: "2014 - 2018", details: ""),
+      EducationEntry(
+        qualification: "Certificate in People Analytics",
+        institution: "Sample Learning Institute", period: "2021", details: ""),
+    ]
+
+    // Page two reprints the heading over the entry that spilled onto it.
+    let spilled = ResumeQuickEditLocator.target(
+      forLine: "EDUCATION - CONTINUED",
+      following: "Certificate in People Analytics  Sample Learning Institute  2021",
+      relativeY: 0.2, pageIndex: 1, in: document)
+    XCTAssertEqual(spilled, .education(document.education[1].id))
+
+    // The same heading on page one still opens page one's entry.
+    let original = ResumeQuickEditLocator.target(
+      forLine: "EDUCATION",
+      following: "Bachelor of Business Administration  Example State University",
+      relativeY: 0.8, pageIndex: 0, in: document)
+    XCTAssertEqual(original, .education(document.education[0].id))
+  }
+
+  /// A referee is usually a former manager, so their employer is also a company
+  /// listed under professional experience and matches both fields equally well.
+  /// The heading above the tap is the only thing that says which one is meant.
+  func testTheHeadingAboveATapSeparatesARefereeFromTheRoleAtTheSameCompany() {
+    var document = ResumeDocument.example
+    document.experience = [
+      ExperienceEntry(
+        role: "Software Engineer", company: "Methys Digital",
+        period: "Feb 2023 - Present", highlights: ["Built the alarm monitoring app."])
+    ]
+    document.references = [
+      ReferenceEntry(
+        name: "Riley Example", company: "Methys Digital",
+        phone: "+27 11 555 0100", email: "riley@example.com")
+    ]
+
+    // The company name printed under the references heading is the referee's.
+    let referee = ResumeQuickEditLocator.target(
+      forLine: "Methys Digital",
+      preceding: "REFERENCES Riley Example",
+      relativeY: 0.72, pageIndex: 1, in: document)
+    XCTAssertEqual(referee, .reference(document.references[0].id))
+
+    // The same words under the experience heading are still the role.
+    let employer = ResumeQuickEditLocator.target(
+      forLine: "Methys Digital",
+      preceding: "PROFESSIONAL EXPERIENCE Software Engineer",
+      relativeY: 0.4, pageIndex: 0, in: document)
+    XCTAssertEqual(employer, .experience(document.experience[0].id))
+
+    // With no heading above it, the tie falls back to the old ordering rather
+    // than guessing — nothing regresses for templates that print no headings.
+    XCTAssertNotNil(
+      ResumeQuickEditLocator.target(
+        forLine: "Methys Digital", relativeY: 0.5, pageIndex: 0, in: document))
+  }
+
+  /// The nearest heading wins: page two reprints "experience continued" above a
+  /// references block that comes later on the same page.
+  func testTheNearestHeadingAboveTheTapWinsWhenAPageHoldsSeveralSections() {
+    var document = ResumeDocument.example
+    document.experience = [
+      ExperienceEntry(
+        role: "Teaching Assistant", company: "Northstar Works",
+        period: "2017 - 2018", highlights: ["Taught classes of 30 to 50 students."])
+    ]
+    document.references = [
+      ReferenceEntry(
+        name: "Morgan Sample", company: "Northstar Works",
+        phone: "+27 11 555 0164", email: "morgan@example.com")
+    ]
+
+    let target = ResumeQuickEditLocator.target(
+      forLine: "Northstar Works",
+      preceding: """
+        PROFESSIONAL EXPERIENCE - CONTINUED Teaching Assistant \
+        Taught classes of 30 to 50 students. REFERENCES Morgan Sample
+        """,
+      relativeY: 0.8, pageIndex: 1, in: document)
+    XCTAssertEqual(target, .reference(document.references[0].id))
+  }
+
+  func testEmptyLetterheadOffersThePortraitAndBlankMarginsStayInert() {
+    XCTAssertEqual(target("", relativeY: 0.04), .photo)
+    XCTAssertNil(target("", relativeY: 0.7))
+    XCTAssertNil(target("Nothing in this résumé says this", relativeY: 0.7))
+    // A portrait only ever sits on the first page's letterhead.
+    XCTAssertNil(target("", relativeY: 0.04, page: 1))
   }
 }

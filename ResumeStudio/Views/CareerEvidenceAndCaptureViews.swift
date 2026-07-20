@@ -243,6 +243,10 @@ struct JobCaptureView: View {
   @State private var errorMessage: String?
   @State private var didCreate = false
   @State private var provider: ProductInsightSource?
+  /// How many more shared jobs are behind this one. Someone who shared five
+  /// roles off a board should be able to see that this is the first of five,
+  /// rather than wonder whether the other four arrived at all.
+  @State private var remainingShared = 0
 
   private var duplicateApplication: JobApplication? {
     guard let captured else { return nil }
@@ -322,6 +326,18 @@ struct JobCaptureView: View {
         }
 
         if let errorMessage { Label(errorMessage, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange) }
+
+        if remainingShared > 0 {
+          Label(
+            remainingShared == 1
+              ? "1 more shared job is waiting after this one"
+              : "\(remainingShared) more shared jobs are waiting after this one",
+            systemImage: "tray.full.fill"
+          )
+          .font(.footnote)
+          .foregroundStyle(Theme.mutedInk)
+          .frame(maxWidth: .infinity, alignment: .leading)
+        }
       }
       .padding(20).padding(.bottom, 40).frame(maxWidth: 700).frame(maxWidth: .infinity)
     }
@@ -337,9 +353,15 @@ struct JobCaptureView: View {
   }
 
   @MainActor private func consumeSharedCaptureIfNeeded() async {
-    guard let shared = SharedJobInbox.consume() else { return }
+    // Taking one from the queue is coordinated file access, which the screen
+    // used to do on the main thread as it appeared.
+    guard let shared = await SharedJobInbox.consumeOffMainThread() else { return }
     sourceURL = shared.url
-    content = shared.text
+    content = shared.bestAvailableText
+    remainingShared = await SharedJobInbox.pendingCountOffMainThread()
+    // Fetching the page from here only ever sees what a signed-out visitor sees,
+    // so it stays the last resort — the share extension has already read the
+    // page as the reader themselves saw it, sign-in and all.
     if content.trimmingCharacters(in: .whitespacesAndNewlines).count < 40, !sourceURL.isBlank {
       await loadPage()
     }

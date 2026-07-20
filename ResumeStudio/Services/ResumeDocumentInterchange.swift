@@ -91,6 +91,12 @@ enum ResumeDOCXRenderer {
     case .plum: color = "6B2E61"
     case .steel: color = "476B87"
     case .terracotta: color = "BF6347"
+    case .champagne: color = "9B6E24"
+    case .peacock: color = "0A6670"
+    case .mulberry: color = "89335E"
+    case .moss: color = "5C6B3B"
+    case .cobalt: color = "334FA3"
+    case .cocoa: color = "6B473D"
     }
     return """
       <?xml version="1.0" encoding="UTF-8" standalone="yes"?>

@@ -385,6 +385,14 @@ enum ResumeAccent: String, CaseIterable, Codable, Identifiable {
   case plum
   case steel
   case terracotta
+  // The Luxe palette: six nuanced, high-contrast tones designed to feel rich
+  // on screen while remaining clear and professional in exported documents.
+  case champagne
+  case peacock
+  case mulberry
+  case moss
+  case cobalt
+  case cocoa
 
   var id: String { rawValue }
 
@@ -407,6 +415,12 @@ enum ResumeAccent: String, CaseIterable, Codable, Identifiable {
     case .plum: "Plum"
     case .steel: "Steel Blue"
     case .terracotta: "Terracotta"
+    case .champagne: "Champagne Gold"
+    case .peacock: "Peacock"
+    case .mulberry: "Mulberry"
+    case .moss: "Moss"
+    case .cobalt: "Cobalt"
+    case .cocoa: "Cocoa"
     }
   }
 
@@ -450,6 +464,18 @@ enum ResumeAccent: String, CaseIterable, Codable, Identifiable {
       UIColor(red: 0.28, green: 0.42, blue: 0.53, alpha: 1)
     case .terracotta:
       UIColor(red: 0.75, green: 0.39, blue: 0.28, alpha: 1)
+    case .champagne:
+      UIColor(red: 0.608, green: 0.431, blue: 0.141, alpha: 1)
+    case .peacock:
+      UIColor(red: 0.04, green: 0.40, blue: 0.44, alpha: 1)
+    case .mulberry:
+      UIColor(red: 0.54, green: 0.20, blue: 0.37, alpha: 1)
+    case .moss:
+      UIColor(red: 0.36, green: 0.42, blue: 0.23, alpha: 1)
+    case .cobalt:
+      UIColor(red: 0.20, green: 0.31, blue: 0.64, alpha: 1)
+    case .cocoa:
+      UIColor(red: 0.42, green: 0.28, blue: 0.24, alpha: 1)
     }
   }
 }

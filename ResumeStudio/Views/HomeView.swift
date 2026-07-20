@@ -24,6 +24,7 @@ enum HomeRoute: Hashable {
   case careerIntelligence
   case evidenceVault
   case jobCapture
+  case jobBoards
   case aiChangeReview
   case voiceInterview
   case linkedInStudio
@@ -56,6 +57,12 @@ struct HomeView: View {
   @Environment(\.dynamicTypeSize) private var dynamicTypeSize
   @State private var path: [HomeRoute] = []
   @State private var pendingStart: StartChoice?
+  /// How many jobs shared from Safari are still waiting to be dealt with.
+  /// Read rather than observed: the queue is written by another process, so
+  /// there is nothing to subscribe to — it is re-counted whenever the app comes
+  /// back to the foreground, which is exactly when it can have changed.
+  @State private var pendingSharedCaptures = 0
+  @Environment(\.scenePhase) private var scenePhase
   @State private var showWelcome = false
   @State private var welcomeDestination: HomeRoute?
   @State private var navigationRequestID: UUID?
@@ -183,6 +190,8 @@ struct HomeView: View {
           EvidenceVaultView()
         case .jobCapture:
           JobCaptureView()
+        case .jobBoards:
+          JobBoardBrowserView()
         case .aiChangeReview:
           AIChangeReviewView()
         case .voiceInterview:
@@ -295,8 +304,18 @@ struct HomeView: View {
       }
     }
     .onReceive(NotificationCenter.default.publisher(for: .openSharedJobCapture)) { _ in
+      refreshPendingCaptures()
       guard acceptsExternalRoutes else { return }
       handleExternalRoute(.jobCapture)
+    }
+    .onAppear { refreshPendingCaptures() }
+    .onChange(of: scenePhase) { _, phase in
+      if phase == .active { refreshPendingCaptures() }
+    }
+    .onChange(of: path) { _, updated in
+      // Only on the way back to the root, where the card is actually on screen.
+      // Counting on every push meant reading a file mid-navigation.
+      if updated.isEmpty { refreshPendingCaptures() }
     }
     .onReceive(NotificationCenter.default.publisher(for: .openHomeRoute)) { notification in
       guard acceptsExternalRoutes else { return }
@@ -383,8 +402,29 @@ struct HomeView: View {
     var onComplete: (() -> Void)? = nil
   }
 
+  /// Re-counts the shared jobs waiting, without blocking the frame that asked.
+  private func refreshPendingCaptures() {
+    Task { @MainActor in
+      pendingSharedCaptures = await SharedJobInbox.pendingCountOffMainThread()
+    }
+  }
+
   private var todayActions: [TodayAction] {
     var actions: [TodayAction] = []
+    // Jobs shared from Safari that have not been turned into applications yet.
+    // The share extension tries to open the app itself, but that is not
+    // something an extension can rely on — so the waiting pile is said here too,
+    // and nothing shared can quietly go nowhere.
+    if pendingSharedCaptures > 0 {
+      actions.append(TodayAction(
+        id: "shared-captures",
+        title: pendingSharedCaptures == 1
+          ? "Finish saving the job you shared"
+          : "Finish saving \(pendingSharedCaptures) shared jobs",
+        detail: "Captured from Safari. Turn them into tracked applications.",
+        systemImage: "square.and.arrow.down.on.square.fill",
+        route: .jobCapture, priority: .application))
+    }
     if let read = smartLinks.mostRecentUnseenLink {
       let who = read.company.nilIfBlank ?? "Someone"
       actions.append(TodayAction(
@@ -551,9 +591,18 @@ struct HomeView: View {
           Button { path.append(action.route) } label: {
             HStack(spacing: 14) {
               Image(systemName: action.systemImage)
-                .font(.title3).foregroundStyle(accent)
+                .font(.title3)
+                .foregroundStyle(.white)
                 .frame(width: 46, height: 46)
-                .background(accent.opacity(0.11), in: RoundedRectangle(cornerRadius: 14))
+                .background {
+                  RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(
+                      LinearGradient(
+                        colors: [accent, accent.opacity(0.72)],
+                        startPoint: .topLeading, endPoint: .bottomTrailing)
+                    )
+                    .shadow(color: accent.opacity(0.32), radius: 7, y: 4)
+                }
               VStack(alignment: .leading, spacing: 4) {
                 Text(action.title).font(.headline).foregroundStyle(Theme.ink)
                 Text(action.detail).font(.caption).foregroundStyle(Theme.mutedInk).multilineTextAlignment(.leading)
@@ -576,9 +625,57 @@ struct HomeView: View {
             .accessibilityIdentifier("today.complete.\(action.id)")
           }
         }
+        .background { todayActionBackdrop(for: action) }
         .cardSurface(radius: 19)
       }
     }
+  }
+
+  /// The photograph behind a Today card, chosen by what the card is asking for.
+  /// The catalogue is the same set the workspace tiles use, so Today is furnished
+  /// from the app's own shelf rather than a second look invented for it.
+  private func todayArtwork(for priority: TodayActionPriority) -> String {
+    switch priority {
+    case .resumeReadiness: "WorkspaceResumes"
+    case .smartLink, .outcomeReview: "ReviewRoomEmptyState"
+    case .imminentInterview: "WorkspaceInterview"
+    case .expiringHostedWork: "WorkspaceImport"
+    case .campaign, .application, .dueFollowUp: "WorkspaceApplications"
+    }
+  }
+
+  /// Depth behind a Today card: the photograph bled in from the trailing edge and
+  /// faded out before it reaches the words, over a wash of the accent. The mask
+  /// is what keeps it a backdrop — at no point does the picture compete with the
+  /// title for attention, and the text keeps a plain surface to sit on.
+  private func todayActionBackdrop(for action: TodayAction) -> some View {
+    // `Color.clear` takes exactly the size the card offers, and the overlays clip
+    // to it. Laying the picture out directly would let `scaledToFill` size the
+    // container instead, and the artwork spilled out past the card's corners.
+    Color.clear
+      .overlay {
+        LinearGradient(
+          colors: [accent.opacity(0.12), accent.opacity(0.02), .clear],
+          startPoint: .topLeading, endPoint: .bottomTrailing)
+      }
+      .overlay(alignment: .trailing) {
+        Image(todayArtwork(for: action.priority))
+          .resizable()
+          .scaledToFill()
+          .frame(width: 132)
+          // Two clear stops before any ink: the picture is not allowed to start
+          // until well clear of the title, so it reads as depth at the edge of
+          // the card rather than as something printed under the words.
+          .mask {
+            LinearGradient(
+              colors: [.clear, .clear, .black.opacity(0.9)],
+              startPoint: .leading, endPoint: .trailing)
+          }
+          .opacity(0.42)
+      }
+      .clipShape(RoundedRectangle(cornerRadius: 19, style: .continuous))
+      .allowsHitTesting(false)
+      .accessibilityHidden(true)
   }
 
   @AppStorage("campaign.weeklyApplicationGoal") private var weeklyApplicationGoal = 4
@@ -599,13 +696,37 @@ struct HomeView: View {
           campaignProgress("Relationships", value: networkingThisWeek, goal: weeklyNetworkingGoal)
           campaignProgress("Practice", value: practiceThisWeek, goal: weeklyPracticeGoal)
         }
-        .padding(18).cardSurface(radius: 20)
+        .padding(18)
+        .background { campaignBackdrop }
+        .cardSurface(radius: 20)
       }
       .buttonStyle(.plain)
 
       TipView(CaptureJobTip()) { _ in path.append(.jobCapture) }
         .tint(accent)
     }
+  }
+
+  /// The week's scoreboard, given the weight of one. Three bars on a plain card
+  /// read as a form; a tinted panel with the trend mark rising out of the corner
+  /// reads as progress, which is what the numbers are actually about.
+  private var campaignBackdrop: some View {
+    Color.clear
+      .overlay {
+        LinearGradient(
+          colors: [accent.opacity(0.16), accent.opacity(0.05), .clear],
+          startPoint: .top, endPoint: .bottom)
+      }
+      .overlay(alignment: .bottomTrailing) {
+        Image(systemName: "chart.line.uptrend.xyaxis")
+          .font(.system(size: 132, weight: .semibold))
+          .foregroundStyle(accent.opacity(0.07))
+          .rotationEffect(.degrees(-8))
+          .offset(x: 34, y: 26)
+      }
+      .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+      .allowsHitTesting(false)
+      .accessibilityHidden(true)
   }
 
   private func campaignProgress(_ title: LocalizedStringResource, value: Int, goal: Int)
@@ -949,6 +1070,15 @@ struct HomeView: View {
             accent: accent
           ) { path.append(.atsChecker) }
         }
+
+        WorkspaceCard(
+          title: "Find jobs",
+          detail: "Browse trusted boards, then share one here",
+          systemImage: "safari.fill",
+          artworkName: "WorkspaceImport",
+          accent: accent,
+          isWide: true
+        ) { path.append(.jobBoards) }
 
         Button {
           path.append(.smartLinks)

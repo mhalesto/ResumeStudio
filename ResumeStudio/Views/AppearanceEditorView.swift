@@ -199,7 +199,7 @@ struct AppearanceEditorView: View {
         Text("Accent Colour")
       } footer: {
         Text(
-          "Each swatch uses its true export colour, so you can compare them before previewing the PDF. The five jewel tones are part of a subscription."
+          "Each swatch uses its true export colour, so you can compare them before previewing the PDF. Signature, Atelier, and Luxe tones are part of a subscription."
         )
       }
   }

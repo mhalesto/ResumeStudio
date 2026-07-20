@@ -27,6 +27,19 @@ struct SettingsView: View {
     )
   }
 
+  /// Settings rows state both of their colours outright rather than inheriting
+  /// the list's tint. A reused row keeps whatever tint it was built with, which
+  /// is what left icons changing colour a beat after the screen settled — and
+  /// left `Link` titles on the system blue while their icons had already moved
+  /// to the résumé accent.
+  private func settingsLabel(_ title: LocalizedStringKey, systemImage: String) -> some View {
+    Label {
+      Text(title).foregroundStyle(Theme.ink)
+    } icon: {
+      Image(systemName: systemImage).foregroundStyle(resumeStore.document.accent.color)
+    }
+  }
+
   var body: some View {
     List {
       Section("ResumeStudio") {
@@ -34,7 +47,7 @@ struct SettingsView: View {
           AccountSettingsView()
         } label: {
           HStack {
-            Label("Account and backup", systemImage: "person.crop.circle")
+            settingsLabel("Account and backup", systemImage: "person.crop.circle")
             Spacer()
             Text(account.isAnonymous ? "Guest" : "Signed in")
               .font(.caption.bold()).foregroundStyle(Theme.mutedInk)
@@ -44,7 +57,7 @@ struct SettingsView: View {
           AIHistoryView()
         } label: {
           HStack {
-            Label("Saved AI work", systemImage: "sparkles.rectangle.stack")
+            settingsLabel("Saved AI work", systemImage: "sparkles.rectangle.stack")
             Spacer()
             Text("\(aiArtifacts.artifacts.count)")
               .font(.caption.bold()).foregroundStyle(Theme.mutedInk)
@@ -54,7 +67,7 @@ struct SettingsView: View {
           PlansView()
         } label: {
           HStack {
-            Label("Plans and purchases", systemImage: "sparkles")
+            settingsLabel("Plans and purchases", systemImage: "sparkles")
             Spacer()
             Text(purchases.plan.title)
               .font(.caption.bold())
@@ -106,8 +119,10 @@ struct SettingsView: View {
 
       Section("iCloud") {
         Toggle("Sync documents", isOn: $cloudSync.isEnabled)
-        Button("Sync now", systemImage: "arrow.triangle.2.circlepath") {
+        Button {
           Task { await cloudSync.synchronize() }
+        } label: {
+          settingsLabel("Sync now", systemImage: "arrow.triangle.2.circlepath")
         }
         .disabled(!cloudSync.isEnabled || cloudSync.status == .syncing)
         cloudStatus
@@ -123,7 +138,7 @@ struct SettingsView: View {
             UIApplication.shared.open(url)
           }
         } label: {
-          Label("Language", systemImage: "globe")
+          settingsLabel("Language", systemImage: "globe")
         }
       } header: {
         Text("Language")
@@ -135,12 +150,12 @@ struct SettingsView: View {
         NavigationLink {
           ApplicationAnswerVaultView(store: answerVault)
         } label: {
-          Label("Application Answer Vault", systemImage: "text.page.badge.magnifyingglass")
+          settingsLabel("Application Answer Vault", systemImage: "text.page.badge.magnifyingglass")
         }
         NavigationLink {
           PlatformIntegrationsView()
         } label: {
-          Label("Calendar, Mail, Safari and Shortcuts", systemImage: "puzzlepiece.extension.fill")
+          settingsLabel("Calendar, Mail, Safari and Shortcuts", systemImage: "puzzlepiece.extension.fill")
         }
       }
 
@@ -148,26 +163,26 @@ struct SettingsView: View {
         NavigationLink {
           PrivacySettingsView()
         } label: {
-          Label("Your data and AI", systemImage: "lock.shield")
+          settingsLabel("Your data and AI", systemImage: "lock.shield")
         }
       }
 
       Section("Help and legal") {
-        Link(destination: ResumeStudioLinks.marketing) { Label("ResumeStudio website", systemImage: "safari") }
-        Link(destination: ResumeStudioLinks.support) { Label("Support", systemImage: "questionmark.circle") }
-        Link(destination: ResumeStudioLinks.privacy) { Label("Privacy policy", systemImage: "hand.raised") }
-        Link(destination: ResumeStudioLinks.dataCollection) { Label("Data collection", systemImage: "list.bullet.clipboard") }
-        Button("Send feedback", systemImage: "envelope") {
+        Link(destination: ResumeStudioLinks.marketing) { settingsLabel("ResumeStudio website", systemImage: "safari") }
+        Link(destination: ResumeStudioLinks.support) { settingsLabel("Support", systemImage: "questionmark.circle") }
+        Link(destination: ResumeStudioLinks.privacy) { settingsLabel("Privacy policy", systemImage: "hand.raised") }
+        Link(destination: ResumeStudioLinks.dataCollection) { settingsLabel("Data collection", systemImage: "list.bullet.clipboard") }
+        Button {
           ProductInsights.record(.feedbackOpened)
           openURL(ResumeStudioLinks.feedback)
+        } label: {
+          settingsLabel("Send feedback", systemImage: "envelope")
         }
       }
     }
-    // List-backed labels can retain the tint they had when their reusable row
-    // was created. Give the list a local accent identity so hidden Settings rows
-    // are rebuilt as soon as the résumé accent changes, rather than only after
-    // an app foreground cycle or enough scrolling to recycle the row.
-    .id(resumeStore.document.accent)
+    // Rows carry their own colours (see `settingsLabel`), so the tint here is
+    // only for the controls that have no label of their own — toggles, the
+    // segmented picker, the disclosure chevrons.
     .tint(resumeStore.document.accent.color)
     .scrollContentBackground(.hidden)
     .background(Theme.paper)
