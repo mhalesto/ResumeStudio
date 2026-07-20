@@ -36,11 +36,16 @@ struct ResumePreviewView: View {
   /// column with standard section headings and no photo, which the parsers most
   /// reliably read in the right order. Only the layout changes — every word of
   /// the résumé is the user's own.
+  ///
+  /// Attachments come off too: a parser reading a scanned certificate finds
+  /// either nothing or a page of stray words, which is exactly what this variant
+  /// exists to avoid.
   private static func atsSafeVariant(of document: ResumeDocument) -> ResumeDocument {
     var doc = document
     doc.template = .classic
     doc.photo = nil
     doc.photoCrop = nil
+    doc.attachments = []
     return doc
   }
 
@@ -238,10 +243,12 @@ struct ResumePreviewView: View {
   }
 
   /// Copies the résumé's text to the clipboard, for pasting straight into an
-  /// online application's form fields.
+  /// online application's form fields. Attachment pages are left out — nobody
+  /// pasting into a form wants a certificate's wording in the middle of it.
   private func copyResumeText() {
     guard let pdfData, let pdf = PDFDocument(data: pdfData) else { return }
-    let text = (0..<pdf.pageCount)
+    let lastResumePage = max(0, pdf.pageCount - renderDocument.attachmentPageCount)
+    let text = (0..<lastResumePage)
       .compactMap { pdf.page(at: $0)?.string }
       .joined(separator: "\n")
     guard !text.isEmpty else { return }

@@ -6,6 +6,7 @@ struct EvidenceVaultView: View {
   @EnvironmentObject private var resumeStore: ResumeStore
   @EnvironmentObject private var careerStore: CareerIntelligenceStore
   @State private var editingItem: CareerEvidence?
+  @State private var attestingItem: CareerEvidence?
   @State private var importMessage: String?
   @State private var filter: CareerEvidenceKind?
 
@@ -46,9 +47,20 @@ struct EvidenceVaultView: View {
         }
         ForEach(visibleEvidence) { item in
           Button { editingItem = item } label: {
-            EvidenceRow(item: item, accent: resumeStore.document.accent.color)
+            EvidenceRow(
+              item: item,
+              attestation: careerStore.attestation(for: item.id),
+              accent: resumeStore.document.accent.color)
           }
           .buttonStyle(.plain)
+          .swipeActions(edge: .leading) {
+            Button {
+              attestingItem = item
+            } label: {
+              Label("Ask a referee", systemImage: "person.badge.shield.checkmark")
+            }
+            .tint(.green)
+          }
         }
         .onDelete { offsets in
           let ids = Set(offsets.compactMap { index in
@@ -74,6 +86,9 @@ struct EvidenceVaultView: View {
     }
     .sheet(item: $editingItem) { item in
       EvidenceEditorView(item: item) { careerStore.upsert($0) }
+    }
+    .sheet(item: $attestingItem) { item in
+      EvidenceAttestationView(evidence: item)
     }
     .alert("Evidence imported", isPresented: Binding(
       get: { importMessage != nil }, set: { if !$0 { importMessage = nil } }
@@ -128,6 +143,9 @@ private struct VaultHero: View {
 
 private struct EvidenceRow: View {
   let item: CareerEvidence
+  /// A referee's answer, when one has been asked for. Kept separate from
+  /// `item.isVerified`, which only means the owner ticked it themselves.
+  let attestation: EvidenceAttestation?
   let accent: Color
   var body: some View {
     HStack(alignment: .top, spacing: 12) {
@@ -142,6 +160,16 @@ private struct EvidenceRow: View {
         }
         Text(item.detail).font(.subheadline).foregroundStyle(Theme.inkSoft).lineLimit(3)
         if !item.source.isBlank { Text(item.source).font(.caption).foregroundStyle(Theme.mutedInk) }
+        if let attestation {
+          Label(
+            attestation.isConfirmed
+              ? attestation.attributionText
+              : String(localized: attestation.status.title),
+            systemImage: attestation.status.systemImage
+          )
+          .font(.caption.weight(.semibold))
+          .foregroundStyle(attestation.isConfirmed ? .green : Theme.mutedInk)
+        }
       }
       Spacer(minLength: 0)
     }.padding(.vertical, 4)

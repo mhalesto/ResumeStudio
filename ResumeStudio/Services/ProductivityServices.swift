@@ -229,10 +229,15 @@ enum ResumeAutoFitService {
     var reachedTarget: Bool
   }
 
+  /// Measures the résumé alone. Attachments are extra sheets the user chose to
+  /// add, not overflow to be squeezed out — counting them would drive the text
+  /// down to the minimum size and still never reach the target.
   @MainActor
   static func fit(_ source: ResumeDocument, target: ResumePageTarget) throws -> Result {
     guard let targetCount = target.pageCount else {
-      let pages = PDFDocument(data: try ResumePDFRenderer.render(document: source))?.pageCount ?? 0
+      let pages =
+        PDFDocument(data: try ResumePDFRenderer.render(document: source, includeAttachments: false))?
+        .pageCount ?? 0
       return Result(document: source, pageCount: pages, reachedTarget: true)
     }
 
@@ -241,7 +246,7 @@ enum ResumeAutoFitService {
     var lastPages = Int.max
     while scale >= 0.82 {
       candidate.layout.fontScale = scale
-      let data = try ResumePDFRenderer.render(document: candidate)
+      let data = try ResumePDFRenderer.render(document: candidate, includeAttachments: false)
       lastPages = PDFDocument(data: data)?.pageCount ?? Int.max
       if lastPages <= targetCount {
         return Result(document: candidate, pageCount: lastPages, reachedTarget: true)

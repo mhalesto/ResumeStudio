@@ -31,6 +31,11 @@ struct ResumeDocument: Codable, Equatable, Hashable {
   /// so a user can keep photo and non-photo résumé variants without re-importing.
   var isPhotoVisible: Bool
 
+  /// Certificates, portfolio pages and other supporting documents, printed after
+  /// the last page of the résumé. Like `photo`, deliberately not a schema bump:
+  /// an absent key decodes to none. See `ResumeAttachment`.
+  var attachments: [ResumeAttachment]
+
   var suggestedFilename: String {
     let source = personal.fullName.trimmingCharacters(in: .whitespacesAndNewlines)
     let base = source.isEmpty ? "Resume" : "\(source) Resume"
@@ -215,6 +220,7 @@ struct ResumeDocument: Codable, Equatable, Hashable {
     case photoCrop
     case isPhotoVisible
     case layout
+    case attachments
   }
 
   init(
@@ -231,7 +237,8 @@ struct ResumeDocument: Codable, Equatable, Hashable {
     photo: Data? = nil,
     photoCrop: PhotoCrop? = nil,
     isPhotoVisible: Bool = true,
-    layout: ResumeLayoutSettings = .standard
+    layout: ResumeLayoutSettings = .standard,
+    attachments: [ResumeAttachment] = []
   ) {
     self.schemaVersion = schemaVersion
     self.personal = personal
@@ -247,6 +254,7 @@ struct ResumeDocument: Codable, Equatable, Hashable {
     self.photoCrop = photoCrop
     self.isPhotoVisible = isPhotoVisible
     self.layout = layout
+    self.attachments = attachments
   }
 
   init(from decoder: Decoder) throws {
@@ -267,6 +275,8 @@ struct ResumeDocument: Codable, Equatable, Hashable {
     isPhotoVisible = try container.decodeIfPresent(Bool.self, forKey: .isPhotoVisible) ?? true
     layout = try container.decodeIfPresent(ResumeLayoutSettings.self, forKey: .layout) ?? .standard
     layout.normalize()
+    attachments =
+      try container.decodeIfPresent([ResumeAttachment].self, forKey: .attachments) ?? []
   }
 
   var photoImage: UIImage? {

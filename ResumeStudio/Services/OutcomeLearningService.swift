@@ -202,7 +202,7 @@ enum OutcomeLearningService {
   private static func bestPerformingSource(
     in values: [(application: JobApplication, review: ApplicationOutcomeReview)]
   ) -> SourceResult? {
-    let groups = Dictionary(grouping: values) { sourceName(for: $0.application) }
+    let groups = Dictionary(grouping: values) { $0.application.sourceLabel }
     return groups.compactMap { name, outcomes -> SourceResult? in
       guard outcomes.count >= 2 else { return nil }
       let positive = outcomes.count { isPositive($0.review) }

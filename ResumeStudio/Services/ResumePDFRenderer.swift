@@ -2,8 +2,12 @@ import Foundation
 import UIKit
 
 enum ResumePDFRenderer {
+  /// - Parameter includeAttachments: whether the supporting documents are printed
+  ///   after the last page. Off for the callers that measure how long the résumé
+  ///   itself runs — auto-fit would otherwise shrink the text trying to squeeze
+  ///   certificates onto one page.
   @MainActor
-  static func render(document: ResumeDocument) throws -> Data {
+  static func render(document: ResumeDocument, includeAttachments: Bool = true) throws -> Data {
     let pageBounds = CGRect(x: 0, y: 0, width: 595, height: 842)
     let format = UIGraphicsPDFRendererFormat()
     format.documentInfo = [
@@ -17,7 +21,8 @@ enum ResumePDFRenderer {
       let layout = ResumePDFLayout(
         rendererContext: rendererContext,
         pageBounds: pageBounds,
-        document: document
+        document: document,
+        includeAttachments: includeAttachments
       )
       layout.render()
     }
@@ -61,6 +66,7 @@ private final class ResumePDFLayout {
   private let rendererContext: UIGraphicsPDFRendererContext
   private let pageBounds: CGRect
   private let document: ResumeDocument
+  private let includeAttachments: Bool
 
   private var margin: CGFloat { CGFloat(document.layout.marginPoints) }
   private let footerTop: CGFloat = 810
@@ -106,7 +112,10 @@ private final class ResumePDFLayout {
     let draw: (CGFloat) -> Void
   }
 
-  private var plan: TemplatePlan { template.plan }
+  /// The template's plan with the user's section styles laid over it, resolved
+  /// once: `render` reads this on nearly every line, and the whole page has to
+  /// agree about which plan it is drawing.
+  private let plan: TemplatePlan
 
   private let navy = UIColor(red: 0.17, green: 0.20, blue: 0.29, alpha: 1)
   private let charcoal = UIColor(red: 0.09, green: 0.10, blue: 0.12, alpha: 1)
@@ -133,11 +142,14 @@ private final class ResumePDFLayout {
   init(
     rendererContext: UIGraphicsPDFRendererContext,
     pageBounds: CGRect,
-    document: ResumeDocument
+    document: ResumeDocument,
+    includeAttachments: Bool = true
   ) {
     self.rendererContext = rendererContext
     self.pageBounds = pageBounds
     self.document = document
+    self.includeAttachments = includeAttachments
+    plan = document.template.plan.applying(document.layout.sectionStyles)
     bodyX = CGFloat(document.layout.marginPoints)
     bodyWidth = pageBounds.width - CGFloat(document.layout.marginPoints * 2)
   }
@@ -150,6 +162,7 @@ private final class ResumePDFLayout {
       beginPage(isFirst: true)
       renderMainSections()
     }
+    drawAttachmentPages()
   }
 
   /// The one-column templates that still give up part of the page: the spine runs
@@ -237,6 +250,199 @@ private final class ResumePDFLayout {
         sideQueue.removeFirst()
       }
     }
+  }
+
+  // MARK: - Attachments
+
+  /// The supporting documents — certificates, portfolio pages, reference letters
+  /// — printed after the last page of the résumé.
+  ///
+  /// These pages deliberately don't wear the template's chrome: no letterhead, no
+  /// side band, no spine, and always white paper even under a dark-paper
+  /// template. An attachment is someone else's artwork, and the résumé's
+  /// furniture drawn across it reads as a mistake. What carries over is the
+  /// accent, the template's typeface and the page numbering, so the sheets still
+  /// belong to the same document.
+  private func drawAttachmentPages() {
+    guard includeAttachments else { return }
+    var printed = 0
+    for attachment in document.includedAttachments {
+      let remaining = ResumeAttachmentLimits.maxExportedPages - printed
+      guard remaining > 0 else { return }
+      switch attachment.kind {
+      case .image:
+        if drawImageAttachment(attachment) { printed += 1 }
+      case .pdf:
+        printed += drawPDFAttachment(attachment, budget: remaining)
+      }
+    }
+  }
+
+  private func drawImageAttachment(_ attachment: ResumeAttachment) -> Bool {
+    guard let image = UIImage(data: attachment.data) else { return false }
+    beginAttachmentPage()
+    draw(image, in: attachmentContentBox(for: attachment, subtitle: nil))
+    drawAttachmentFooter()
+    return true
+  }
+
+  /// One output page per source page, so a three-page certificate pack stays
+  /// three pages. Vectors and selectable text are preserved — the page is drawn,
+  /// not rasterised.
+  private func drawPDFAttachment(_ attachment: ResumeAttachment, budget: Int) -> Int {
+    guard let provider = CGDataProvider(data: attachment.data as CFData),
+      let source = CGPDFDocument(provider),
+      source.numberOfPages > 0
+    else { return 0 }
+
+    let total = source.numberOfPages
+    var printed = 0
+    for index in 1...total {
+      guard printed < budget else { break }
+      guard let page = source.page(at: index) else { continue }
+      beginAttachmentPage()
+      draw(
+        page,
+        in: attachmentContentBox(
+          for: attachment,
+          subtitle: total > 1 ? "\(index) / \(total)" : nil
+        )
+      )
+      drawAttachmentFooter()
+      printed += 1
+    }
+    return printed
+  }
+
+  private func beginAttachmentPage() {
+    rendererContext.beginPage()
+    pageNumber += 1
+    UIColor.white.setFill()
+    rendererContext.cgContext.fill(pageBounds)
+  }
+
+  /// Draws the caption and hands back the room left for the artwork.
+  private func attachmentContentBox(
+    for attachment: ResumeAttachment,
+    subtitle: String?
+  ) -> CGRect {
+    let left = margin
+    let width = pageBounds.width - margin * 2
+    var top = margin
+
+    if attachment.showsTitleOnPage {
+      accent.setFill()
+      rendererContext.cgContext.fill(CGRect(x: left, y: top, width: 26, height: 2.5))
+      top += 11
+
+      drawText(
+        attachment.displayTitle.uppercased(),
+        rect: CGRect(x: left, y: top, width: width - 64, height: 13),
+        font: mediumFont(9),
+        color: charcoal,
+        lineHeight: 11,
+        kern: 1.1
+      )
+      if let subtitle {
+        drawText(
+          subtitle,
+          rect: CGRect(x: left + width - 60, y: top, width: 60, height: 13),
+          font: mediumFont(8),
+          color: gray,
+          lineHeight: 11,
+          alignment: .right
+        )
+      }
+      top += 16
+
+      ruleGray.setFill()
+      rendererContext.cgContext.fill(CGRect(x: left, y: top, width: width, height: 0.6))
+      top += 14
+    }
+
+    return CGRect(x: left, y: top, width: width, height: footerTop - 14 - top)
+  }
+
+  /// Where artwork sits in the room it is given. Fitted rather than filled — a
+  /// certificate cropped to the page would lose the seal or the signature — and
+  /// biased slightly above centre, because a landscape document centred in a
+  /// portrait page reads as having slipped down it.
+  private func fitted(_ size: CGSize, in box: CGRect) -> CGRect {
+    let scale = min(box.width / size.width, box.height / size.height)
+    let width = size.width * scale
+    let height = size.height * scale
+    return CGRect(
+      x: box.midX - width / 2,
+      y: box.minY + (box.height - height) * 0.42,
+      width: width,
+      height: height
+    )
+  }
+
+  private func draw(_ image: UIImage, in box: CGRect) {
+    let size = image.size
+    guard size.width > 0, size.height > 0, box.width > 0, box.height > 0 else { return }
+    let target = fitted(size, in: box)
+    image.draw(in: target)
+
+    // A hairline, so a photograph with pale edges doesn't bleed into the sheet.
+    rendererContext.cgContext.setStrokeColor(ruleGray.withAlphaComponent(0.7).cgColor)
+    rendererContext.cgContext.setLineWidth(0.6)
+    rendererContext.cgContext.stroke(target)
+  }
+
+  private func draw(_ page: CGPDFPage, in box: CGRect) {
+    guard box.width > 0, box.height > 0 else { return }
+    let source = page.getBoxRect(.mediaBox)
+    guard source.width > 0, source.height > 0 else { return }
+    // The rotation the page asks to be viewed at decides which way round it
+    // measures: a landscape sheet stored as portrait plus 90° is landscape here.
+    let rotated = abs(page.rotationAngle % 180) == 90
+    let target = fitted(
+      rotated ? CGSize(width: source.height, height: source.width) : source.size,
+      in: box
+    )
+
+    let context = rendererContext.cgContext
+    context.saveGState()
+    // A PDF page draws in PDF coordinates — origin bottom left — so the target
+    // has to be restated in a flipped space before the page can be fitted to it.
+    context.translateBy(x: 0, y: pageBounds.height)
+    context.scaleBy(x: 1, y: -1)
+    let flipped = CGRect(
+      x: target.minX,
+      y: pageBounds.height - target.maxY,
+      width: target.width,
+      height: target.height
+    )
+    context.concatenate(
+      page.getDrawingTransform(.mediaBox, rect: flipped, rotate: 0, preserveAspectRatio: true)
+    )
+    context.clip(to: source)
+    context.drawPDFPage(page)
+    context.restoreGState()
+  }
+
+  /// The résumé's own footer inks itself in `mutedInk`, which under a dark-paper
+  /// template is a pale grey — invisible on the white sheet an attachment gets.
+  /// This one always resolves against white.
+  private func drawAttachmentFooter() {
+    let name = document.personal.fullName.trimmingCharacters(in: .whitespacesAndNewlines)
+    drawText(
+      name.isEmpty ? "RESUME STUDIO" : "\(name.uppercased())  |  ATTACHMENT",
+      rect: CGRect(x: margin, y: 819, width: 390, height: 10),
+      font: mediumFont(7),
+      color: gray,
+      lineHeight: 9
+    )
+    drawText(
+      "\(pageNumber)",
+      rect: CGRect(x: 535, y: 819, width: 26, height: 10),
+      font: mediumFont(7),
+      color: gray,
+      lineHeight: 9,
+      alignment: .right
+    )
   }
 
   private func beginPage(isFirst: Bool) {
@@ -5717,6 +5923,12 @@ private final class ResumePDFLayout {
 
   /// Three across, plain type: the compact list the ATS guides recommend.
   private func drawCompetencyColumns(_ items: [String]) {
+    drawTextColumns(items, continuationTitle: continuedHeading(.competencies))
+  }
+
+  /// Three across, plain type — the compact list the ATS guides recommend. Used
+  /// by the skills section and by any extra section set to the same style.
+  private func drawTextColumns(_ items: [String], continuationTitle: String) {
     let gap: CGFloat = 14
     let columnWidth = (bodyWidth - gap * 2) / 3
 
@@ -5726,7 +5938,7 @@ private final class ResumePDFLayout {
         measuredHeight($0, width: columnWidth, font: regularFont(8.8), lineHeight: 11)
       }
       let rowHeight = (heights.max() ?? 0) + 5
-      ensureSpace(rowHeight, continuationTitle: continuedHeading(.competencies))
+      ensureSpace(rowHeight, continuationTitle: continuationTitle)
       for (column, item) in rowItems.enumerated() {
         drawText(
           item,
@@ -5997,9 +6209,17 @@ private final class ResumePDFLayout {
     drawSectionTitle(heading(.education))
 
     // The margin dates and the cards apply here too, so a template holds its
-    // shape all the way down the page rather than only through the roles.
-    let usesGutter = plan.experience == .dateGutter
-    let cardPadding: CGFloat = plan.sectionChrome == .card ? 13 : 0
+    // shape all the way down the page rather than only through the roles —
+    // unless the user has given education a look of its own.
+    let usesGutter: Bool
+    let usesCard: Bool
+    switch plan.education {
+    case .dateGutter: usesGutter = true; usesCard = false
+    case .card: usesGutter = false; usesCard = true
+    case .stacked: usesGutter = false; usesCard = false
+    case nil: usesGutter = plan.experience == .dateGutter; usesCard = plan.sectionChrome == .card
+    }
+    let cardPadding: CGFloat = usesCard ? 13 : 0
     let inset: CGFloat = usesGutter ? 100 : cardPadding
     let entryX = bodyX + inset
     let entryWidth = bodyWidth - inset - cardPadding
@@ -6040,7 +6260,7 @@ private final class ResumePDFLayout {
       let entryHeight = qualificationHeight + institutionHeight + detailsHeight + 16
       ensureSpace(entryHeight, continuationTitle: continuedHeading(.education))
 
-      if plan.sectionChrome == .card {
+      if usesCard {
         let card = CGRect(x: bodyX, y: cursorY - 8, width: bodyWidth, height: entryHeight + 4)
         let path = UIBezierPath(roundedRect: card, cornerRadius: 8)
         accent.withAlphaComponent(0.045).setFill()
@@ -6088,7 +6308,7 @@ private final class ResumePDFLayout {
         )
         cursorY += detailsHeight + 3
       }
-      cursorY += plan.sectionChrome == .card ? 16 : 8
+      cursorY += usesCard ? 16 : 8
     }
   }
 
@@ -6097,6 +6317,17 @@ private final class ResumePDFLayout {
       !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
     guard !references.isEmpty else { return }
+
+    switch plan.references {
+    case .plain:
+      drawPlainReferences(references)
+      return
+    case .compact:
+      drawCompactReferences(references)
+      return
+    case .cards, nil:
+      break
+    }
 
     let gap: CGFloat = 14
     let cardWidth = (bodyWidth - gap) / 2
@@ -6125,6 +6356,78 @@ private final class ResumePDFLayout {
     }
   }
 
+  /// The same two-up grid with the card taken away: type on the page, a hairline
+  /// under each pair. Half the ink, and it survives being copied out of the PDF.
+  private func drawPlainReferences(_ references: [ReferenceEntry]) {
+    let gap: CGFloat = 16
+    let columnWidth = (bodyWidth - gap) / 2
+    let rowHeight: CGFloat = 56
+
+    ensureSpace(sectionTitleAllowance + rowHeight, continuationTitle: nil)
+    drawSectionTitle(heading(.references))
+
+    for index in stride(from: 0, to: references.count, by: 2) {
+      ensureSpace(rowHeight + 8, continuationTitle: continuedHeading(.references))
+      for column in 0..<2 where index + column < references.count {
+        let reference = references[index + column]
+        let x = bodyX + CGFloat(column) * (columnWidth + gap)
+        drawText(
+          reference.name,
+          rect: CGRect(x: x, y: cursorY, width: columnWidth, height: 13),
+          font: boldFont(9.6), color: headingInk, lineHeight: 12)
+        drawText(
+          reference.company,
+          rect: CGRect(x: x, y: cursorY + 13, width: columnWidth, height: 12),
+          font: mediumFont(8.2), color: mutedInk, lineHeight: 10.5)
+        drawText(
+          reference.phone,
+          rect: CGRect(x: x, y: cursorY + 27, width: columnWidth, height: 11),
+          font: regularFont(8.2), color: ink, lineHeight: 10.5)
+        drawText(
+          reference.email,
+          rect: CGRect(x: x, y: cursorY + 38, width: columnWidth, height: 11),
+          font: regularFont(7.8), color: ink, lineHeight: 10)
+      }
+      hairlineInk.setFill()
+      rendererContext.cgContext.fill(
+        CGRect(x: bodyX, y: cursorY + rowHeight - 8, width: bodyWidth, height: 0.5))
+      cursorY += rowHeight + 6
+    }
+  }
+
+  /// One line each — the most room a page can buy back at the foot of a résumé
+  /// without leaving a referee off it.
+  private func drawCompactReferences(_ references: [ReferenceEntry]) {
+    ensureSpace(sectionTitleAllowance + 16, continuationTitle: nil)
+    drawSectionTitle(heading(.references))
+
+    let leadWidth = bodyWidth * 0.52
+    for reference in references {
+      let lead = [reference.name, reference.company]
+        .filter { !$0.isBlank }
+        .joined(separator: " — ")
+      let contact = [reference.phone, reference.email]
+        .filter { !$0.isBlank }
+        .joined(separator: "  ·  ")
+      let height = max(
+        measuredHeight(lead, width: leadWidth, font: mediumFont(8.6), lineHeight: 11),
+        measuredHeight(contact, width: bodyWidth - leadWidth, font: regularFont(8.2), lineHeight: 11)
+      )
+      ensureSpace(height + 5, continuationTitle: continuedHeading(.references))
+      drawText(
+        lead,
+        rect: CGRect(x: bodyX, y: cursorY, width: leadWidth, height: height),
+        font: mediumFont(8.6), color: ink, lineHeight: 11)
+      drawText(
+        contact,
+        rect: CGRect(
+          x: bodyX + leadWidth, y: cursorY, width: bodyWidth - leadWidth, height: height),
+        font: regularFont(8.2), color: mutedInk, lineHeight: 11, alignment: .right)
+      cursorY += height + 5
+    }
+    cursorY += 4
+  }
+
   /// The room a section heading needs. Every style of heading is within a few
   /// points of this, and it is only ever used to decide whether one still fits.
   private var sectionTitleAllowance: CGFloat { 34 }
@@ -6148,11 +6451,34 @@ private final class ResumePDFLayout {
         items[0], width: bodyWidth - 18, font: regularFont(8.8), lineHeight: 11.2)
       ensureSpace(sectionTitleAllowance + firstItemHeight + 5, continuationTitle: nil)
       drawSectionTitle(title)
-      for item in items {
-        let height = measuredHeight(
-          item, width: bodyWidth - 18, font: regularFont(8.8), lineHeight: 11.2)
-        ensureSpace(height + 5, continuationTitle: "\(title) - Continued")
-        drawBullet(item, height: height)
+
+      let continuation = "\(title) - Continued"
+      switch plan.additional {
+      case .chips:
+        let height = chipsHeight(items, width: bodyWidth)
+        ensureSpace(height + 6, continuationTitle: continuation)
+        drawChips(items, x: bodyX, y: cursorY, width: bodyWidth)
+        cursorY += height + 6
+      case .columns:
+        drawTextColumns(items, continuationTitle: continuation)
+      case .plain:
+        for item in items {
+          let height = measuredHeight(
+            item, width: bodyWidth, font: regularFont(8.8), lineHeight: 11.2)
+          ensureSpace(height + 5, continuationTitle: continuation)
+          drawText(
+            item,
+            rect: CGRect(x: bodyX, y: cursorY, width: bodyWidth, height: height),
+            font: regularFont(8.8), color: ink, lineHeight: 11.2)
+          cursorY += height + 4
+        }
+      case .bullets, nil:
+        for item in items {
+          let height = measuredHeight(
+            item, width: bodyWidth - 18, font: regularFont(8.8), lineHeight: 11.2)
+          ensureSpace(height + 5, continuationTitle: continuation)
+          drawBullet(item, height: height)
+        }
       }
       cursorY += 8
     }
@@ -6340,15 +6666,26 @@ private final class ResumePDFLayout {
     )
   }
 
-  private func drawSectionTitle(_ title: String) {
+  private func drawSectionTitle(_ rawTitle: String) {
     if cursorY + 30 > footerTop {
       beginPage(isFirst: false)
     }
 
     if let style = template.advancedStyle {
-      drawAdvancedSectionTitle(title, style: style)
+      drawAdvancedSectionTitle(rawTitle, style: style)
       return
     }
+
+    // Both heading styles used to be the property of the templates built around
+    // them, which meant borrowing one — the whole point of section styles — did
+    // nothing on a template that had never drawn it. Terrace still hangs its own
+    // headings, so it keeps the version it was designed with.
+    if plan.hangingHeadings, template != .terrace {
+      drawHangingSectionTitle(rawTitle)
+      return
+    }
+
+    let title = numberedIfNeeded(rawTitle)
 
     switch template {
     case .portrait, .modern, .horizon:
@@ -6420,6 +6757,46 @@ private final class ResumePDFLayout {
       drawStyledSectionTitle(title)
     default:
       break
+    }
+  }
+
+  /// The heading steps out into the left margin, the text keeps its measure
+  /// beside it. `narrowBodyColumn` has already moved the column over to make
+  /// room, so this only has to place the heading and rule the text it heads.
+  private func drawHangingSectionTitle(_ title: String) {
+    hairlineInk.setFill()
+    rendererContext.cgContext.fill(CGRect(x: bodyX, y: cursorY, width: bodyWidth, height: 0.7))
+    drawText(
+      numberedIfNeeded(title).uppercased(),
+      rect: CGRect(x: margin, y: cursorY + 7, width: headingGutter - 10, height: 30),
+      font: boldFont(8.3),
+      color: headingInk,
+      lineHeight: 10.5,
+      kern: 1.3
+    )
+    cursorY += 14
+  }
+
+  /// `01  EDUCATION`, for the templates whose own heading branch doesn't print a
+  /// number. The ones that do — the advanced collections and everything routed
+  /// through `drawStyledSectionTitle` — draw it themselves, laid out rather than
+  /// merely prefixed, and must not be given it twice.
+  private func numberedIfNeeded(_ title: String) -> String {
+    guard plan.numberedSections, !drawsItsOwnSectionNumbers,
+      !title.hasSuffix("Continued")
+    else { return title }
+    sectionNumber += 1
+    return String(format: "%02d  %@", sectionNumber, title)
+  }
+
+  private var drawsItsOwnSectionNumbers: Bool {
+    if template.advancedStyle != nil { return true }
+    return switch template {
+    case .portrait, .modern, .horizon, .classic, .canvas, .spotlight, .minimal, .harbor,
+      .atlas, .verso, .duo, .gauge, .insignia, .terrace:
+      false
+    default:
+      true
     }
   }
 

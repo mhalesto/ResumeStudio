@@ -11,6 +11,7 @@ private struct CareerIntelligenceArchive: Codable {
   var aiRevisions: [AIRevision]?
   var processingRecords: [AIProcessingRecord]?
   var marketSources: [MarketGuidanceSource]?
+  var attestations: [EvidenceAttestation]?
 
   init(
     evidence: [CareerEvidence] = [],
@@ -22,7 +23,8 @@ private struct CareerIntelligenceArchive: Codable {
     preferredMarket: ResumeMarket = .southAfrica,
     aiRevisions: [AIRevision] = [],
     processingRecords: [AIProcessingRecord] = [],
-    marketSources: [MarketGuidanceSource] = []
+    marketSources: [MarketGuidanceSource] = [],
+    attestations: [EvidenceAttestation] = []
   ) {
     self.evidence = evidence
     self.contacts = contacts
@@ -34,6 +36,7 @@ private struct CareerIntelligenceArchive: Codable {
     self.aiRevisions = aiRevisions
     self.processingRecords = processingRecords
     self.marketSources = marketSources
+    self.attestations = attestations
   }
 }
 
@@ -48,6 +51,7 @@ final class CareerIntelligenceStore: ObservableObject {
   @Published private(set) var aiRevisions: [AIRevision] = []
   @Published private(set) var processingRecords: [AIProcessingRecord] = []
   @Published private(set) var marketSources: [MarketGuidanceSource] = []
+  @Published private(set) var attestations: [EvidenceAttestation] = []
   @Published var preferredMarket: ResumeMarket = .southAfrica { didSet { save() } }
   @Published private(set) var lastSaveError: String?
 
@@ -69,6 +73,7 @@ final class CareerIntelligenceStore: ObservableObject {
       aiRevisions = archive.aiRevisions ?? []
       processingRecords = archive.processingRecords ?? []
       marketSources = archive.marketSources ?? []
+      attestations = archive.attestations ?? []
     }
     isLoading = false
     NotificationCenter.default.addObserver(
@@ -262,8 +267,31 @@ final class CareerIntelligenceStore: ObservableObject {
       preferredMarket: preferredMarket,
       aiRevisions: aiRevisions,
       processingRecords: processingRecords,
-      marketSources: marketSources
+      marketSources: marketSources,
+      attestations: attestations
     )
+  }
+
+  /// The attestation to show against a claim, if any. Kept here rather than in
+  /// the view so every surface resolves it the same way.
+  func attestation(for evidenceID: UUID) -> EvidenceAttestation? {
+    attestations.attestation(for: evidenceID)
+  }
+
+  var confirmedAttestations: [EvidenceAttestation] { attestations.filter(\.isConfirmed) }
+
+  func upsert(_ attestation: EvidenceAttestation) {
+    if let index = attestations.firstIndex(where: { $0.id == attestation.id }) {
+      attestations[index] = attestation
+    } else {
+      attestations.insert(attestation, at: 0)
+    }
+    save()
+  }
+
+  func removeAttestation(id: UUID) {
+    attestations.removeAll { $0.id == id }
+    save()
   }
 
   private func addProcessingRecord(action: String, provider: ProductInsightSource?) {

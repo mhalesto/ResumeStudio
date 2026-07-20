@@ -11,6 +11,7 @@ struct ResumeEditorView: View {
   @State private var showCropper = false
   @State private var showProfileAI = false
   @State private var showCompetencyAI = false
+  @State private var showPhotoInfo = false
   @State private var photoErrorMessage: String?
 
   var body: some View {
@@ -25,6 +26,7 @@ struct ResumeEditorView: View {
         educationSection
         additionalSections
         referencesSection
+        attachmentsSection
         appearanceSection
 
         Section {
@@ -180,13 +182,37 @@ struct ResumeEditorView: View {
         .textInputAutocapitalization(.never)
         .autocorrectionDisabled()
     } header: {
-      header(for: .personal)
-    } footer: {
-      Text(
-        "Your photo is optional, and every template has a place for it. Use Show in CV to hide it from this version without deleting it. The photo-led ones — \(photoTemplateNames) — build their header around it. It is never sent to AI. When iCloud sync is on, it is included in your private résumé sync."
-      )
+      personalSectionHeader
     }
     .id(ResumeSection.personal)
+  }
+
+  private var personalSectionHeader: some View {
+    let done = store.document.isComplete(.personal)
+    return HStack(spacing: 6) {
+      Image(systemName: done ? "checkmark.circle.fill" : "circle")
+        .foregroundStyle(done ? accent : Theme.mutedInk.opacity(0.5))
+      Text(ResumeSection.personal.title)
+      Spacer()
+      Button {
+        showPhotoInfo = true
+      } label: {
+        Image(systemName: "info.circle.fill")
+          .font(.body)
+          .foregroundStyle(accent)
+          .padding(6)
+          .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel("About résumé photos")
+      .accessibilityHint("Shows photo visibility and privacy information")
+      .popover(isPresented: $showPhotoInfo, arrowEdge: .top) {
+        ResumePhotoInfoView(photoTemplateNames: photoTemplateNames, accent: accent)
+          .presentationCompactAdaptation(.sheet)
+          .presentationDetents([.medium, .large])
+      }
+    }
+    .font(.footnote.weight(.semibold))
   }
 
   /// The portrait: a circle ringed in the accent colour, showing the exact crop
@@ -542,6 +568,45 @@ struct ResumeEditorView: View {
     .id(ResumeSection.references)
   }
 
+  /// Certificates and other supporting pages, printed after the résumé itself.
+  private var attachmentsSection: some View {
+    Section {
+      NavigationLink {
+        ResumeAttachmentsView()
+      } label: {
+        HStack(spacing: 12) {
+          Image(systemName: "paperclip")
+            .foregroundStyle(accent)
+            .frame(width: 28)
+          VStack(alignment: .leading, spacing: 3) {
+            Text("Attachments")
+              .foregroundStyle(.primary)
+            Text(attachmentSummary)
+              .font(.caption)
+              .foregroundStyle(.secondary)
+          }
+          Spacer()
+        }
+      }
+    } footer: {
+      Text("Certificates, licences, transcripts or portfolio pages, added as extra pages at the end of your exported PDF.")
+    }
+  }
+
+  private var attachmentSummary: String {
+    let document = store.document
+    guard !document.attachments.isEmpty else {
+      return String(localized: "Add a certificate or supporting page")
+    }
+    let files = document.attachments.count
+    let pages = document.attachmentPageCount
+    let fileText = files == 1
+      ? String(localized: "1 file") : String(localized: "\(files) files")
+    let pageText = pages == 1
+      ? String(localized: "1 page added") : String(localized: "\(pages) pages added")
+    return "\(fileText) · \(pageText)"
+  }
+
   private var appearanceSection: some View {
     Section("Appearance") {
       NavigationLink {
@@ -570,7 +635,36 @@ struct ResumeEditorView: View {
             }
         }
       }
+
+      NavigationLink {
+        SectionStyleEditorView()
+      } label: {
+        HStack(spacing: 12) {
+          Image(systemName: "slider.horizontal.below.rectangle")
+            .foregroundStyle(accent)
+            .frame(width: 28)
+          VStack(alignment: .leading, spacing: 3) {
+            Text("Section styles")
+              .foregroundStyle(.primary)
+            Text(sectionStyleSummary)
+              .font(.caption)
+              .foregroundStyle(.secondary)
+          }
+          Spacer()
+        }
+      }
     }
+  }
+
+  /// Says whether the sections are still the template's, so a résumé that has
+  /// been mixed and matched admits it from the editor.
+  private var sectionStyleSummary: String {
+    let changed = store.document.layout.sectionStyles.count
+    guard changed > 0 else {
+      return String(localized: "Mix in a section style from another template")
+    }
+    return changed == 1
+      ? String(localized: "1 section changed") : String(localized: "\(changed) sections changed")
   }
 
   /// Section headers carry a tick once the section has real content, so the
@@ -585,6 +679,82 @@ struct ResumeEditorView: View {
     }
     .font(.footnote.weight(.semibold))
     .accessibilityLabel("\(section.title), \(done ? "complete" : "incomplete")")
+  }
+}
+
+private struct ResumePhotoInfoView: View {
+  @Environment(\.dismiss) private var dismiss
+
+  let photoTemplateNames: String
+  let accent: Color
+
+  var body: some View {
+    ScrollView {
+      VStack(alignment: .leading, spacing: 20) {
+        HStack(alignment: .top, spacing: 12) {
+          Image(systemName: "person.crop.circle.badge.checkmark")
+            .font(.title2)
+            .foregroundStyle(accent)
+
+          VStack(alignment: .leading, spacing: 4) {
+            Text("About résumé photos")
+              .font(.headline)
+              .foregroundStyle(Theme.ink)
+            Text("Your photo is always optional.")
+              .font(.subheadline)
+              .foregroundStyle(Theme.mutedInk)
+          }
+
+          Spacer(minLength: 8)
+
+          Button("Done") { dismiss() }
+            .font(.subheadline.weight(.semibold))
+        }
+
+        photoInfoRow(
+          "Choose per résumé",
+          detail: "Use Show in CV to hide your saved photo from previews and exports without deleting it.",
+          systemImage: "eye.slash"
+        )
+
+        photoInfoRow(
+          "Private by design",
+          detail: "Your photo is never sent to AI. If iCloud sync is on, it is included only in your private résumé sync.",
+          systemImage: "lock.shield"
+        )
+
+        VStack(alignment: .leading, spacing: 6) {
+          Label("Photo-led templates", systemImage: "rectangle.portrait.on.rectangle.portrait")
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(Theme.ink)
+          Text("Every template supports a photo. These designs build their header around it: \(photoTemplateNames).")
+            .font(.caption)
+            .foregroundStyle(Theme.mutedInk)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+      }
+      .padding(24)
+      .frame(maxWidth: 440, alignment: .leading)
+    }
+    .presentationBackground(Theme.paper)
+  }
+
+  private func photoInfoRow(_ title: LocalizedStringKey, detail: LocalizedStringKey, systemImage: String) -> some View {
+    Label {
+      VStack(alignment: .leading, spacing: 4) {
+        Text(title)
+          .font(.subheadline.weight(.semibold))
+          .foregroundStyle(Theme.ink)
+        Text(detail)
+          .font(.caption)
+          .foregroundStyle(Theme.mutedInk)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+    } icon: {
+      Image(systemName: systemImage)
+        .foregroundStyle(accent)
+        .frame(width: 24)
+    }
   }
 }
 

@@ -18,6 +18,15 @@ struct TemplatePlan: Equatable, Hashable {
   var competencies: CompetencyStyle = .bullets
   var sectionChrome: SectionChrome = .plain
   var contact: ContactStyle = .inline
+
+  /// The three sections whose look was, until section styles, always inferred:
+  /// education followed the roles and the chrome, references wore the template's
+  /// own card art, extra sections were always bullets. `nil` keeps exactly that,
+  /// so none of the catalogue changed when these were added — a value here is
+  /// only ever the user asking for something else.
+  var education: EducationStyle? = nil
+  var references: ReferenceStyle? = nil
+  var additional: AdditionalSectionStyle? = nil
   /// Skills before the summary, for people whose skills are the pitch.
   var skillsFirst: Bool = false
   /// Sections counted off — 01, 02, 03 — the editorial numbering.
@@ -84,7 +93,7 @@ struct SideColumn: Equatable, Hashable {
   }
 }
 
-enum ExperienceStyle: Equatable, Hashable {
+enum ExperienceStyle: String, Codable, CaseIterable, Equatable, Hashable {
   case stacked
   /// A rail down the column with a dot at every role: the career path, drawn.
   case timeline
@@ -92,7 +101,7 @@ enum ExperienceStyle: Equatable, Hashable {
   case dateGutter
 }
 
-enum CompetencyStyle: Equatable, Hashable {
+enum CompetencyStyle: String, Codable, CaseIterable, Equatable, Hashable {
   case bullets
   /// Pills. They read as a set of labels rather than a list of sentences.
   case chips
@@ -108,14 +117,44 @@ enum CompetencyStyle: Equatable, Hashable {
   case columns
 }
 
-enum SectionChrome: Equatable, Hashable {
+enum SectionChrome: String, Codable, CaseIterable, Equatable, Hashable {
   case plain
   /// Every entry in its own bordered card.
   case card
 }
 
-enum ContactStyle: Equatable, Hashable {
+enum ContactStyle: String, Codable, CaseIterable, Equatable, Hashable {
   case inline
   /// An icon beside each detail, stacked. Needs a column to live in, or a strip.
   case iconRows
+}
+
+enum EducationStyle: String, Codable, CaseIterable, Equatable, Hashable {
+  /// Qualification, then institution and dates on one line beneath it.
+  case stacked
+  /// Dates hang in the margin, the qualification hangs off them.
+  case dateGutter
+  /// Every qualification in its own bordered card.
+  case card
+}
+
+enum ReferenceStyle: String, Codable, CaseIterable, Equatable, Hashable {
+  /// The template's own card art — the panel, the accent edge, the tint.
+  case cards
+  /// The same two-up grid with the card removed: type on the page, separated by
+  /// a hairline. Reads quieter, and survives being pasted into a form.
+  case plain
+  /// One line per referee. The most space a résumé can buy back at the foot of
+  /// the page without dropping anyone.
+  case compact
+}
+
+enum AdditionalSectionStyle: String, Codable, CaseIterable, Equatable, Hashable {
+  case bullets
+  /// Pills, for sets of short items — languages, tools, certifications.
+  case chips
+  /// Three across, plain type.
+  case columns
+  /// Bullet markers dropped; the items simply run down the page.
+  case plain
 }

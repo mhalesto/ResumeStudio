@@ -40,6 +40,9 @@ enum HomeRoute: Hashable {
   case smartLinks
   case personalProfile
   case campaign
+  case calibration
+  case opportunityRanking
+  case benchmarks
 }
 
 struct HomeView: View {
@@ -176,6 +179,12 @@ struct HomeView: View {
           InterviewEditorView(interviewID: interviewID, applicationID: applicationID)
         case .careerIntelligence:
           CareerIntelligenceHubView()
+        case .calibration:
+          CalibrationView()
+        case .opportunityRanking:
+          OpportunityRankingView()
+        case .benchmarks:
+          BenchmarkView()
         case .evidenceVault:
           EvidenceVaultView()
         case .jobCapture:
@@ -711,20 +720,20 @@ struct HomeView: View {
             .accessibilityIdentifier("home.stat.templates")
 
           HeroLibraryShortcut(
-            value: "\(ResumeAccent.allCases.count)",
-            label: "Accents",
-            systemImage: "paintpalette.fill",
-            accent: accent
-          ) { showAccentPicker = true }
-            .accessibilityIdentifier("home.stat.accents")
-
-          HeroLibraryShortcut(
             value: "\(CoverLetterTemplate.allCases.count)",
             label: "Cover letters",
             systemImage: "envelope.open.fill",
             accent: accent
           ) { scrollRequest = ScrollRequest(anchor: Self.coverLettersAnchor) }
             .accessibilityIdentifier("home.stat.coverLetters")
+
+          HeroLibraryShortcut(
+            value: "\(ResumeAccent.allCases.count)",
+            label: "Accents",
+            systemImage: "paintpalette.fill",
+            accent: accent
+          ) { showAccentPicker = true }
+            .accessibilityIdentifier("home.stat.accents")
         }
       }
       .padding(.top, 4)

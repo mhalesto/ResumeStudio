@@ -5,6 +5,7 @@ struct LayoutStudioView: View {
   @EnvironmentObject private var store: ResumeStore
   @State private var layout = ResumeLayoutSettings.standard
   @State private var pageCount: Int?
+  @State private var attachmentPageCount = 0
   @State private var isFitting = false
   @State private var fitMessage: String?
 
@@ -36,6 +37,11 @@ struct LayoutStudioView: View {
           Slider(value: $layout.marginPoints, in: 24...50, step: 1)
         }
         if let pageCount { LabeledContent("Current output", value: "\(pageCount) page\(pageCount == 1 ? "" : "s")") }
+        if attachmentPageCount > 0 {
+          LabeledContent(
+            "Attachments",
+            value: "+\(attachmentPageCount) page\(attachmentPageCount == 1 ? "" : "s")")
+        }
         Button {
           Task { await autoFit() }
         } label: {
@@ -90,11 +96,14 @@ struct LayoutStudioView: View {
     )
   }
 
+  /// The résumé's own length, which is what the page target is about. Attached
+  /// certificates are reported separately rather than counted against it.
   private func refreshPageCount() {
     var document = store.document
     document.layout = layout
-    pageCount = (try? ResumePDFRenderer.render(document: document))
+    pageCount = (try? ResumePDFRenderer.render(document: document, includeAttachments: false))
       .flatMap(PDFDocument.init(data:))?.pageCount
+    attachmentPageCount = document.attachmentPageCount
   }
 
   @MainActor

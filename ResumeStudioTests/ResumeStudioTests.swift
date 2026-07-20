@@ -1198,6 +1198,432 @@ final class ResumeStudioTests: XCTestCase {
     XCTAssertTrue(text.localizedCaseInsensitiveContains("Apple Development Certificate"), text)
   }
 
+  // MARK: - Section styles
+
+  /// The whole promise of section styles: a résumé that has not asked for one is
+  /// drawn exactly as it was before they existed.
+  ///
+  /// Two guarantees together give that. No template may ship a value for the
+  /// three sections whose look used to be inferred — while those stay `nil`, the
+  /// renderer takes the branch that reproduces the old derivation verbatim. And
+  /// laying an empty override set over a plan must be the identity, so a résumé
+  /// that customises nothing customises nothing.
+  ///
+  /// (Rendering twice and comparing bytes cannot stand in for this: a PDF
+  /// carries its creation date, so two renders of one document never match.)
+  func testUncustomisedTemplatesKeepTheirOriginalSectionLooks() {
+    for template in ResumeTemplate.allCases {
+      let plan = template.plan
+      XCTAssertNil(plan.education, "\(template.rawValue) pins an education style")
+      XCTAssertNil(plan.references, "\(template.rawValue) pins a reference style")
+      XCTAssertNil(plan.additional, "\(template.rawValue) pins an extra-section style")
+      XCTAssertEqual(plan.applying(.none), plan, "\(template.rawValue) drifted under no overrides")
+    }
+  }
+
+  func testSectionStylesOverrideTheTemplateAndSurviveARoundTrip() throws {
+    // Chronicle draws a timeline; asking for margin dates has to beat it.
+    var document = ResumeDocument.example
+    document.template = .chronicle
+    XCTAssertEqual(document.template.plan.experience, .timeline)
+
+    document.layout.sectionStyles.experience = .dateGutter
+    document.layout.sectionStyles.competencies = .chips
+    document.layout.sectionStyles.references = .compact
+    document.layout.sectionStyles.additional = .chips
+
+    let plan = document.template.plan.applying(document.layout.sectionStyles)
+    XCTAssertEqual(plan.experience, .dateGutter)
+    XCTAssertEqual(plan.competencies, .chips)
+    XCTAssertEqual(plan.references, .compact)
+
+    // The overridden document is a different document, and still a valid PDF.
+    XCTAssertNotEqual(
+      try ResumePDFRenderer.render(document: document),
+      try ResumePDFRenderer.render(document: .example))
+    let pdf = try XCTUnwrap(PDFDocument(data: ResumePDFRenderer.render(document: document)))
+    let text = (0..<pdf.pageCount).compactMap { pdf.page(at: $0)?.string }.joined(separator: "\n")
+    XCTAssertTrue(text.contains("Riley Example"), text)
+    XCTAssertTrue(text.contains("People Operations Strategy"), text)
+
+    let decoded = try JSONDecoder().decode(
+      ResumeDocument.self, from: JSONEncoder().encode(document))
+    XCTAssertEqual(decoded.layout.sectionStyles, document.layout.sectionStyles)
+    XCTAssertEqual(decoded.layout.sectionStyles.count, 4)
+  }
+
+  /// Moving the column keeps whatever the template painted there; a template
+  /// that never had one gets a plain column rather than an invented colour band.
+  func testColumnOverrideMovesAndFlattensTheLayout() {
+    let atlas = ResumeTemplate.atlas.plan
+    guard case .side(let native) = atlas.body else { return XCTFail("Atlas lost its column") }
+    XCTAssertEqual(native.edge, .leading)
+
+    guard case .side(let moved) = atlas.applying(.init(body: .rightColumn)).body else {
+      return XCTFail("column was dropped")
+    }
+    XCTAssertEqual(moved.edge, .trailing)
+    XCTAssertEqual(moved.fill, native.fill, "the template's own band should survive the move")
+    XCTAssertEqual(moved.width, native.width)
+
+    XCTAssertFalse(atlas.applying(.init(body: .single)).hasSideColumn)
+
+    let classic = ResumeTemplate.classic.plan
+    XCTAssertFalse(classic.hasSideColumn)
+    guard case .side(let added) = classic.applying(.init(body: .leftColumn)).body else {
+      return XCTFail("no column was added")
+    }
+    XCTAssertEqual(added.fill, SideColumn.Fill.none)
+    XCTAssertTrue(added.divider)
+  }
+
+  /// Every section style has to survive a full render on a template that did not
+  /// ship with it — that is the entire point of the feature.
+  func testEverySectionStyleRendersOnATemplateThatDidNotShipWithIt() throws {
+    var overrides: [ResumeSectionStyleOverrides] = []
+    for style in ExperienceStyle.allCases { overrides.append(.init(experience: style)) }
+    for style in CompetencyStyle.allCases { overrides.append(.init(competencies: style)) }
+    for style in EducationStyle.allCases { overrides.append(.init(education: style)) }
+    for style in ReferenceStyle.allCases { overrides.append(.init(references: style)) }
+    for style in AdditionalSectionStyle.allCases { overrides.append(.init(additional: style)) }
+    for style in ContactStyle.allCases { overrides.append(.init(contact: style)) }
+    for style in SectionChrome.allCases { overrides.append(.init(sectionChrome: style)) }
+    for choice in BodyLayoutChoice.allCases { overrides.append(.init(body: choice)) }
+    overrides.append(.init(numberedSections: true))
+    overrides.append(.init(hangingHeadings: true))
+
+    // One single-column template and one two-column one, so both page shapes see
+    // every style.
+    for template in [ResumeTemplate.modern, .atlas] {
+      for override in overrides {
+        var document = ResumeDocument.example
+        document.template = template
+        document.layout.sectionStyles = override
+        let pdf = try XCTUnwrap(
+          PDFDocument(data: ResumePDFRenderer.render(document: document)),
+          "\(template.rawValue) failed to render \(override)")
+        XCTAssertGreaterThan(pdf.pageCount, 0)
+        let text = (0..<pdf.pageCount).compactMap { pdf.page(at: $0)?.string }
+          .joined(separator: "\n")
+        // Nothing may be dropped on the floor by a restyle.
+        XCTAssertTrue(text.contains("Avery Sample"), "\(template.rawValue) \(override)")
+        XCTAssertTrue(
+          text.localizedCaseInsensitiveContains("Northstar Works"),
+          "\(template.rawValue) lost an employer under \(override)")
+      }
+    }
+  }
+
+  /// Visual-review artifact: one template wearing other templates' section
+  /// styles. Text tests prove nothing was dropped; only this shows whether the
+  /// borrowed style sits properly on a page it was not designed for.
+  func testSectionStyleContactSheet() throws {
+    let cases: [(String, ResumeSectionStyleOverrides)] = [
+      ("Modern, untouched", .none),
+      ("+ timeline roles", .init(experience: .timeline)),
+      ("+ margin dates", .init(experience: .dateGutter)),
+      ("+ skill pills", .init(competencies: .chips)),
+      ("+ dot ratings", .init(competencies: .dots)),
+      ("+ education cards", .init(education: .card)),
+      ("+ plain referees", .init(references: .plain)),
+      ("+ one-line referees", .init(references: .compact)),
+      ("+ extras as pills", .init(additional: .chips)),
+      ("+ numbered headings", .init(numberedSections: true)),
+      ("+ margin headings", .init(hangingHeadings: true)),
+      ("+ left column", .init(body: .leftColumn)),
+    ]
+
+    // Page 2 carries education, extras and references, so both pages are shown.
+    var items: [(String, UIImage)] = []
+    for (label, override) in cases {
+      var document = ResumeDocument.example
+      document.template = .modern
+      document.layout.sectionStyles = override
+      let pdf = try XCTUnwrap(PDFDocument(data: ResumePDFRenderer.render(document: document)))
+      let page = try XCTUnwrap(pdf.page(at: min(1, pdf.pageCount - 1)))
+      items.append((label, page.thumbnail(of: CGSize(width: 238, height: 337), for: .mediaBox)))
+    }
+
+    let data = try XCTUnwrap(contactSheet(items: items, columns: 4).pngData())
+    let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.png")
+    attachment.name = "section-styles.png"
+    attachment.lifetime = .keepAlways
+    add(attachment)
+  }
+
+  /// A résumé saved before section styles existed — or before any other layout
+  /// setting did — must still decode. Synthesised decoding throws on a missing
+  /// key, and `layout` lives inside the document, so a throw here would take the
+  /// whole résumé with it.
+  func testLayoutSettingsDecodeFromEveryOlderShape() throws {
+    let legacy = """
+      {"fontScale": 0.9, "marginPoints": 40}
+      """
+    let decoded = try JSONDecoder().decode(
+      ResumeLayoutSettings.self, from: Data(legacy.utf8))
+    XCTAssertEqual(decoded.fontScale, 0.9)
+    XCTAssertEqual(decoded.marginPoints, 40)
+    XCTAssertEqual(decoded.fontChoice, .template)
+    XCTAssertEqual(decoded.paperSize, .a4)
+    XCTAssertEqual(decoded.sectionOrder, ResumeContentBlock.allCases)
+    XCTAssertEqual(decoded.customHeadings, [:])
+    XCTAssertTrue(decoded.sectionStyles.isEmpty)
+
+    XCTAssertTrue(
+      try JSONDecoder().decode(ResumeLayoutSettings.self, from: Data("{}".utf8)).sectionStyles
+        .isEmpty)
+
+    // The same, one level up: a whole résumé whose layout predates the feature.
+    let document = """
+      {
+        "schemaVersion": 2, "personal": {"fullName": "Avery Sample", "headline": "",
+        "phone": "", "email": ""}, "professionalProfile": "", "competencies": [],
+        "experience": [], "education": [], "references": [],
+        "accent": "orange", "template": "modern",
+        "layout": {"fontScale": 1, "marginPoints": 34, "paperSize": "letter"}
+      }
+      """
+    let resume = try JSONDecoder().decode(ResumeDocument.self, from: Data(document.utf8))
+    XCTAssertEqual(resume.layout.paperSize, .letter)
+    XCTAssertTrue(resume.layout.sectionStyles.isEmpty)
+    XCTAssertEqual(resume.personal.fullName, "Avery Sample")
+  }
+
+  // MARK: - Attachments
+
+  /// A PDF of `pages` sheets, each carrying findable text.
+  private func sampleAttachmentPDF(pages: Int, marker: String) -> Data {
+    let bounds = CGRect(x: 0, y: 0, width: 595, height: 842)
+    return UIGraphicsPDFRenderer(bounds: bounds).pdfData { context in
+      for page in 1...pages {
+        context.beginPage()
+        ("\(marker) \(page)" as NSString).draw(
+          at: CGPoint(x: 80, y: 300),
+          withAttributes: [.font: UIFont.systemFont(ofSize: 28)]
+        )
+      }
+    }
+  }
+
+  private func sampleAttachmentImage(side: CGFloat = 900) -> Data {
+    let format = UIGraphicsImageRendererFormat.default()
+    format.scale = 1
+    let image = UIGraphicsImageRenderer(size: CGSize(width: side, height: side), format: format)
+      .image { context in
+        UIColor.systemTeal.setFill()
+        context.cgContext.fill(CGRect(x: 0, y: 0, width: side, height: side))
+      }
+    return image.jpegData(compressionQuality: 0.9) ?? Data()
+  }
+
+  func testAttachmentsAddTheirOwnPagesToTheExport() throws {
+    let base = try XCTUnwrap(PDFDocument(data: ResumePDFRenderer.render(document: .example)))
+      .pageCount
+
+    var document = ResumeDocument.example
+    document.attachments = [
+      try ResumeAttachmentImporter.make(
+        title: "Certificate", from: sampleAttachmentPDF(pages: 2, marker: "CERTIFICATE PAGE")),
+      try ResumeAttachmentImporter.make(title: "Award photo", from: sampleAttachmentImage()),
+    ]
+
+    XCTAssertEqual(document.attachmentPageCount, 3)
+
+    let pdf = try XCTUnwrap(PDFDocument(data: ResumePDFRenderer.render(document: document)))
+    XCTAssertEqual(pdf.pageCount, base + 3)
+
+    // The attached PDF is drawn, not rasterised, so its text stays selectable —
+    // and the caption is printed above it.
+    let appended = (base..<pdf.pageCount).compactMap { pdf.page(at: $0)?.string }
+      .joined(separator: "\n")
+    XCTAssertTrue(appended.contains("CERTIFICATE PAGE 1"), appended)
+    XCTAssertTrue(appended.contains("CERTIFICATE PAGE 2"), appended)
+    XCTAssertTrue(appended.localizedCaseInsensitiveContains("CERTIFICATE"), appended)
+    XCTAssertTrue(appended.localizedCaseInsensitiveContains("AWARD PHOTO"), appended)
+
+    // Multi-page attachments say which sheet you're looking at.
+    XCTAssertTrue(appended.contains("1 / 2"), appended)
+  }
+
+  func testExcludedAndMeasurementRendersLeaveTheResumeAlone() throws {
+    let base = try XCTUnwrap(PDFDocument(data: ResumePDFRenderer.render(document: .example)))
+      .pageCount
+
+    var document = ResumeDocument.example
+    document.attachments = [
+      try ResumeAttachmentImporter.make(
+        title: "Certificate", from: sampleAttachmentPDF(pages: 2, marker: "CERT"))
+    ]
+
+    // Unchecking an attachment keeps the file but drops it from the export.
+    document.attachments[0].isIncluded = false
+    XCTAssertEqual(document.attachmentPageCount, 0)
+    XCTAssertFalse(document.attachments[0].data.isEmpty)
+    XCTAssertEqual(
+      try XCTUnwrap(PDFDocument(data: ResumePDFRenderer.render(document: document))).pageCount,
+      base)
+
+    // Auto-fit measures the résumé alone: attachments are pages the user chose to
+    // add, not overflow to be squeezed out by shrinking the text.
+    document.attachments[0].isIncluded = true
+    XCTAssertEqual(
+      try XCTUnwrap(
+        PDFDocument(data: ResumePDFRenderer.render(document: document, includeAttachments: false))
+      ).pageCount,
+      base)
+
+    // Shrinking can only reduce the résumé's own length, so a reported count
+    // above `base` would mean the attachment pages had been counted against it.
+    var onePage = document
+    onePage.layout.pageTarget = .one
+    let fitted = try ResumeAutoFitService.fit(onePage, target: .one)
+    XCTAssertLessThanOrEqual(fitted.pageCount, base)
+  }
+
+  func testAttachmentsSurviveARoundTripAndOlderDraftsStillLoad() throws {
+    var document = ResumeDocument.example
+    document.attachments = [
+      try ResumeAttachmentImporter.make(title: "Licence", from: sampleAttachmentImage(side: 400))
+    ]
+
+    let decoded = try JSONDecoder().decode(
+      ResumeDocument.self, from: JSONEncoder().encode(document))
+    XCTAssertEqual(decoded.attachments, document.attachments)
+    XCTAssertTrue(decoded.attachments[0].isIncluded)
+    XCTAssertTrue(decoded.attachments[0].showsTitleOnPage)
+
+    // A draft written before attachments existed has no key, and must still
+    // decode rather than being replaced by the example.
+    let legacy = """
+      {
+        "schemaVersion": 2, "personal": {"fullName": "Avery Sample", "headline": "",
+        "phone": "", "email": ""}, "professionalProfile": "", "competencies": [],
+        "experience": [], "education": [], "references": [],
+        "accent": "orange", "template": "modern"
+      }
+      """
+    let migrated = try JSONDecoder().decode(ResumeDocument.self, from: Data(legacy.utf8))
+    XCTAssertEqual(migrated.attachments, [])
+    XCTAssertEqual(migrated.attachmentPageCount, 0)
+  }
+
+  func testAttachmentImportCompressesImagesAndRejectsJunk() throws {
+    // A camera-roll-sized photo comes down to something a draft can carry.
+    let large = sampleAttachmentImage(side: 4000)
+    let attachment = try ResumeAttachmentImporter.make(title: "Scan", from: large)
+    XCTAssertEqual(attachment.kind, .image)
+    XCTAssertEqual(attachment.pageCount, 1)
+    XCTAssertLessThanOrEqual(attachment.data.count, ResumeAttachmentLimits.maxPreparedBytes)
+    let prepared = try XCTUnwrap(UIImage(data: attachment.data))
+    XCTAssertLessThanOrEqual(
+      max(prepared.size.width, prepared.size.height), ResumeAttachmentLimits.imageMaxDimension)
+
+    XCTAssertThrowsError(try ResumeAttachmentImporter.make(title: "Junk", from: Data([0x01, 0x02])))
+    XCTAssertThrowsError(try ResumeAttachmentImporter.make(title: "Empty", from: Data()))
+
+    // A PDF small enough to keep is kept exactly as it arrived, so its text stays
+    // selectable and its vectors stay sharp.
+    let pdf = sampleAttachmentPDF(pages: 1, marker: "KEEP")
+    let kept = try ResumeAttachmentImporter.make(title: "Doc", from: pdf)
+    XCTAssertEqual(kept.kind, .pdf)
+    XCTAssertEqual(kept.data, pdf)
+
+    XCTAssertEqual(
+      ResumeAttachmentImporter.suggestedTitle(fromFilename: "AWS_solutions-architect.pdf"),
+      "AWS solutions architect")
+  }
+
+  /// Visual-review artifact: the last page of the résumé followed by the sheets
+  /// its attachments produce. Text tests can prove the pages exist and carry the
+  /// right words; only this shows whether the artwork is placed well.
+  func testAttachmentPageContactSheet() throws {
+    let certificate = certificateStylePDF(pages: 2)
+    let photo = sampleAttachmentImage(side: 900)
+
+    var document = ResumeDocument.example
+    document.attachments = [
+      try ResumeAttachmentImporter.make(
+        title: "Certified People Analytics Practitioner", from: certificate),
+      try ResumeAttachmentImporter.make(title: "Team award, 2024", from: photo),
+    ]
+    document.attachments[1].showsTitleOnPage = false
+
+    // The same run under a dark-paper template: the attachment sheet must stay
+    // white and its footer must stay legible on it.
+    var dark = document
+    dark.template = .noir
+    dark.attachments[1].showsTitleOnPage = true
+
+    func pages(_ source: ResumeDocument, label: String) throws -> [(String, UIImage)] {
+      let pdf = try XCTUnwrap(PDFDocument(data: ResumePDFRenderer.render(document: source)))
+      let first = max(0, pdf.pageCount - (source.attachmentPageCount + 1))
+      return try (first..<pdf.pageCount).map { index in
+        let page = try XCTUnwrap(pdf.page(at: index))
+        return (
+          "\(label) p\(index + 1)",
+          page.thumbnail(of: CGSize(width: 238, height: 337), for: .mediaBox)
+        )
+      }
+    }
+
+    let items = try pages(document, label: "Modern") + pages(dark, label: "Noir")
+    let sheet = contactSheet(items: items, columns: 4)
+    let data = try XCTUnwrap(sheet.pngData())
+    let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.png")
+    attachment.name = "resume-attachment-pages.png"
+    attachment.lifetime = .keepAlways
+    add(attachment)
+  }
+
+  /// Something that looks like a real certificate rather than a text marker, so
+  /// the contact sheet shows how a landscape document sits on the page.
+  private func certificateStylePDF(pages: Int) -> Data {
+    let bounds = CGRect(x: 0, y: 0, width: 842, height: 595)
+    return UIGraphicsPDFRenderer(bounds: bounds).pdfData { context in
+      for page in 1...pages {
+        context.beginPage()
+        UIColor(red: 0.99, green: 0.98, blue: 0.95, alpha: 1).setFill()
+        context.cgContext.fill(bounds)
+        UIColor(red: 0.55, green: 0.42, blue: 0.16, alpha: 1).setStroke()
+        context.cgContext.setLineWidth(6)
+        context.cgContext.stroke(bounds.insetBy(dx: 30, dy: 30))
+
+        let title = NSMutableParagraphStyle()
+        title.alignment = .center
+        ("CERTIFICATE OF COMPLETION" as NSString).draw(
+          with: CGRect(x: 60, y: 150, width: 722, height: 60),
+          options: [.usesLineFragmentOrigin],
+          attributes: [
+            .font: UIFont.systemFont(ofSize: 34, weight: .bold),
+            .paragraphStyle: title,
+          ],
+          context: nil
+        )
+        ("Avery Sample — page \(page) of \(pages)" as NSString).draw(
+          with: CGRect(x: 60, y: 260, width: 722, height: 40),
+          options: [.usesLineFragmentOrigin],
+          attributes: [.font: UIFont.systemFont(ofSize: 22), .paragraphStyle: title],
+          context: nil
+        )
+      }
+    }
+  }
+
+  func testAttachmentLimitsGuardTheDraftFileSize() throws {
+    var document = ResumeDocument.blank
+    document.attachments = (0..<ResumeAttachmentLimits.maxAttachments).map { index in
+      ResumeAttachment(title: "File \(index)", kind: .image, data: Data([0xFF]), pageCount: 1)
+    }
+    XCTAssertFalse(document.canAcceptAttachment(ofSize: 1))
+
+    document.attachments = [
+      ResumeAttachment(
+        title: "Huge", kind: .pdf,
+        data: Data(count: ResumeAttachmentLimits.maxTotalBytes), pageCount: 1)
+    ]
+    XCTAssertFalse(document.canAcceptAttachment(ofSize: 1))
+  }
+
   func testDOCXExportProducesAnOfficePackage() throws {
     let data = try ResumeDOCXRenderer.render(document: .example)
     XCTAssertGreaterThan(data.count, 1_000)
@@ -2360,6 +2786,412 @@ final class ResumeStudioTests: XCTestCase {
     ShortcutRouteStore.queue("ats")
     XCTAssertTrue(receivedNotification)
     _ = ShortcutRouteStore.consume()
+  }
+
+  // MARK: - Application calibration
+
+  private func makeCalibrationApplication(
+    status: JobApplicationStatus,
+    matched: Int = 0,
+    missing: Int = 0,
+    sourceURL: String = "",
+    updatedDaysAgo: Int = 0,
+    reviewStages: [JobApplicationStatus] = [],
+    now: Date = Date()
+  ) -> JobApplication {
+    let resumeID = UUID()
+    let analysis: AIJobMatchAnalysis? = (matched + missing) > 0
+      ? AIJobMatchAnalysis(
+        summary: "",
+        matchedKeywords: (0..<matched).map { "matched-\($0)" },
+        missingKeywords: (0..<missing).map { "missing-\($0)" },
+        recommendations: [],
+        claimsRequiringConfirmation: [])
+      : nil
+    var application = JobApplication(
+      company: "Example", role: "Designer", jobDescription: "Role", sourceURL: sourceURL,
+      status: status, notes: "", baseResumeID: resumeID,
+      tailoredResumeID: nil, matchAnalysis: analysis, interviewPlan: nil)
+    application.updatedAt = now.addingTimeInterval(-Double(updatedDaysAgo) * 86_400)
+    application.outcomeReviews = reviewStages.map { stage in
+      ApplicationOutcomeReview(
+        stage: stage, reason: .strongRoleFit, feedbackSource: .recruiter,
+        feedback: "", whatWorked: "", nextChange: "", followUpAt: nil,
+        resumeID: resumeID, packetID: nil)
+    }
+    return application
+  }
+
+  func testCalibrationNamesTheReachGapWhenStretchesDominateAndDoNotLand() {
+    let now = Date()
+    // Six stretch applications that went nowhere, three well-matched ones where
+    // a single interview happened: the comparison the whole feature rests on.
+    var applications = (0..<6).map { _ in
+      makeCalibrationApplication(status: .rejected, matched: 1, missing: 3, now: now)
+    }
+    applications.append(makeCalibrationApplication(
+      status: .interview, matched: 3, missing: 1, now: now))
+    applications += (0..<2).map { _ in
+      makeCalibrationApplication(status: .rejected, matched: 3, missing: 1, now: now)
+    }
+
+    let report = ApplicationCalibrationService.calibrate(applications: applications, now: now)
+    XCTAssertEqual(report.primary?.kind, .reachGap)
+    XCTAssertEqual(report.settledCount, 9)
+    XCTAssertEqual(report.progressedCount, 1)
+    XCTAssertEqual(report.analyzedCount, 9)
+    // Nine analysed applications sits in the middle confidence band.
+    XCTAssertEqual(report.primary?.confidence, .emerging)
+    XCTAssertEqual(report.progressionRateText, "11%")
+  }
+
+  func testCalibrationCallsOutADroughtRatherThanEncouragingMoreVolume() {
+    let now = Date()
+    let applications = (0..<ApplicationCalibrationService.droughtMinimumSettled).map { _ in
+      makeCalibrationApplication(status: .applied, updatedDaysAgo: 30, now: now)
+    }
+    let report = ApplicationCalibrationService.calibrate(applications: applications, now: now)
+    XCTAssertEqual(report.primary?.kind, .responseDrought)
+    XCTAssertEqual(report.progressedCount, 0)
+
+    // One short of the floor, silence is still ordinary noise.
+    let quieter = Array(applications.dropLast())
+    let quieterReport = ApplicationCalibrationService.calibrate(applications: quieter, now: now)
+    XCTAssertNotEqual(quieterReport.primary?.kind, .responseDrought)
+  }
+
+  func testCalibrationCountsAnInterviewThatLaterBecameARejection() {
+    let application = makeCalibrationApplication(
+      status: .rejected, reviewStages: [.interview])
+    XCTAssertTrue(ApplicationCalibrationService.progressed(application))
+
+    let neverProgressed = makeCalibrationApplication(status: .rejected)
+    XCTAssertFalse(ApplicationCalibrationService.progressed(neverProgressed))
+  }
+
+  func testCalibrationOnlyCountsApplicationsThatHaveSettled() {
+    let now = Date()
+    XCTAssertFalse(ApplicationCalibrationService.isSettled(
+      makeCalibrationApplication(status: .saved, updatedDaysAgo: 400, now: now), now: now))
+    XCTAssertFalse(ApplicationCalibrationService.isSettled(
+      makeCalibrationApplication(status: .applied, updatedDaysAgo: 5, now: now), now: now))
+    XCTAssertTrue(ApplicationCalibrationService.isSettled(
+      makeCalibrationApplication(
+        status: .applied,
+        updatedDaysAgo: ApplicationCalibrationService.settlingDays,
+        now: now),
+      now: now))
+    XCTAssertTrue(ApplicationCalibrationService.isSettled(
+      makeCalibrationApplication(status: .rejected, now: now), now: now))
+  }
+
+  func testCalibrationConfidenceAndCoverageThresholdsStayPinned() {
+    XCTAssertEqual(ApplicationCalibrationService.confidence(for: 5), .provisional)
+    XCTAssertEqual(ApplicationCalibrationService.confidence(for: 6), .emerging)
+    XCTAssertEqual(ApplicationCalibrationService.confidence(for: 12), .consistent)
+
+    // A match analysis with too few keywords cannot produce an honest ratio.
+    XCTAssertNil(ApplicationCalibrationService.matchCoverage(
+      makeCalibrationApplication(status: .rejected, matched: 1, missing: 2)))
+    XCTAssertEqual(
+      ApplicationCalibrationService.matchCoverage(
+        makeCalibrationApplication(status: .rejected, matched: 3, missing: 1)) ?? 0,
+      0.75, accuracy: 0.0001)
+  }
+
+  func testCalibrationSaysSoWhenThereIsNothingToCompare() {
+    let report = ApplicationCalibrationService.calibrate(applications: [])
+    XCTAssertEqual(report.primary?.kind, .notEnoughData)
+    XCTAssertEqual(report.settledCount, 0)
+    XCTAssertNil(report.progressionRate)
+  }
+
+  func testCalibrationFlagsASingleUnproductiveSource() {
+    let now = Date()
+    let applications = (0..<6).map { _ in
+      makeCalibrationApplication(
+        status: .rejected, sourceURL: "https://www.example-board.com/jobs/1", now: now)
+    }
+    let report = ApplicationCalibrationService.calibrate(applications: applications, now: now)
+    let concentration = report.signals.first { $0.kind == .sourceConcentration }
+    XCTAssertNotNil(concentration)
+    // The host is stated plainly, without the www prefix.
+    XCTAssertTrue(concentration?.evidence.contains("example-board.com") ?? false)
+  }
+
+  // MARK: - Opportunity ranking
+
+  /// Written in the example résumé's own vocabulary, so a high overlap is
+  /// expected rather than coincidental.
+  private var wellMatchedAdvert: String {
+    """
+    People Operations Manager responsible for employee experience, manager coaching, \
+    workforce planning, people analytics, talent acquisition, policy and process design, \
+    change communication. You will build inclusive employee programmes, improve manager \
+    support, and turn workforce insights into practical action, creating scalable \
+    processes that strengthen culture while supporting business growth across the \
+    operations function.
+    """
+  }
+
+  /// Deliberately from another profession entirely.
+  private var unrelatedAdvert: String {
+    """
+    Senior Kubernetes platform engineer maintaining distributed microservice clusters, \
+    writing Golang controllers, tuning Postgres replication, managing Terraform modules, \
+    debugging kernel networking stacks, operating service mesh ingress gateways, \
+    optimising container scheduling latency across regional availability zones, and \
+    automating continuous delivery pipelines for infrastructure teams every single day.
+    """
+  }
+
+  private func makeOpportunity(
+    advert: String, status: JobApplicationStatus = .saved, role: String = "Designer"
+  ) -> JobApplication {
+    JobApplication(
+      company: "Example", role: role, jobDescription: advert, sourceURL: "",
+      status: status, notes: "", baseResumeID: UUID(),
+      tailoredResumeID: nil, matchAnalysis: nil, interviewPlan: nil)
+  }
+
+  func testOpportunityBandsStayAnchoredToTheATSPassLine() {
+    let pass = ATSReadinessService.jobLanguagePassThreshold
+    // A résumé that passes the ATS keyword check for an advert can never be
+    // ranked a long shot for that same advert.
+    XCTAssertNotEqual(OpportunityRankingService.band(for: pass), .longShot)
+    XCTAssertLessThanOrEqual(OpportunityRankingService.possibleCoverage, pass)
+    XCTAssertGreaterThanOrEqual(OpportunityRankingService.strongCoverage, pass)
+    XCTAssertEqual(OpportunityRankingService.band(for: 0), .longShot)
+    XCTAssertEqual(
+      OpportunityRankingService.band(for: OpportunityRankingService.strongCoverage), .strong)
+  }
+
+  func testOpportunityRankingScoresOnlySavedOpportunities() {
+    let applications = [
+      makeOpportunity(advert: wellMatchedAdvert, status: .saved),
+      makeOpportunity(advert: wellMatchedAdvert, status: .applied),
+      makeOpportunity(advert: wellMatchedAdvert, status: .rejected),
+    ]
+    let ranking = OpportunityRankingService.rank(
+      applications: applications, document: .example)
+    XCTAssertEqual(ranking.scores.count, 1)
+  }
+
+  func testOpportunityRankingRefusesToScoreAThinAdvert() {
+    let ranking = OpportunityRankingService.rank(
+      applications: [makeOpportunity(advert: "People Operations Manager. Apply within.")],
+      document: .example)
+    XCTAssertEqual(ranking.scores.first?.band, .unscored)
+    XCTAssertNil(ranking.scores.first?.coverage)
+    XCTAssertEqual(ranking.unscoredCount, 1)
+  }
+
+  func testOpportunityRankingPutsTheWorkThatCanLandFirst() {
+    let applications = [
+      makeOpportunity(advert: unrelatedAdvert, role: "Platform Engineer"),
+      makeOpportunity(advert: wellMatchedAdvert, role: "People Operations Manager"),
+    ]
+    let ranking = OpportunityRankingService.rank(
+      applications: applications, document: .example)
+
+    XCTAssertEqual(ranking.scores.first?.band, .strong)
+    XCTAssertEqual(ranking.scores.first?.role, "People Operations Manager")
+    XCTAssertEqual(ranking.scores.last?.band, .longShot)
+    XCTAssertEqual(ranking.strongCount, 1)
+    XCTAssertEqual(ranking.longShotCount, 1)
+    XCTAssertTrue(ranking.summary.contains("1 ready to send"))
+    // The unrelated advert should surface its own language as missing.
+    XCTAssertFalse(ranking.scores.last?.topMissing.isEmpty ?? true)
+  }
+
+  func testOpportunityRankingSaysSoWhenNothingMatches() {
+    let applications = (0..<3).map { _ in makeOpportunity(advert: unrelatedAdvert) }
+    let ranking = OpportunityRankingService.rank(
+      applications: applications, document: .example)
+    XCTAssertEqual(ranking.strongCount, 0)
+    XCTAssertTrue(ranking.summary.contains("Nothing here matches"))
+    XCTAssertTrue(ranking.summary.contains("3 cover letters"))
+  }
+
+  // MARK: - Benchmarks
+
+  func testBenchmarkRoleFamilyPrefersTheMoreSpecificTitle() {
+    // "Product manager" and "project manager" both contain "manager" and must
+    // not collapse into the same family.
+    XCTAssertEqual(BenchmarkAnalysis.roleFamily(for: "Product Manager"), .product)
+    XCTAssertEqual(BenchmarkAnalysis.roleFamily(for: "Project Manager"), .operationsLogistics)
+    XCTAssertEqual(BenchmarkAnalysis.roleFamily(for: "Senior Data Analyst"), .dataAnalytics)
+    XCTAssertEqual(BenchmarkAnalysis.roleFamily(for: "iOS Engineer"), .engineering)
+    XCTAssertEqual(BenchmarkAnalysis.roleFamily(for: "People Operations Manager"), .peopleOperations)
+    XCTAssertEqual(BenchmarkAnalysis.roleFamily(for: "Underwater Basket Weaver"), .other)
+  }
+
+  func testBenchmarkSeniorityReadsTheTitle() {
+    XCTAssertEqual(BenchmarkAnalysis.seniority(for: "Head of Design"), .lead)
+    XCTAssertEqual(BenchmarkAnalysis.seniority(for: "Senior Accountant"), .senior)
+    XCTAssertEqual(BenchmarkAnalysis.seniority(for: "Graduate Engineer"), .entry)
+    XCTAssertEqual(BenchmarkAnalysis.seniority(for: "Bookkeeper"), .mid)
+  }
+
+  func testBenchmarkCohortComesFromTheResumeTheUserAlreadyWrote() {
+    let cohort = BenchmarkAnalysis.cohort(document: .example, market: .southAfrica)
+    // The example résumé's headline is a People Operations Manager.
+    XCTAssertEqual(cohort.roleFamily, .peopleOperations)
+    XCTAssertEqual(cohort.market, .southAfrica)
+    // The cohort is three enum cases, so no free text can reach the wire.
+    let encoded = try? JSONEncoder().encode(cohort)
+    let json = encoded.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+    XCTAssertFalse(json.contains("Avery"))
+    XCTAssertFalse(json.contains("Northstar"))
+  }
+
+  func testBenchmarkContributionCarriesCountsAndNothingElse() {
+    let now = Date()
+    var applications = (0..<4).map { _ in
+      makeCalibrationApplication(status: .rejected, now: now)
+    }
+    applications.append(makeCalibrationApplication(status: .interview, now: now))
+
+    let cohort = BenchmarkAnalysis.cohort(document: .example, market: .unitedKingdom)
+    let contribution = BenchmarkAnalysis.contribution(
+      cohort: cohort, applications: applications, now: now)
+    XCTAssertEqual(contribution?.settled, 5)
+    XCTAssertEqual(contribution?.progressed, 1)
+
+    // A history with nothing settled has nothing to contribute.
+    XCTAssertNil(BenchmarkAnalysis.contribution(
+      cohort: cohort,
+      applications: [makeCalibrationApplication(status: .saved, now: now)],
+      now: now))
+  }
+
+  func testBenchmarkComparisonStaysSilentUntilBothSidesAreBigEnough() {
+    let now = Date()
+    let cohort = BenchmarkAnalysis.cohort(document: .example, market: .southAfrica)
+    let released = BenchmarkSnapshot(
+      released: true, contributors: 14, settled: 210,
+      progressionPercent: 20, medianDaysToProgress: 11)
+
+    // An unreleased cohort never produces a verdict, however much local history.
+    let manyLocal = (0..<20).map { _ in makeCalibrationApplication(status: .rejected, now: now) }
+    let unreleased = BenchmarkAnalysis.compare(
+      cohort: cohort, snapshot: .unreleased, applications: manyLocal, now: now)
+    XCTAssertEqual(unreleased.verdict, .unknown)
+
+    // A released cohort with too little local history is reported, not compared.
+    let thinLocal = (0..<2).map { _ in makeCalibrationApplication(status: .rejected, now: now) }
+    let notComparable = BenchmarkAnalysis.compare(
+      cohort: cohort, snapshot: released, applications: thinLocal, now: now)
+    XCTAssertEqual(notComparable.verdict, .unknown)
+    XCTAssertTrue(notComparable.headline.contains("20%"))
+  }
+
+  func testBenchmarkComparisonNamesTheGapInBothDirections() {
+    let now = Date()
+    let cohort = BenchmarkAnalysis.cohort(document: .example, market: .southAfrica)
+    let released = BenchmarkSnapshot(
+      released: true, contributors: 14, settled: 210,
+      progressionPercent: 20, medianDaysToProgress: 11)
+
+    // Ten settled, none progressed: 0% against a cohort's 20%.
+    let behind = (0..<10).map { _ in makeCalibrationApplication(status: .rejected, now: now) }
+    let behindResult = BenchmarkAnalysis.compare(
+      cohort: cohort, snapshot: released, applications: behind, now: now)
+    XCTAssertEqual(behindResult.verdict, .behind)
+    XCTAssertEqual(behindResult.localProgressionPercent, 0)
+
+    // Six of ten progressed: 60% against 20%.
+    var ahead = (0..<4).map { _ in makeCalibrationApplication(status: .rejected, now: now) }
+    ahead += (0..<6).map { _ in makeCalibrationApplication(status: .interview, now: now) }
+    let aheadResult = BenchmarkAnalysis.compare(
+      cohort: cohort, snapshot: released, applications: ahead, now: now)
+    XCTAssertEqual(aheadResult.verdict, .ahead)
+    XCTAssertEqual(aheadResult.localProgressionPercent, 60)
+
+    // Two of ten progressed: 20%, exactly the cohort rate.
+    var inLine = (0..<8).map { _ in makeCalibrationApplication(status: .rejected, now: now) }
+    inLine += (0..<2).map { _ in makeCalibrationApplication(status: .interview, now: now) }
+    let inLineResult = BenchmarkAnalysis.compare(
+      cohort: cohort, snapshot: released, applications: inLine, now: now)
+    XCTAssertEqual(inLineResult.verdict, .inLine)
+    XCTAssertTrue(inLineResult.detail.contains("not a signal"))
+  }
+
+  // MARK: - Evidence attestations
+
+  private func makeAttestation(
+    evidenceID: UUID, status: AttestationStatus, name: String = "Sam Patel", role: String = ""
+  ) -> EvidenceAttestation {
+    EvidenceAttestation(
+      evidenceID: evidenceID, token: "token-\(UUID().uuidString)", claim: "Led the migration",
+      context: "", status: status, verifierName: name, verifierRole: role, comment: "",
+      respondedAt: nil, expiresAt: Date().addingTimeInterval(86_400))
+  }
+
+  func testAttestationResolutionPrefersAConfirmationOverAnOpenRequest() {
+    let evidenceID = UUID()
+    let attestations = [
+      makeAttestation(evidenceID: evidenceID, status: .pending),
+      makeAttestation(evidenceID: evidenceID, status: .confirmed, name: "Dana Reed"),
+      makeAttestation(evidenceID: UUID(), status: .confirmed, name: "Someone Else"),
+    ]
+    XCTAssertEqual(attestations.attestation(for: evidenceID)?.verifierName, "Dana Reed")
+
+    // With only a declined answer, that is what shows — not nothing.
+    let declined = [makeAttestation(evidenceID: evidenceID, status: .declined)]
+    XCTAssertEqual(declined.attestation(for: evidenceID)?.status, .declined)
+    XCTAssertNil(declined.attestation(for: UUID()))
+  }
+
+  func testAttestationAttributionNamesThePersonNotTheApp() {
+    let withRole = makeAttestation(
+      evidenceID: UUID(), status: .confirmed, name: "Sam Patel", role: "Former manager")
+    XCTAssertEqual(withRole.attributionText, "Confirmed by Sam Patel, Former manager")
+
+    let withoutRole = makeAttestation(evidenceID: UUID(), status: .confirmed, name: "Sam Patel")
+    XCTAssertEqual(withoutRole.attributionText, "Confirmed by Sam Patel")
+
+    // The feature must never describe a response as identity-verified.
+    XCTAssertTrue(EvidenceAttestation.assuranceNote.contains("does not check who they are"))
+  }
+
+  func testAttestationsPersistAndLegacyArchivesStillDecode() throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let url = directory.appendingPathComponent("career-intelligence.json")
+
+    // An archive written before attestations existed must still load.
+    let legacy = """
+      {"evidence":[],"contacts":[],"networkingDrafts":[],"offers":[],\
+      "reviewRequests":[],"voiceAttempts":[],"preferredMarket":"southAfrica"}
+      """
+    try Data(legacy.utf8).write(to: url)
+    let migrated = CareerIntelligenceStore(fileURL: url)
+    XCTAssertTrue(migrated.attestations.isEmpty)
+
+    let evidenceID = UUID()
+    migrated.upsert(makeAttestation(evidenceID: evidenceID, status: .confirmed, name: "Dana Reed"))
+
+    let reloaded = CareerIntelligenceStore(fileURL: url)
+    XCTAssertEqual(reloaded.attestations.count, 1)
+    XCTAssertEqual(reloaded.attestation(for: evidenceID)?.verifierName, "Dana Reed")
+    XCTAssertEqual(reloaded.confirmedAttestations.count, 1)
+  }
+
+  func testSelfDeclaredEvidenceIsNotTreatedAsAConfirmation() {
+    // isVerified means "I have a source"; an attestation means somebody else
+    // said so. A self-ticked item with no referee must resolve to nothing.
+    let selfTicked = CareerEvidence(
+      kind: .achievement, title: "Led the migration", detail: "Detail", source: "",
+      tags: [], isVerified: true)
+    let store = CareerIntelligenceStore(
+      fileURL: FileManager.default.temporaryDirectory
+        .appendingPathComponent("\(UUID().uuidString).json"))
+    store.upsert(selfTicked)
+    XCTAssertEqual(store.verifiedEvidence.count, 1)
+    XCTAssertNil(store.attestation(for: selfTicked.id))
+    XCTAssertTrue(store.confirmedAttestations.isEmpty)
   }
 }
 

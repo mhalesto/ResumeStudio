@@ -26,6 +26,13 @@ enum JobDescriptionAnalyzer {
 }
 
 enum ATSReadinessService {
+  /// The share of an advert's meaningful language a résumé must already contain
+  /// before the keyword check passes. Adverts carry a lot of words no résumé
+  /// will ever mirror, so this sits well below a half. Opportunity ranking is
+  /// anchored to the same number so the two features cannot disagree about what
+  /// counts as a good match.
+  static let jobLanguagePassThreshold = 0.18
+
   static func analyze(document: ResumeDocument, jobDescription: String = "") -> ATSReadinessReport {
     var items: [ATSCheckItem] = []
     func add(_ id: String, _ title: String, _ detail: String, _ severity: ATSIssueSeverity, _ section: ResumeSection? = nil) {
@@ -68,7 +75,7 @@ enum ATSReadinessService {
       let resumeWords = Set(AIResumeSnapshot(document: document).searchableText.meaningfulWords)
       let jobWords = Set(jobDescription.meaningfulWords)
       let overlap = jobWords.isEmpty ? 0 : Double(jobWords.intersection(resumeWords).count) / Double(jobWords.count)
-      add("keywords", "Job-language evidence", overlap >= 0.18 ? "The résumé demonstrates a useful share of the advert’s terminology." : "Review missing requirements and add only keywords supported by real evidence.", overlap >= 0.18 ? .pass : .action, .competencies)
+      add("keywords", "Job-language evidence", overlap >= jobLanguagePassThreshold ? "The résumé demonstrates a useful share of the advert’s terminology." : "Review missing requirements and add only keywords supported by real evidence.", overlap >= jobLanguagePassThreshold ? .pass : .action, .competencies)
       return ATSReadinessReport(
         items: items,
         matchedKeywords: Array(jobWords.intersection(resumeWords)).sorted(),

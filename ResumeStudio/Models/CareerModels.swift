@@ -63,6 +63,16 @@ extension JobApplication {
     }
     return stored.sorted { $0.occurredAt > $1.occurredAt }
   }
+
+  /// Where the opportunity came from, reduced to something groupable: the bare
+  /// host, or a plain description when there is no usable URL. Used wherever
+  /// applications are compared by source.
+  var sourceLabel: String {
+    guard let url = URL(string: sourceURL), let host = url.host() else {
+      return sourceURL.isBlank ? "direct applications" : "other sources"
+    }
+    return host.replacingOccurrences(of: "www.", with: "")
+  }
 }
 
 struct AIInterviewAssessment: Codable, Equatable {

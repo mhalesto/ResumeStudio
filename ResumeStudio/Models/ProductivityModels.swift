@@ -79,6 +79,9 @@ struct ResumeLayoutSettings: Codable, Equatable, Hashable {
   var paperSize: ResumePaperSize = .a4
   var sectionOrder: [ResumeContentBlock] = ResumeContentBlock.allCases
   var customHeadings: [String: String] = [:]
+  /// Per-section looks the user has taken off their template. See
+  /// `ResumeSectionStyleOverrides`; empty means the template decides everything.
+  var sectionStyles = ResumeSectionStyleOverrides()
 
   static let standard = ResumeLayoutSettings()
 
@@ -98,6 +101,37 @@ struct ResumeLayoutSettings: Codable, Equatable, Hashable {
   func heading(for block: ResumeContentBlock) -> String {
     customHeadings[block.rawValue]?.trimmingCharacters(in: .whitespacesAndNewlines)
       .nilIfBlank ?? block.title
+  }
+}
+
+extension ResumeLayoutSettings {
+  private enum CodingKeys: String, CodingKey {
+    case fontChoice, fontScale, lineSpacing, marginPoints, pageTarget, paperSize
+    case sectionOrder, customHeadings, sectionStyles
+  }
+
+  /// Every field is read as optional, falling back to its default.
+  ///
+  /// Synthesised decoding ignores a property's default value and throws on a
+  /// missing key, so a draft saved before any one of these settings existed
+  /// would fail to decode its `layout` — and because `layout` is decoded inside
+  /// `ResumeDocument`, that would take the whole résumé down with it. Adding a
+  /// setting must never be able to cost somebody their CV.
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    self.init()
+    fontChoice = try container.decodeIfPresent(ResumeFontChoice.self, forKey: .fontChoice) ?? .template
+    fontScale = try container.decodeIfPresent(Double.self, forKey: .fontScale) ?? 1
+    lineSpacing = try container.decodeIfPresent(Double.self, forKey: .lineSpacing) ?? 1
+    marginPoints = try container.decodeIfPresent(Double.self, forKey: .marginPoints) ?? 34
+    pageTarget = try container.decodeIfPresent(ResumePageTarget.self, forKey: .pageTarget) ?? .automatic
+    paperSize = try container.decodeIfPresent(ResumePaperSize.self, forKey: .paperSize) ?? .a4
+    sectionOrder =
+      try container.decodeIfPresent([ResumeContentBlock].self, forKey: .sectionOrder)
+      ?? ResumeContentBlock.allCases
+    customHeadings = try container.decodeIfPresent([String: String].self, forKey: .customHeadings) ?? [:]
+    sectionStyles =
+      try container.decodeIfPresent(ResumeSectionStyleOverrides.self, forKey: .sectionStyles) ?? .none
   }
 }
 

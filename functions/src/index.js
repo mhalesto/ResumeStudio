@@ -24,6 +24,14 @@ import {
   validHandle,
 } from "./profile-policy.js";
 import { productInsightPayload } from "./metrics-policy.js";
+import { benchmarkContribution, benchmarkRelease } from "./benchmark-policy.js";
+import {
+  ATTESTATION_MAX_EXPIRY_DAYS,
+  attestationClaim,
+  attestationExpiryDecision,
+  attestationResponse,
+  attestationTransition,
+} from "./attestation-policy.js";
 
 if (getApps().length === 0) initializeApp();
 
@@ -532,6 +540,10 @@ export const api = onRequest(
     if (profileRouteHandled) return;
     const referralRouteHandled = await handleReferralRoutes(request, response);
     if (referralRouteHandled) return;
+    const benchmarkRouteHandled = await handleBenchmarkRoutes(request, response);
+    if (benchmarkRouteHandled) return;
+    const attestationRouteHandled = await handleAttestationRoutes(request, response);
+    if (attestationRouteHandled) return;
 
     if (request.method === "POST" && request.path.endsWith("/v1/metrics")) {
       if (!(await verifyAppCheck(request, response))) return;
@@ -746,6 +758,312 @@ function appStoreVerifier(environment) {
   );
   appStoreVerifiers.set(key, verifier);
   return verifier;
+}
+
+/**
+ * Outcome benchmarks. An installation contributes its own counts for one cohort
+ * and receives that cohort's aggregate in return, but only once enough distinct
+ * installations are in it — `benchmark-policy.js` owns those rules.
+ *
+ * Two things matter for correctness here:
+ *
+ * 1. Contributing repeatedly must replace, never accumulate. The previous
+ *    contribution is stored per installation and applied as a delta, so a user
+ *    who syncs weekly does not inflate their own cohort.
+ * 2. The installation identifier is hashed before it is used as a key, so the
+ *    benchmark store cannot be joined against any other collection keyed on the
+ *    raw identifier. The stored record holds counts and nothing else.
+ */
+async function handleBenchmarkRoutes(request, response) {
+  if (request.path !== "/v1/benchmarks") return false;
+  if (request.method !== "POST") {
+    response.status(405).json({ error: "Method not allowed." });
+    return true;
+  }
+  if (!(await verifyAppCheck(request, response))) return true;
+
+  const contribution = benchmarkContribution(request.body);
+  if (!contribution) {
+    response.status(400).json({ error: "Invalid benchmark contribution." });
+    return true;
+  }
+  const clientID = cleanText(request.body?.clientID, 128);
+  if (!clientID) {
+    response.status(400).json({ error: "Invalid benchmark contribution." });
+    return true;
+  }
+
+  const contributorKey = createHash("sha256")
+    .update(`benchmark:${clientID}:${contribution.cohort}`)
+    .digest("hex");
+  const cohortRef = db.collection("benchmarkCohorts").doc(contribution.cohort);
+  const contributorRef = cohortRef.collection("contributors").doc(contributorKey);
+
+  try {
+    const aggregate = await db.runTransaction(async (transaction) => {
+      const [cohortDoc, priorDoc] = await Promise.all([
+        transaction.get(cohortRef),
+        transaction.get(contributorRef),
+      ]);
+      const current = cohortDoc.data() || {};
+      const prior = priorDoc.exists ? priorDoc.data() : null;
+
+      const priorSettled = Number(prior?.weightedSettled) || 0;
+      const priorProgressed = Number(prior?.weightedProgressed) || 0;
+      const priorDays = prior?.medianDaysToProgress ?? null;
+      const nextDays = contribution.medianDaysToProgress;
+
+      const next = {
+        contributors: (Number(current.contributors) || 0) + (prior ? 0 : 1),
+        settled:
+          (Number(current.settled) || 0) + contribution.weightedSettled - priorSettled,
+        progressed:
+          (Number(current.progressed) || 0) + contribution.weightedProgressed - priorProgressed,
+        daysToProgressTotal:
+          (Number(current.daysToProgressTotal) || 0) +
+          (nextDays ?? 0) -
+          (priorDays ?? 0),
+        daysToProgressContributors:
+          (Number(current.daysToProgressContributors) || 0) +
+          (nextDays === null ? 0 : 1) -
+          (priorDays === null || priorDays === undefined ? 0 : 1),
+      };
+
+      transaction.set(
+        cohortRef,
+        { ...next, updatedAt: FieldValue.serverTimestamp() },
+        { merge: true }
+      );
+      transaction.set(contributorRef, {
+        weightedSettled: contribution.weightedSettled,
+        weightedProgressed: contribution.weightedProgressed,
+        medianDaysToProgress: nextDays,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      return next;
+    });
+
+    response.status(200).json(benchmarkRelease(aggregate));
+  } catch (error) {
+    logger.error("benchmark contribution failed", error);
+    response.status(500).json({ error: "Could not update benchmarks." });
+  }
+  return true;
+}
+
+/**
+ * Evidence attestations: the owner asks someone to confirm one claim, that
+ * person answers on a hosted page, and the answer is final.
+ *
+ * The page states what the confirmation is worth. Anyone holding the link can
+ * answer, so neither this route nor the app may describe a response as
+ * identity-verified — `attestation-policy.js` carries the same caveat on every
+ * public record.
+ */
+async function handleAttestationRoutes(request, response) {
+  const viewMatch = request.method === "GET" && request.path.match(/^\/a\/([A-Za-z0-9_-]{16,64})$/);
+  if (viewMatch) {
+    const snapshot = await db.collection("attestations").doc(viewMatch[1]).get();
+    const record = snapshot.exists ? snapshot.data() : null;
+    const settled =
+      !record ||
+      record.status !== "pending" ||
+      new Date(record.expiresAt?.toDate?.() || record.expiresAt).getTime() <= Date.now();
+    response.status(record ? 200 : 404).type("html").send(attestationPage(record, settled));
+    return true;
+  }
+
+  const respondMatch =
+    request.method === "POST" &&
+    request.path.match(/^\/v1\/attestations\/([A-Za-z0-9_-]{16,64})\/respond$/);
+  if (respondMatch) {
+    const answer = attestationResponse(request.body);
+    if (!answer) {
+      response.status(400).json({ error: "Choose confirm or decline, and add your name." });
+      return true;
+    }
+    const ref = db.collection("attestations").doc(respondMatch[1]);
+    try {
+      await db.runTransaction(async (transaction) => {
+        const snapshot = await transaction.get(ref);
+        if (!snapshot.exists) throw new Error("not_found");
+        const record = snapshot.data();
+        const expiresAt = record.expiresAt?.toDate?.() || record.expiresAt;
+        const decision = attestationTransition({
+          current: record.status,
+          next: answer.status,
+          expiresAt,
+        });
+        if (!decision.allowed) throw new Error(decision.reason);
+        transaction.update(ref, {
+          status: answer.status,
+          verifierName: answer.name,
+          verifierRole: answer.role,
+          comment: answer.comment,
+          respondedAt: FieldValue.serverTimestamp(),
+        });
+      });
+      response.status(200).json({ status: answer.status });
+    } catch (error) {
+      const reason = error?.message === "not_found" ? 404 : 409;
+      response.status(reason).json({ error: "This request can no longer be answered." });
+    }
+    return true;
+  }
+
+  if (!request.path.startsWith("/v1/attestations")) return false;
+
+  try {
+    const user = await requiredAuthenticatedUser(request);
+
+    if (request.method === "POST" && request.path === "/v1/attestations") {
+      const claim = attestationClaim(request.body);
+      if (!claim) {
+        response.status(400).json({ error: "Write the claim you want confirmed." });
+        return true;
+      }
+      const requested =
+        request.body?.expiresAt ||
+        new Date(Date.now() + ATTESTATION_MAX_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+      const { valid, expiry } = attestationExpiryDecision(requested);
+      if (!valid) {
+        response.status(400).json({ error: "Choose an expiry inside the allowed window." });
+        return true;
+      }
+      const token = randomBytes(24).toString("base64url");
+      await db.collection("attestations").doc(token).set({
+        ownerUid: user.uid,
+        claim: claim.claim,
+        context: claim.context,
+        status: "pending",
+        verifierName: "",
+        verifierRole: "",
+        comment: "",
+        requestedAt: FieldValue.serverTimestamp(),
+        respondedAt: null,
+        expiresAt: Timestamp.fromDate(expiry),
+      });
+      response.status(201).json({
+        token,
+        shareURL: `${PUBLIC_API_BASE}/a/${token}`,
+        expiresAt: expiry.toISOString(),
+      });
+      return true;
+    }
+
+    const tokenMatch = request.path.match(/^\/v1\/attestations\/([A-Za-z0-9_-]{16,64})$/);
+    if (tokenMatch) {
+      const ref = db.collection("attestations").doc(tokenMatch[1]);
+      const snapshot = await ref.get();
+      if (!snapshot.exists || snapshot.data().ownerUid !== user.uid) {
+        response.status(404).json({ error: "Not found." });
+        return true;
+      }
+      const record = snapshot.data();
+
+      if (request.method === "DELETE") {
+        const decision = attestationTransition({
+          current: record.status,
+          next: "revoked",
+          expiresAt: record.expiresAt?.toDate?.() || record.expiresAt,
+        });
+        if (!decision.allowed) {
+          response.status(409).json({ error: "This request has already been answered." });
+          return true;
+        }
+        await ref.update({ status: "revoked" });
+        response.status(200).json({ status: "revoked" });
+        return true;
+      }
+
+      if (request.method === "GET") {
+        const expiresAt = record.expiresAt?.toDate?.() || record.expiresAt;
+        // An unanswered request that has run out of time reports as expired
+        // rather than pending, without needing a scheduled sweep.
+        const status =
+          record.status === "pending" && new Date(expiresAt).getTime() <= Date.now()
+            ? "expired"
+            : record.status;
+        response.status(200).json({
+          status,
+          verifierName: record.verifierName || "",
+          verifierRole: record.verifierRole || "",
+          comment: record.comment || "",
+          respondedAt: record.respondedAt?.toDate?.()?.toISOString() || null,
+          expiresAt: new Date(expiresAt).toISOString(),
+        });
+        return true;
+      }
+    }
+
+    response.status(404).json({ error: "Not found." });
+  } catch (error) {
+    logger.error("attestation route failed", error);
+    response.status(401).json({ error: "Sign in to manage confirmations." });
+  }
+  return true;
+}
+
+function attestationPage(record, settled) {
+  const style =
+    "body{margin:0;background:#07101d;color:#f8f5ef;font:16px system-ui;display:grid;place-items:center;min-height:100vh}" +
+    ".card{max-width:540px;margin:20px;padding:32px;border:1px solid #354052;border-radius:28px;background:#111a27}" +
+    ".claim{font-size:20px;line-height:1.45;margin:18px 0;padding:18px;border-left:3px solid #ff671d;background:#0c1420}" +
+    ".muted{color:#aab2c0;line-height:1.5;font-size:14px}" +
+    "input,textarea{width:100%;box-sizing:border-box;margin:6px 0 14px;padding:12px;border-radius:12px;border:1px solid #354052;background:#0c1420;color:#f8f5ef;font:15px system-ui}" +
+    "button{padding:14px 18px;border-radius:999px;border:0;font-weight:800;font-size:15px;cursor:pointer}" +
+    ".yes{background:#ff671d;color:#fff}.no{background:transparent;color:#aab2c0;border:1px solid #354052}" +
+    ".row{display:flex;gap:10px;margin-top:6px}";
+
+  if (!record) {
+    return `<!doctype html><html><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>Confirmation request</title><style>${style}</style></head><body><main class=card><h1>This link is not available</h1><p class=muted>It may have been withdrawn, or it may never have existed.</p></main></body></html>`;
+  }
+  if (settled) {
+    return `<!doctype html><html><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>Confirmation request</title><style>${style}</style></head><body><main class=card><h1>Already settled</h1><p class=muted>This request has been answered, withdrawn, or has expired. Answers cannot be changed once given.</p></main></body></html>`;
+  }
+
+  return `<!doctype html><html><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>Confirm a claim</title><style>${style}</style></head><body><main class=card>
+<h1>Can you confirm this?</h1>
+<p class=muted>Someone has asked you to confirm one statement from their work history. ${escapeHTML(record.context || "")}</p>
+<div class=claim>${escapeHTML(record.claim)}</div>
+<form id=f>
+<label class=muted for=name>Your name</label>
+<input id=name name=name maxlength=80 required>
+<label class=muted for=role>Your role, and how you know them</label>
+<input id=role name=role maxlength=120 placeholder="Former manager, Northstar Works">
+<label class=muted for=comment>Anything you want to add (optional)</label>
+<textarea id=comment name=comment rows=3 maxlength=500></textarea>
+<div class=row><button type=submit class=yes name=confirmed value=true>Yes, that is accurate</button>
+<button type=submit class=no name=confirmed value=false>I cannot confirm this</button></div>
+</form>
+<p class=muted id=done style="display:none"></p>
+<p class=muted style="margin-top:22px">Your answer is final and cannot be changed afterwards. Your name, role and comment are shown to the person who asked, and may appear alongside the claim. ResumeStudio records that someone holding this link replied — it does not check who you are.</p>
+</main>
+<script>
+const form = document.getElementById('f');
+let choice = 'true';
+for (const button of form.querySelectorAll('button')) {
+  button.addEventListener('click', () => { choice = button.value; });
+}
+form.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const body = {
+    confirmed: choice === 'true',
+    name: document.getElementById('name').value,
+    role: document.getElementById('role').value,
+    comment: document.getElementById('comment').value,
+  };
+  const reply = await fetch(location.pathname.replace('/a/', '/v1/attestations/') + '/respond', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  const done = document.getElementById('done');
+  form.style.display = 'none';
+  done.style.display = 'block';
+  done.textContent = reply.ok
+    ? 'Thank you — your answer has been recorded.'
+    : 'This request can no longer be answered.';
+});
+</script></body></html>`;
 }
 
 async function handleReferralRoutes(request, response) {

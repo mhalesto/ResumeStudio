@@ -16103,6 +16103,42 @@
     "e.g. notice period, when can you start": {
       "extractionState": "manual",
       "localizations": { "de": { "stringUnit": { "state": "translated", "value": "z. B. Kündigungsfrist, wann können Sie anfangen" } } }
+    },
+    "About résumé photos": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Über Fotos im Lebenslauf" } } }
+    },
+    "Shows photo visibility and privacy information": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Zeigt Informationen zur Sichtbarkeit und zum Datenschutz von Fotos an" } } }
+    },
+    "Your photo is always optional.": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Ihr Foto ist immer optional." } } }
+    },
+    "Choose per résumé": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Für jeden Lebenslauf auswählen" } } }
+    },
+    "Use Show in CV to hide your saved photo from previews and exports without deleting it.": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Mit „Im Lebenslauf zeigen“ blenden Sie Ihr gespeichertes Foto in Vorschauen und Exporten aus, ohne es zu löschen." } } }
+    },
+    "Private by design": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Datenschutz von Anfang an" } } }
+    },
+    "Your photo is never sent to AI. If iCloud sync is on, it is included only in your private résumé sync.": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Ihr Foto wird nie an die KI gesendet. Wenn die iCloud-Synchronisierung aktiviert ist, wird es nur in Ihre private Lebenslauf-Synchronisierung aufgenommen." } } }
+    },
+    "Photo-led templates": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Fotobetonte Vorlagen" } } }
+    },
+    "Every template supports a photo. These designs build their header around it: %@.": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Jede Vorlage unterstützt ein Foto. Diese Designs bauen ihren Kopfbereich darum herum auf: %@." } } }
     }
   },
   "version": "1.1"
