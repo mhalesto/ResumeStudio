@@ -1,11 +1,9 @@
 import SwiftUI
 import UIKit
 
-/// The app's surface and type tokens, ported from the web prototype.
-///
-/// The prototype defines the palette in OKLCH; these are the exact sRGB
-/// conversions, including its dark set — so every surface here adapts rather
-/// than only working in light mode.
+/// The app's surface and type tokens. The light surfaces use a soft cream-white
+/// palette so the workspace feels warm without reading as beige; the dark set
+/// keeps the deeper navy treatment. Every surface adapts with the system theme.
 ///
 /// Deliberately *not* here: the brand colour. The UI is tinted with the user's
 /// chosen `ResumeAccent`, so all four of their accents drive the new design
@@ -14,26 +12,26 @@ enum Theme {
 
   // MARK: - Surfaces
 
-  /// The page. A warm off-white, rather than iOS's cool grouped grey.
+  /// The page. A dreamy cream-white, rather than a bright or cool system white.
   static let paper = Color.adaptive(
-    light: Color(red: 0.988, green: 0.975, blue: 0.954),
+    light: Color(red: 0.965, green: 0.941, blue: 0.910),
     dark: Color(red: 0.045, green: 0.061, blue: 0.086)
   )
 
-  /// Raised cards sitting on `paper`.
+  /// Raised cards stay gently lighter than the page without becoming stark white.
   static let card = Color.adaptive(
-    light: Color(red: 1.000, green: 0.993, blue: 0.979),
+    light: Color(red: 0.988, green: 0.973, blue: 0.945),
     dark: Color(red: 0.085, green: 0.105, blue: 0.138)
   )
 
   /// Recessed surfaces — the privacy note, progress tracks.
   static let muted = Color.adaptive(
-    light: Color(red: 0.939, green: 0.919, blue: 0.888),
+    light: Color(red: 0.918, green: 0.882, blue: 0.839),
     dark: Color(red: 0.128, green: 0.152, blue: 0.190)
   )
 
   static let hairline = Color.adaptive(
-    light: Color(red: 0.888, green: 0.867, blue: 0.837),
+    light: Color(red: 0.871, green: 0.827, blue: 0.773),
     dark: Color.white.opacity(0.08)
   )
 

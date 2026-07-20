@@ -7,6 +7,8 @@ import SwiftUI
 /// glance. The original line art remains as the skeleton shown while that render
 /// is in flight.
 struct CoverLetterTemplateCard: View {
+  @Environment(\.appTabIsActive) private var appTabIsActive
+
   let template: CoverLetterTemplate
   let accent: ResumeAccent
   let isSelected: Bool
@@ -34,12 +36,19 @@ struct CoverLetterTemplateCard: View {
         }
       }
       .frame(width: width, height: height)
-      .task(id: CoverLetterKey(template: template, accent: accent)) {
+      .task(id: CoverLetterKey(
+        template: template, accent: accent, isTabActive: appTabIsActive
+      )) {
+        guard appTabIsActive else { return }
         // Already rendered this session: show it instantly, no skeleton flash.
         if let ready = CoverLetterThumbnailRenderer.cached(template: template, accent: accent) {
           thumbnail = ready
           return
         }
+        // Debounce accent changes so the swatch and selection state update before
+        // the first uncached full-PDF preview render begins.
+        try? await Task.sleep(for: .milliseconds(220))
+        guard !Task.isCancelled else { return }
         // Otherwise load from disk or render, serialised through the shared gate.
         let image = await CoverLetterThumbnailRenderer.image(template: template, accent: accent)
         guard !Task.isCancelled else { return }
@@ -590,4 +599,5 @@ private struct Trapezoid: Shape {
 private struct CoverLetterKey: Hashable {
   let template: CoverLetterTemplate
   let accent: ResumeAccent
+  let isTabActive: Bool
 }

@@ -11,17 +11,18 @@ enum ResumeStudioLinks {
 
 struct SettingsView: View {
   @Environment(\.openURL) private var openURL
+  @EnvironmentObject private var resumeStore: ResumeStore
   @EnvironmentObject private var cloudSync: ICloudSyncService
   @EnvironmentObject private var purchases: PurchaseManager
   @EnvironmentObject private var account: AccountStore
   @EnvironmentObject private var aiArtifacts: AIArtifactStore
   @StateObject private var answerVault = ApplicationAnswerVaultStore()
-  @AppStorage("appAppearance") private var appearanceRawValue = AppAppearance.system.rawValue
+  @AppStorage("appAppearance") private var appearanceRawValue = AppAppearance.defaultChoice.rawValue
   @State private var isCloudConflictPresented = false
 
   private var appearance: Binding<AppAppearance> {
     Binding(
-      get: { AppAppearance(rawValue: appearanceRawValue) ?? .system },
+      get: { AppAppearance(rawValue: appearanceRawValue) ?? .defaultChoice },
       set: { appearanceRawValue = $0.rawValue }
     )
   }
@@ -162,6 +163,12 @@ struct SettingsView: View {
         }
       }
     }
+    // List-backed labels can retain the tint they had when their reusable row
+    // was created. Give the list a local accent identity so hidden Settings rows
+    // are rebuilt as soon as the résumé accent changes, rather than only after
+    // an app foreground cycle or enough scrolling to recycle the row.
+    .id(resumeStore.document.accent)
+    .tint(resumeStore.document.accent.color)
     .scrollContentBackground(.hidden)
     .background(Theme.paper)
     .navigationTitle("Settings")
@@ -512,6 +519,7 @@ private struct AccountDeletionView: View {
 
 #Preview {
   NavigationStack { SettingsView() }
+    .environmentObject(ResumeStore(initialDocument: .example))
     .environmentObject(ICloudSyncService())
     .environmentObject(PurchaseManager.shared)
     .environmentObject(AccountStore())

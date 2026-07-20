@@ -735,14 +735,16 @@ struct FloatingCareerCoachButton: View {
         dismissIntro()
         action()
       } label: {
-        CareerCoachFace(accent: accent, size: 62)
+        CareerCoachFace(accent: accent, size: 68, animatesBlink: true)
           .overlay(alignment: .topTrailing) {
-            Circle()
-              .fill(Color.green)
-              .frame(width: 13, height: 13)
-              .overlay(Circle().stroke(Theme.paper, lineWidth: 2))
+            ZStack {
+              Circle().fill(Theme.card)
+              Circle().fill(Color(red: 0.16, green: 0.78, blue: 0.38)).padding(3)
+            }
+            .frame(width: 17, height: 17)
+            .shadow(color: Color.black.opacity(0.16), radius: 3, y: 1)
           }
-          .shadow(color: accent.opacity(0.30), radius: 16, y: 8)
+          .shadow(color: accent.opacity(0.24), radius: 18, y: 9)
       }
       .buttonStyle(.plain)
       .accessibilityLabel("Open Career Coach")
@@ -754,56 +756,56 @@ struct FloatingCareerCoachButton: View {
 struct CareerCoachFace: View {
   let accent: Color
   let size: CGFloat
+  var animatesBlink = false
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var isBlinking = false
 
   var body: some View {
     ZStack {
       Circle()
-        .fill(
-          LinearGradient(
-            colors: [accent, accent.opacity(0.72)],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-          )
-        )
-      HStack(spacing: size * 0.17) {
-        eye
-        eye
-      }
-      .offset(y: -size * 0.10)
-      SmileShape()
-        .stroke(Color.white, style: StrokeStyle(lineWidth: max(2.5, size * 0.055), lineCap: .round))
-        .frame(width: size * 0.38, height: size * 0.20)
-        .offset(y: size * 0.14)
+        .fill(Theme.card)
+
+      Image("CareerCoachPortrait")
+        .resizable()
+        .scaledToFill()
+        .opacity(isBlinking ? 0 : 1)
+
+      Image("CareerCoachPortraitBlink")
+        .resizable()
+        .scaledToFill()
+        .opacity(isBlinking ? 1 : 0)
     }
     .frame(width: size, height: size)
-    .overlay(Circle().stroke(Color.white.opacity(0.28), lineWidth: 1))
+    .clipShape(Circle())
+    .overlay {
+      Circle()
+        .strokeBorder(
+          LinearGradient(
+            colors: [Color.white.opacity(0.95), accent.opacity(0.88)],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+          ),
+          lineWidth: max(1.5, size * 0.045)
+        )
+    }
+    .overlay {
+      Circle().strokeBorder(Color.black.opacity(0.10), lineWidth: 0.5)
+    }
     .task {
+      guard animatesBlink, !reduceMotion else { return }
       while !Task.isCancelled {
-        try? await Task.sleep(for: .seconds(3))
-        withAnimation(.easeInOut(duration: 0.10)) { isBlinking = true }
-        try? await Task.sleep(for: .milliseconds(140))
-        withAnimation(.easeInOut(duration: 0.10)) { isBlinking = false }
+        try? await Task.sleep(for: .seconds(Double.random(in: 4.2...7.2)))
+        guard !Task.isCancelled else { return }
+        await blink()
       }
     }
   }
 
-  private var eye: some View {
-    Capsule()
-      .fill(Color.white)
-      .frame(width: size * 0.10, height: isBlinking ? 2 : size * 0.16)
-  }
-}
-
-private struct SmileShape: Shape {
-  func path(in rect: CGRect) -> Path {
-    var path = Path()
-    path.move(to: CGPoint(x: rect.minX, y: rect.minY))
-    path.addQuadCurve(
-      to: CGPoint(x: rect.maxX, y: rect.minY),
-      control: CGPoint(x: rect.midX, y: rect.maxY)
-    )
-    return path
+  @MainActor
+  private func blink() async {
+    withAnimation(.easeOut(duration: 0.06)) { isBlinking = true }
+    try? await Task.sleep(for: .milliseconds(115))
+    withAnimation(.easeIn(duration: 0.09)) { isBlinking = false }
   }
 }
 

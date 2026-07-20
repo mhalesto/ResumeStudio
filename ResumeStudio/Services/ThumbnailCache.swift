@@ -109,15 +109,15 @@ final class ThumbnailRenderGate {
   private var isRendering = false
   private var waiters: [CheckedContinuation<Void, Never>] = []
 
-  /// Suspends until no other render is in flight, then yields once so the run
-  /// loop can paint before this caller renders. Pair every `acquire()` with a
-  /// `release()`.
+  /// Suspends until no other render is in flight, then leaves a short run-loop
+  /// window so taps, scrolling and selection animations paint before the next
+  /// synchronous PDF render. Pair every `acquire()` with a `release()`.
   func acquire() async {
     while isRendering {
       await withCheckedContinuation { waiters.append($0) }
     }
     isRendering = true
-    await Task.yield()
+    try? await Task.sleep(for: .milliseconds(80))
   }
 
   func release() {

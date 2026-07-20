@@ -1,11 +1,23 @@
 import SwiftUI
 
+private struct AppTabIsActiveKey: EnvironmentKey {
+  static let defaultValue = true
+}
+
+extension EnvironmentValues {
+  /// Prevents retained, off-screen tabs from doing expensive visual work.
+  var appTabIsActive: Bool {
+    get { self[AppTabIsActiveKey.self] }
+    set { self[AppTabIsActiveKey.self] = newValue }
+  }
+}
+
 struct RootView: View {
-  @AppStorage("appAppearance") private var appearanceRawValue = AppAppearance.system.rawValue
+  @AppStorage("appAppearance") private var appearanceRawValue = AppAppearance.defaultChoice.rawValue
   @State private var isSplashComplete = false
 
   private var appearance: AppAppearance {
-    AppAppearance(rawValue: appearanceRawValue) ?? .system
+    AppAppearance(rawValue: appearanceRawValue) ?? .defaultChoice
   }
 
   var body: some View {
@@ -252,6 +264,7 @@ private struct AppShellView: View {
     @ViewBuilder content: () -> Content
   ) -> some View {
     content()
+      .environment(\.appTabIsActive, selectedTab == tab)
       .contentMargins(.bottom, Self.footerScrollClearance, for: .scrollContent)
       .opacity(selectedTab == tab ? 1 : 0)
       .allowsHitTesting(selectedTab == tab)

@@ -123,12 +123,6 @@ struct HomeView: View {
         }
       }
       .background(Theme.paper)
-      .task(id: ResumeThumbnailWarmKey(
-        accent: store.document.accent,
-        photo: store.document.photo,
-        crop: store.document.photoCrop,
-        isPhotoVisible: store.document.isPhotoVisible
-      )) { await warmThumbnails() }
       .navigationTitle("Resume Studio")
       .navigationBarTitleDisplayMode(.inline)
       .toolbarBackground(Theme.paper, for: .navigationBar)
@@ -625,25 +619,6 @@ struct HomeView: View {
       }
       ProgressView(value: Double(min(value, goal)), total: Double(max(goal, 1))).tint(accent)
     }
-  }
-
-  /// Render the first stretch of template and cover-letter previews ahead of
-  /// being scrolled to, so the carousels and gallery are warm even on the very
-  /// first launch. Re-runs when the accent changes so the quick-pick swatches
-  /// preview instantly. The gate keeps this from competing with visible cards.
-  private func warmThumbnails() async {
-    // Just beyond what the carousels show at rest — enough that a first scroll or
-    // an accent change lands on warm cards, without speculatively rendering the
-    // whole catalogue on every accent tap.
-    let doc = store.document
-    await TemplateThumbnailRenderer.prewarm(
-      templates: Array(ResumeTemplate.allCases.prefix(8)),
-      accent: doc.accent, photo: doc.photo, crop: doc.photoCrop,
-      isPhotoVisible: doc.isPhotoVisible
-    )
-    await CoverLetterThumbnailRenderer.prewarm(
-      templates: Array(CoverLetterTemplate.allCases.prefix(6)),
-      accent: doc.accent)
   }
 
   /// A row of accent swatches under the template header. Colour lived only in the
@@ -1716,13 +1691,6 @@ private struct WorkspaceCard: View {
 }
 
 // MARK: - Pieces
-
-private struct ResumeThumbnailWarmKey: Hashable {
-  let accent: ResumeAccent
-  let photo: Data?
-  let crop: PhotoCrop?
-  let isPhotoVisible: Bool
-}
 
 private struct HeroLibraryShortcut: View {
   let value: String

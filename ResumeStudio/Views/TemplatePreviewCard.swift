@@ -7,6 +7,8 @@ import SwiftUI
 /// original hand-drawn line art is still here, now serving as the skeleton shown
 /// while that render is in flight.
 struct TemplatePreviewCard: View {
+  @Environment(\.appTabIsActive) private var appTabIsActive
+
   let template: ResumeTemplate
   let accent: ResumeAccent
   let isSelected: Bool
@@ -44,8 +46,9 @@ struct TemplatePreviewCard: View {
       .frame(width: width, height: height)
       .task(id: TemplateKey(
         template: template, accent: accent, photo: photo, crop: photoCrop,
-        isPhotoVisible: isPhotoVisible
+        isPhotoVisible: isPhotoVisible, isTabActive: appTabIsActive
       )) {
+        guard appTabIsActive else { return }
         // Already rendered this session: show it instantly, no skeleton flash.
         if let ready = TemplateThumbnailRenderer.cached(
           template: template, accent: accent, photo: photo, crop: photoCrop,
@@ -54,6 +57,11 @@ struct TemplatePreviewCard: View {
           thumbnail = ready
           return
         }
+        // Accent taps can arrive in quick succession. Let the selection paint
+        // first and cancel superseded work instead of synchronously exporting a
+        // full PDF for every colour the user's finger passes through.
+        try? await Task.sleep(for: .milliseconds(220))
+        guard !Task.isCancelled else { return }
         // Otherwise load from disk or render (off the main thread where possible,
         // serialised so a screenful of cards can't freeze the frame together).
         let image = await TemplateThumbnailRenderer.image(
@@ -1652,6 +1660,7 @@ private struct TemplateKey: Hashable {
   let photo: Data?
   let crop: PhotoCrop?
   let isPhotoVisible: Bool
+  let isTabActive: Bool
 }
 
 private struct MockCompactLines: View {

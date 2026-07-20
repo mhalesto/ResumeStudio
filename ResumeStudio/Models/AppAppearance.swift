@@ -2,12 +2,14 @@ import SwiftUI
 
 /// How the app picks its appearance. Persisted in `@AppStorage("appAppearance")`.
 ///
-/// `system` follows iOS, which is the default; the explicit options let someone
-/// pin the app light or dark regardless of the device setting.
+/// New installs start with the app's soft light appearance. `system` remains an
+/// explicit choice for anyone who wants ResumeStudio to follow iOS.
 enum AppAppearance: String, CaseIterable, Identifiable {
   case system
   case light
   case dark
+
+  static let defaultChoice: AppAppearance = .light
 
   var id: String { rawValue }
 

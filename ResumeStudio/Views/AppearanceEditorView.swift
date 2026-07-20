@@ -4,7 +4,7 @@ struct AppearanceEditorView: View {
   @Binding var template: ResumeTemplate
   @Binding var accent: ResumeAccent
   @EnvironmentObject private var purchases: PurchaseManager
-  @AppStorage("appAppearance") private var appearanceRawValue = AppAppearance.system.rawValue
+  @AppStorage("appAppearance") private var appearanceRawValue = AppAppearance.defaultChoice.rawValue
 
   /// The template catalogue is long enough that the accent swatches used to sit a
   /// hundred-odd rows down. This switch keeps both one tap away.
@@ -24,7 +24,7 @@ struct AppearanceEditorView: View {
 
   private var appAppearance: Binding<AppAppearance> {
     Binding(
-      get: { AppAppearance(rawValue: appearanceRawValue) ?? .system },
+      get: { AppAppearance(rawValue: appearanceRawValue) ?? .defaultChoice },
       set: { appearanceRawValue = $0.rawValue }
     )
   }
