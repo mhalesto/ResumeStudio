@@ -19,6 +19,8 @@ struct ResumePreviewView: View {
   @State private var atsSafe = false
   @State private var showRecruiterScan = false
   @State private var showCreateLink = false
+  @State private var showSignature = false
+  @State private var showAttachments = false
   @State private var showStyleMenu = false
   @State private var pendingPlanRequest = false
   @State private var quickEditTarget: ResumeQuickEditTarget?
@@ -162,6 +164,23 @@ struct ResumePreviewView: View {
           }
           Section {
             Button {
+              showSignature = true
+            } label: {
+              Label(
+                signatureActionTitle,
+                systemImage: "signature"
+              )
+            }
+            .disabled(exportsUnavailable)
+
+            Button {
+              showAttachments = true
+            } label: {
+              Label(attachmentActionTitle, systemImage: "paperclip.badge.plus")
+            }
+          }
+          Section {
+            Button {
               showCreateLink = true
             } label: {
               Label("Send as trackable link", systemImage: "link.badge.plus")
@@ -222,6 +241,27 @@ struct ResumePreviewView: View {
       .presentationCornerRadius(30)
       .presentationBackground(Theme.paper)
     }
+    .sheet(isPresented: $showSignature) {
+      NavigationStack {
+        ResumeSignatureView(
+          signature: signatureBinding,
+          pdfData: pdfData,
+          resumePageCount: resumePageCount,
+          accent: document.accent.color
+        )
+      }
+      .presentationDragIndicator(.visible)
+      .presentationCornerRadius(30)
+      .presentationBackground(Theme.paper)
+    }
+    .sheet(isPresented: $showAttachments) {
+      NavigationStack {
+        ResumeAttachmentsView(document: editableDocumentBinding)
+      }
+      .presentationDragIndicator(.visible)
+      .presentationCornerRadius(30)
+      .presentationBackground(Theme.paper)
+    }
     .fileExporter(
       isPresented: $isExporting,
       document: PDFFile(data: pdfData ?? Data()),
@@ -260,6 +300,44 @@ struct ResumePreviewView: View {
       .padding(.horizontal, 24)
       .padding(.bottom, 30)
       .transition(.move(edge: .bottom).combined(with: .opacity))
+  }
+
+  private var resumePageCount: Int {
+    guard let pdfData, let pdf = PDFDocument(data: pdfData) else { return 1 }
+    return max(1, pdf.pageCount - renderDocument.attachmentPageCount)
+  }
+
+  private var attachmentActionTitle: String {
+    let count = document.attachments.count
+    guard count > 0 else { return String(localized: "Add attachments") }
+    return String(localized: "Attachments (\(count))")
+  }
+
+  private var signatureActionTitle: String {
+    document.signature == nil
+      ? String(localized: "Sign document")
+      : String(localized: "Edit signature")
+  }
+
+  /// Both document tools are content edits, not design purchases. They therefore
+  /// persist even while the user is comparing a locked template; only that
+  /// unowned template is omitted from the saved version by `applyContentEdit`.
+  private var editableDocumentBinding: Binding<ResumeDocument> {
+    Binding(
+      get: { document },
+      set: { applyContentEdit($0) }
+    )
+  }
+
+  private var signatureBinding: Binding<ResumeSignature?> {
+    Binding(
+      get: { document.signature },
+      set: { newValue in
+        var updated = document
+        updated.signature = newValue
+        applyContentEdit(updated)
+      }
+    )
   }
 
   // MARK: - Style menu

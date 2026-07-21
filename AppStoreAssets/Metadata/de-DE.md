@@ -40,6 +40,8 @@ AUF GESPRÄCHE VORBEREITEN
 IHRE JOBSUCHE STEUERN
 
 - Verfolgen Sie gemerkte, eingereichte, laufende, erfolgreiche und abgelehnte Bewerbungen.
+- Prüfen Sie mit den nachvollziehbaren Signalen von Opportunity Shield Aktualität, Arbeitgeber-Domain, Anzeigendetails und häufige Sicherheitsfallen vor der Bewerbung.
+- Priorisieren Sie gemerkte Stellen nach Lebenslauf-Passung, Stellensignalen, Fristen und gespeicherten Kontakten.
 - Machen Sie aus Gesprächen, Angeboten und Absagen eine private Nachbesprechung und eine belegbare nächste Verbesserung.
 - Halten Sie Karrierenachweise, Angebote und Bewerbungsdetails geordnet.
 - Laden Sie vertraute Prüfer über gehostete Review Rooms ein (in geeigneten Tarifen).
@@ -47,7 +49,7 @@ IHRE JOBSUCHE STEUERN
 
 DATENSCHUTZ UND KONTROLLE
 
-Resume Studio funktioniert ohne Konto. Lebenslauf-Versionen, Bewerbungen und Anschreiben können über Ihren privaten iCloud-Arbeitsbereich synchronisiert werden. Auf unterstützten Geräten übernimmt Apple Intelligence einfaches Schreiben und Extrahieren privat auf dem Gerät; Free nutzt zuerst diesen Weg, während Go und Pro zuerst das verbundene Qualitätsmodell mit einer Ausweichoption auf dem Gerät verwenden. Kontaktdaten, Referenzen, Profilfotos und angehängte Quelldateien sind von verbundenen KI-Schreibanfragen ausgeschlossen. Sie können KI-Werkzeuge pausieren, die Intelligenz auf dem Gerät deaktivieren, anonymen aggregierten Produktzählern widersprechen, den lokalen Verarbeitungsverlauf einsehen, Karriere-Insights exportieren oder jederzeit löschen.
+Resume Studio funktioniert ohne Konto. Lebenslauf-Versionen, Bewerbungen und Anschreiben können über Ihren privaten iCloud-Arbeitsbereich synchronisiert werden. Opportunity Shield wertet gespeicherte Anzeigentexte auf dem Gerät aus; die optionale Überwachung ruft nur die öffentliche Stellen-URL auf und übermittelt keine Lebenslauf- oder Profildaten. Auf unterstützten Geräten übernimmt Apple Intelligence einfaches Schreiben und Extrahieren privat auf dem Gerät; Free nutzt zuerst diesen Weg, während Go und Pro zuerst das verbundene Qualitätsmodell mit einer Ausweichoption auf dem Gerät verwenden. Kontaktdaten, Referenzen, Profilfotos und angehängte Quelldateien sind von verbundenen KI-Schreibanfragen ausgeschlossen. Sie können KI-Werkzeuge pausieren, die Intelligenz auf dem Gerät deaktivieren, anonymen aggregierten Produktzählern widersprechen, den lokalen Verarbeitungsverlauf einsehen, Karriere-Insights exportieren oder jederzeit löschen.
 
 DIE KERNWERKZEUGE BLEIBEN KOSTENLOS
 

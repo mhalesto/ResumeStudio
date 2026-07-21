@@ -151,6 +151,22 @@ struct JobOffer: Identifiable, Codable, Equatable {
       + (equityAnnualValue ?? 0) + (otherAnnualValue ?? 0)
       + (remoteSavingsAnnual ?? 0) - (commuteAnnualCost ?? 0)
   }
+
+  /// The grounding brief the AI negotiates from — used by both the negotiation
+  /// script and the rehearsal counterpart. Everything either may reference
+  /// about money must be in here; the prompts forbid inventing more.
+  var negotiationSummary: String {
+    func amount(_ value: Double) -> String {
+      value.formatted(.number.precision(.fractionLength(0)).grouping(.never))
+    }
+    var parts = [
+      "Offer: \(currencyCode) \(amount(baseSalary)) base, \(amount(bonus)) bonus, \(amount(signingBonus ?? 0)) signing, \(amount(employerRetirementAnnual ?? 0)) retirement, \(amount(medicalAnnual ?? 0)) medical, \(amount(equityAnnualValue ?? 0)) annual equity, \(amount(commuteAnnualCost ?? 0)) commute cost, \(amount(remoteSavingsAnnual ?? 0)) remote savings, \(leaveDays ?? 0) leave days."
+    ]
+    if !benefits.isBlank { parts.append("Benefits: \(benefits).") }
+    if !workStyle.isBlank { parts.append("Work style: \(workStyle).") }
+    if !notes.isBlank { parts.append("Notes: \(notes).") }
+    return parts.joined(separator: " ")
+  }
 }
 
 enum ReviewRequestStatus: String, CaseIterable, Codable, Identifiable {
@@ -290,6 +306,128 @@ struct AICareerToolkitDraft: Codable, Equatable {
   var highlights: [String]
   var evidenceSources: [String]
   var claimsRequiringConfirmation: [String]
+}
+
+enum NegotiationPersona: String, CaseIterable, Codable, Identifiable {
+  case warmHRPartner
+  case formalRecruiter
+  case directHiringManager
+
+  var id: String { rawValue }
+
+  var title: LocalizedStringResource {
+    switch self {
+    case .warmHRPartner: "Warm HR partner"
+    case .formalRecruiter: "By-the-book recruiter"
+    case .directHiringManager: "Direct hiring manager"
+    }
+  }
+
+  var blurb: LocalizedStringResource {
+    switch self {
+    case .warmHRPartner: "Friendly, but guards the budget"
+    case .formalRecruiter: "Everything is policy and bands"
+    case .directHiringManager: "Fast, blunt and time-poor"
+    }
+  }
+
+  var systemImage: String {
+    switch self {
+    case .warmHRPartner: "face.smiling.inverse"
+    case .formalRecruiter: "text.book.closed.fill"
+    case .directHiringManager: "person.fill.questionmark"
+    }
+  }
+
+  /// English persona brief for the AI payload; prompts are written in English.
+  var aiDescription: String {
+    switch self {
+    case .warmHRPartner:
+      "A warm, empathetic HR partner who genuinely likes the candidate but protects the compensation budget and defers to process when pushed."
+    case .formalRecruiter:
+      "A courteous, by-the-book recruiter who leans on salary bands, approval chains and policy, and gives little away without justification."
+    case .directHiringManager:
+      "A direct, time-pressed hiring manager who respects confidence and evidence, dislikes vagueness, and pushes for a quick close."
+    }
+  }
+}
+
+enum NegotiationDifficulty: String, CaseIterable, Codable, Identifiable {
+  case supportive
+  case realistic
+  case firm
+
+  var id: String { rawValue }
+
+  var title: LocalizedStringResource {
+    switch self {
+    case .supportive: "Supportive"
+    case .realistic: "Realistic"
+    case .firm: "Hardball"
+    }
+  }
+
+  /// English difficulty brief for the AI payload; prompts are written in English.
+  var aiDescription: String {
+    switch self {
+    case .supportive: "Concede reasonably quickly when the candidate makes any coherent case."
+    case .realistic: "Concede gradually and only when the candidate earns it with reasoning or evidence."
+    case .firm: "Concede late, little and reluctantly; apply steady professional pressure and deadlines."
+    }
+  }
+}
+
+enum NegotiationMessageKind: String, Codable {
+  case user
+  case counterpart
+  /// A private aside from the coach, never spoken by the counterpart.
+  case nudge
+}
+
+struct NegotiationSessionMessage: Identifiable, Codable, Equatable {
+  var id = UUID()
+  var kind: NegotiationMessageKind
+  var content: String
+  var createdAt = Date()
+}
+
+struct NegotiationDebrief: Codable, Equatable {
+  var outcomeSummary: String
+  var strengths: [String]
+  var improvements: [String]
+  var strongerLines: [String]
+  var tacticsObserved: [String]
+  var missedOpportunities: [String]
+  var createdAt = Date()
+}
+
+struct NegotiationPracticeSession: Identifiable, Codable, Equatable {
+  var id = UUID()
+  var offerID: UUID?
+  var applicationID: UUID?
+  var company: String
+  var role: String
+  var persona: NegotiationPersona
+  var difficulty: NegotiationDifficulty
+  var goal: String
+  var offerSummary: String
+  var messages: [NegotiationSessionMessage]
+  var debrief: NegotiationDebrief?
+  var createdAt = Date()
+
+  var isCompleted: Bool { debrief != nil }
+}
+
+struct AINegotiationTurn: Codable, Equatable {
+  var reply: String
+  var coachingNudge: String
+  var conversationComplete: Bool
+  var outcomeSummary: String
+  var strengths: [String]
+  var improvements: [String]
+  var strongerLines: [String]
+  var tacticsObserved: [String]
+  var missedOpportunities: [String]
 }
 
 struct AIProvenanceItem: Identifiable, Equatable {

@@ -12,6 +12,7 @@ private struct CareerIntelligenceArchive: Codable {
   var processingRecords: [AIProcessingRecord]?
   var marketSources: [MarketGuidanceSource]?
   var attestations: [EvidenceAttestation]?
+  var negotiationSessions: [NegotiationPracticeSession]?
 
   init(
     evidence: [CareerEvidence] = [],
@@ -24,7 +25,8 @@ private struct CareerIntelligenceArchive: Codable {
     aiRevisions: [AIRevision] = [],
     processingRecords: [AIProcessingRecord] = [],
     marketSources: [MarketGuidanceSource] = [],
-    attestations: [EvidenceAttestation] = []
+    attestations: [EvidenceAttestation] = [],
+    negotiationSessions: [NegotiationPracticeSession] = []
   ) {
     self.evidence = evidence
     self.contacts = contacts
@@ -37,6 +39,7 @@ private struct CareerIntelligenceArchive: Codable {
     self.processingRecords = processingRecords
     self.marketSources = marketSources
     self.attestations = attestations
+    self.negotiationSessions = negotiationSessions
   }
 }
 
@@ -52,6 +55,7 @@ final class CareerIntelligenceStore: ObservableObject {
   @Published private(set) var processingRecords: [AIProcessingRecord] = []
   @Published private(set) var marketSources: [MarketGuidanceSource] = []
   @Published private(set) var attestations: [EvidenceAttestation] = []
+  @Published private(set) var negotiationSessions: [NegotiationPracticeSession] = []
   @Published var preferredMarket: ResumeMarket = .southAfrica { didSet { save() } }
   @Published private(set) var lastSaveError: String?
 
@@ -74,6 +78,7 @@ final class CareerIntelligenceStore: ObservableObject {
       processingRecords = archive.processingRecords ?? []
       marketSources = archive.marketSources ?? []
       attestations = archive.attestations ?? []
+      negotiationSessions = archive.negotiationSessions ?? []
     }
     isLoading = false
     NotificationCenter.default.addObserver(
@@ -189,6 +194,20 @@ final class CareerIntelligenceStore: ObservableObject {
 
   func add(_ attempt: VoicePracticeAttempt) { voiceAttempts.insert(attempt, at: 0); save() }
 
+  func upsert(_ session: NegotiationPracticeSession) {
+    if let index = negotiationSessions.firstIndex(where: { $0.id == session.id }) {
+      negotiationSessions[index] = session
+    } else {
+      negotiationSessions.insert(session, at: 0)
+    }
+    save()
+  }
+
+  func deleteNegotiationSession(_ id: UUID) {
+    negotiationSessions.removeAll { $0.id == id }
+    save()
+  }
+
   func addRevision(_ revision: AIRevision) { aiRevisions.insert(revision, at: 0); save() }
 
   func markRevisionReverted(_ id: UUID) {
@@ -203,7 +222,7 @@ final class CareerIntelligenceStore: ObservableObject {
   func resetCareerIntelligence() {
     evidence.removeAll(); contacts.removeAll(); networkingDrafts.removeAll(); offers.removeAll()
     reviewRequests.removeAll(); voiceAttempts.removeAll(); aiRevisions.removeAll()
-    processingRecords.removeAll(); marketSources.removeAll()
+    processingRecords.removeAll(); marketSources.removeAll(); negotiationSessions.removeAll()
     save()
   }
 
@@ -225,6 +244,7 @@ final class CareerIntelligenceStore: ObservableObject {
     aiRevisions = value.aiRevisions ?? []
     processingRecords = value.processingRecords ?? []
     marketSources = value.marketSources ?? []
+    negotiationSessions = value.negotiationSessions ?? []
     preferredMarket = value.preferredMarket
     save()
   }
@@ -240,6 +260,7 @@ final class CareerIntelligenceStore: ObservableObject {
     aiRevisions = Self.mergeNewest(aiRevisions, value.aiRevisions ?? [], date: { $0.createdAt })
     processingRecords = Self.mergeNewest(processingRecords, value.processingRecords ?? [], date: { $0.completedAt })
     marketSources = Self.mergeNewest(marketSources, value.marketSources ?? [], date: { $0.checkedAt })
+    negotiationSessions = Self.mergeNewest(negotiationSessions, value.negotiationSessions ?? [], date: { $0.createdAt })
     save()
   }
 
@@ -268,7 +289,8 @@ final class CareerIntelligenceStore: ObservableObject {
       aiRevisions: aiRevisions,
       processingRecords: processingRecords,
       marketSources: marketSources,
-      attestations: attestations
+      attestations: attestations,
+      negotiationSessions: negotiationSessions
     )
   }
 

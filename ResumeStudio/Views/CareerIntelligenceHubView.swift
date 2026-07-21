@@ -65,7 +65,7 @@ struct CareerIntelligenceHubView: View {
         }
 
         Text("Build your advantage")
-          .font(Theme.display(28))
+          .displayFont(28)
           .foregroundStyle(Theme.ink)
 
         LazyVGrid(columns: columns, spacing: 14) {
@@ -80,6 +80,7 @@ struct CareerIntelligenceHubView: View {
           tool("LinkedIn Studio", "Headline, About and keywords", "person.crop.rectangle.stack.fill", .linkedInStudio, .blue)
           tool("Networking", "People and follow-ups", "person.2.wave.2.fill", .networking, .indigo)
           tool("Offers", "Compare and negotiate", "scale.3d", .offers, .green)
+          tool("Negotiation Rehearsal", "Practise the money conversation", "person.line.dotted.person.fill", .negotiationPractice(nil), .red)
           tool("Review Room", "Private feedback workflow", "person.2.badge.gearshape.fill", .reviewRoom, .mint)
           tool("Market Guide", "Local conventions", "globe.africa.fill", .marketGuidance, .cyan)
           tool("Privacy Centre", "AI controls and processing history", "lock.shield.fill", .privacyCenter, .green)
@@ -110,7 +111,7 @@ struct CareerIntelligenceHubView: View {
       VStack(alignment: .leading, spacing: 8) {
         Text("ONE CAREER. EVERY MOVE.").eyebrow().foregroundStyle(resumeStore.document.accent.color)
         Text("Turn your experience\ninto momentum.")
-          .font(Theme.display(34))
+          .displayFont(34)
           .foregroundStyle(Theme.heroInk)
         Text("ResumeStudio remembers the evidence, keeps every application connected and helps you prepare without inventing facts.")
           .font(.subheadline)
@@ -166,6 +167,7 @@ private struct IntelligenceStat: View {
 private struct CareerOrbitGraphic: View {
   let accent: Color
   @State private var rotates = false
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   var body: some View {
     GeometryReader { proxy in
@@ -189,7 +191,14 @@ private struct CareerOrbitGraphic: View {
         Image(systemName: "sparkles").foregroundStyle(accent).offset(x: size * 0.33, y: -size * 0.26)
         Image(systemName: "checkmark.seal.fill").foregroundStyle(.green).offset(x: -size * 0.34, y: size * 0.23)
       }
+      // Pure ornament: a spinning dial around a stylised page. It states
+      // nothing the tile's own title and copy do not, so it is one element to
+      // swipe past rather than a stray "sparkles, checkmark seal fill".
+      .accessibilityHidden(true)
       .onAppear {
+        // The dial turns forever, which is exactly the kind of motion Reduce
+        // Motion exists to stop.
+        guard !reduceMotion else { return }
         withAnimation(.linear(duration: 18).repeatForever(autoreverses: false)) { rotates = true }
       }
     }

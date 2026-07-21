@@ -38,12 +38,16 @@ enum HomeRoute: Hashable {
   case integrations
   case privacyCenter
   case recruiterScan
+  /// Audit every claim on the résumé against what demonstrates it.
+  case claimAudit
   case smartLinks
   case personalProfile
   case campaign
   case calibration
   case opportunityRanking
   case benchmarks
+  /// Rehearse a salary negotiation, optionally against a saved offer.
+  case negotiationPractice(UUID?)
 }
 
 struct HomeView: View {
@@ -83,9 +87,6 @@ struct HomeView: View {
     let anchor: String
   }
   @AppStorage("hasSeenWelcome") private var hasSeenWelcome = false
-  // Scales the serif display headline with the reader's text-size setting instead
-  // of pinning it at 38pt.
-  @ScaledMetric(relativeTo: .largeTitle) private var heroTitleSize: CGFloat = 38
   private let allowsWelcome: Bool
   private let acceptsExternalRoutes: Bool
 
@@ -218,6 +219,8 @@ struct HomeView: View {
           PrivacyCenterView()
         case .recruiterScan:
           RecruiterScanView(document: store.document)
+        case .claimAudit:
+          ClaimAuditView()
         case .smartLinks:
           SmartLinksView()
         case .personalProfile:
@@ -228,6 +231,8 @@ struct HomeView: View {
             networkingThisWeek: networkingThisWeek,
             practiceThisWeek: practiceThisWeek
           )
+        case .negotiationPractice(let offerID):
+          NegotiationPracticeView(offerID: offerID)
         }
       }
       .sheet(isPresented: $showWelcome, onDismiss: finishWelcome) {
@@ -382,6 +387,7 @@ struct HomeView: View {
       applications: applicationStore.applications,
       contacts: careerStore.contacts,
       voiceAttempts: careerStore.voiceAttempts,
+      negotiationSessions: careerStore.negotiationSessions,
       since: weekStart
     )
   }
@@ -496,6 +502,30 @@ struct HomeView: View {
         priority: .outcomeReview
       ))
     }
+    let opportunitiesToVerify = applicationStore.applications.filter { candidate in
+      candidate.status == .saved
+        && candidate.capturedOpportunity?.opportunitySignal?.band != .strong
+        && candidate.capturedOpportunity?.opportunitySignal != nil
+    }.sorted(by: {
+      $0.capturedOpportunity?.opportunitySignal?.band == .highRisk
+        && $1.capturedOpportunity?.opportunitySignal?.band != .highRisk
+    })
+    if let application = opportunitiesToVerify.first,
+      let signal = application.capturedOpportunity?.opportunitySignal
+    {
+      actions.append(TodayAction(
+        id: "opportunity-shield-\(application.id)",
+        title: signal.band == .highRisk
+          ? "Pause before applying to \(application.company.nilIfBlank ?? "this role")"
+          : "Verify \(application.role.nilIfBlank ?? "this opportunity") first",
+        detail: signal.band == .highRisk
+          ? "Opportunity Shield found a concrete warning sign. Review it before sharing personal information."
+          : "Some freshness, employer or listing signals need confirmation before you tailor.",
+        systemImage: signal.band.systemImage,
+        route: .applicationDetail(application.id),
+        priority: .opportunitySafety
+      ))
+    }
     if let application = applicationStore.applications.first(where: {
       $0.status == .applied && Date().timeIntervalSince($0.updatedAt) >= 6 * 86_400
     }) {
@@ -527,6 +557,20 @@ struct HomeView: View {
         id: "ats-evidence", title: "Resolve missing ATS evidence",
         detail: "\(atsReport.actionCount) readiness item\(atsReport.actionCount == 1 ? " needs" : "s need") your attention.",
         systemImage: "checkmark.shield", route: .atsChecker, priority: .resumeReadiness))
+    }
+    // Only skills the résumé never demonstrates earn a place here. Bullets
+    // without figures are worth improving too, but they are not the pattern
+    // hiring managers describe rejecting on, and nagging about every one of
+    // them would bury the queue.
+    let bareSkills = ClaimAuditService.audit(
+      document: store.document, evidence: careerStore.evidence,
+      attestations: careerStore.attestations
+    ).priorityFixes.filter { $0.origin == .competency }
+    if !bareSkills.isEmpty {
+      actions.append(TodayAction(
+        id: "claims-unbacked", title: "Back up what your résumé claims",
+        detail: "\(bareSkills.count) skill\(bareSkills.count == 1 ? " is" : "s are") listed that no bullet demonstrates.",
+        systemImage: "checkmark.seal", route: .claimAudit, priority: .resumeReadiness))
     }
     if !store.document.incompleteSections.isEmpty {
       actions.append(TodayAction(
@@ -638,6 +682,7 @@ struct HomeView: View {
     switch priority {
     case .resumeReadiness: "WorkspaceResumes"
     case .smartLink, .outcomeReview: "ReviewRoomEmptyState"
+    case .opportunitySafety: "WorkspaceApplications"
     case .imminentInterview: "WorkspaceInterview"
     case .expiringHostedWork: "WorkspaceImport"
     case .campaign, .application, .dueFollowUp: "WorkspaceApplications"
@@ -740,6 +785,11 @@ struct HomeView: View {
       }
       ProgressView(value: Double(min(value, goal)), total: Double(max(goal, 1))).tint(accent)
     }
+    // Otherwise this is three swipes — the goal's name, a bare "2/5", then a
+    // percentage from the bar that repeats it in a different unit.
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel(Text(title))
+    .accessibilityValue("\(min(value, goal)) of \(goal)")
   }
 
   /// A row of accent swatches under the template header. Colour lived only in the
@@ -774,7 +824,7 @@ struct HomeView: View {
 
       VStack(alignment: .leading, spacing: 12) {
         Text("Build a résumé\nthat feels like you.")
-          .font(Theme.display(heroTitleSize))
+          .displayFont(38)
           .foregroundStyle(Theme.heroInk)
           .lineSpacing(2)
           // The headline is a two-line composition. Translations run longer —
@@ -1505,7 +1555,6 @@ private enum StartChoice: String, Identifiable {
 /// start — rather than a multi-screen tour, so it gets out of the way fast.
 private struct WelcomeSheet: View {
   @Environment(\.dismiss) private var dismiss
-  @ScaledMetric(relativeTo: .title) private var titleSize: CGFloat = 28
   @State private var isBuildingResume = false
   @AppStorage("career.onboardingGoal") private var selectedGoal = ""
   @AppStorage(ProductInsights.enabledKey) private var productInsightsEnabled = false
@@ -1547,7 +1596,7 @@ private struct WelcomeSheet: View {
           .frame(width: 58, height: 58)
 
           Text("Welcome to Resume Studio")
-            .font(Theme.display(titleSize))
+            .displayFont(28, relativeTo: .title)
             .foregroundStyle(Theme.ink)
             .fixedSize(horizontal: false, vertical: true)
           Text(isBuildingResume
@@ -1681,6 +1730,9 @@ private struct CareerCampaignView: View {
       }
       ProgressView(value: Double(min(value, goal.wrappedValue)), total: Double(max(goal.wrappedValue, 1)))
         .tint(resumeStore.document.accent.color)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityValue("\(min(value, goal.wrappedValue)) of \(goal.wrappedValue) done")
       Stepper("Weekly goal: \(goal.wrappedValue)", value: goal, in: range)
         .accessibilityIdentifier("campaign.goal.\(title.lowercased())")
     }
@@ -1830,7 +1882,6 @@ private struct HeroLibraryShortcut: View {
   let systemImage: String
   let accent: Color
   let action: () -> Void
-  @ScaledMetric(relativeTo: .title2) private var valueSize: CGFloat = 24
 
   var body: some View {
     Button(action: action) {
@@ -1852,7 +1903,7 @@ private struct HeroLibraryShortcut: View {
         Spacer(minLength: 10)
 
         Text(value)
-          .font(.system(size: valueSize, weight: .bold))
+          .scaledFont(24, relativeTo: .title2, weight: .bold)
           .foregroundStyle(Theme.heroInk)
           .monospacedDigit()
           .lineLimit(1)

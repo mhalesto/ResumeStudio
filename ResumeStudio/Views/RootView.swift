@@ -97,6 +97,8 @@ private struct AppShellView: View {
   @Environment(\.horizontalSizeClass) private var horizontalSizeClass
   @StateObject private var careerCoachStore = CareerCoachStore()
   @AppStorage("careerCoachIntroDismissed") private var coachIntroDismissed = false
+  @AppStorage(CareerPrivacySetting.opportunityMonitoringKey)
+  private var opportunityMonitoringEnabled = true
   @State private var selectedTab = AppTab.home
   @State private var isCareerCoachPresented = false
   @State private var isPlansPresented = false
@@ -197,7 +199,12 @@ private struct AppShellView: View {
     .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
       Task {
         await purchases.refreshEntitlements()
-        if network.isOnline { await smartLinks.refresh() }
+        if network.isOnline {
+          await smartLinks.refresh()
+          if opportunityMonitoringEnabled {
+            await OpportunityShieldMonitor.refreshDue(in: applicationStore)
+          }
+        }
         publishSharedSnapshot()
       }
     }
@@ -209,6 +216,9 @@ private struct AppShellView: View {
       if network.isOnline {
         await smartLinks.refresh()
         await personalProfile.load()
+        if opportunityMonitoringEnabled {
+          await OpportunityShieldMonitor.refreshDue(in: applicationStore)
+        }
       }
       publishSharedSnapshot()
     }

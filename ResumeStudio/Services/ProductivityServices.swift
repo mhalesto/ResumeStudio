@@ -321,6 +321,7 @@ enum TodayActionPriority: Int, Comparable {
   case application = 80
   case dueFollowUp = 90
   case outcomeReview = 92
+  case opportunitySafety = 94
   case imminentInterview = 95
   case expiringHostedWork = 100
 
@@ -340,6 +341,7 @@ enum WeeklyCampaignService {
     applications: [JobApplication],
     contacts: [CareerContact],
     voiceAttempts: [VoicePracticeAttempt],
+    negotiationSessions: [NegotiationPracticeSession] = [],
     since start: Date
   ) -> WeeklyCampaignProgress {
     let progressedApplications = applications.filter { application in
@@ -350,6 +352,7 @@ enum WeeklyCampaignService {
       total + (contact.interactions ?? []).filter { $0.occurredAt >= start }.count
     }
     let practice = voiceAttempts.filter { $0.createdAt >= start }.count
+      + negotiationSessions.filter { $0.createdAt >= start }.count
     return WeeklyCampaignProgress(
       applications: progressedApplications,
       networking: networking,

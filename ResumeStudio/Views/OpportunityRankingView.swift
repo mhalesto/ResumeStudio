@@ -6,13 +6,15 @@ import SwiftUI
 struct OpportunityRankingView: View {
   @EnvironmentObject private var resumeStore: ResumeStore
   @EnvironmentObject private var applicationStore: ApplicationStore
+  @EnvironmentObject private var careerStore: CareerIntelligenceStore
 
   private var accent: Color { resumeStore.document.accent.color }
 
   private var ranking: OpportunityRanking {
     OpportunityRankingService.rank(
       applications: applicationStore.applications,
-      document: resumeStore.document
+      document: resumeStore.document,
+      contacts: careerStore.contacts
     )
   }
 
@@ -44,7 +46,7 @@ struct OpportunityRankingView: View {
     VStack(alignment: .leading, spacing: 8) {
       Text("YOUR SAVED SHORTLIST").eyebrow().foregroundStyle(accent)
       Text("Where the next hour goes")
-        .font(Theme.display(30))
+        .displayFont(30)
         .foregroundStyle(Theme.ink)
       Text(ranking.summary)
         .font(.subheadline)
@@ -81,8 +83,8 @@ struct OpportunityRankingView: View {
   private var footnote: some View {
     Label(
       """
-      Scored on this device against the same keyword check the ATS review uses. \
-      No AI credits, no network, and the advert text never leaves your phone.
+      Prioritized on this device using résumé fit, Opportunity Shield, deadlines and saved contacts. \
+      No AI credits are used and the advert text never leaves your phone.
       """,
       systemImage: "lock.fill"
     )
@@ -143,6 +145,19 @@ private struct OpportunityScoreCard: View {
           .foregroundStyle(Theme.inkSoft)
           .fixedSize(horizontal: false, vertical: true)
 
+        if let signalBand = score.signalBand {
+          Label(signalBand.title, systemImage: signalBand.systemImage)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(signalColor(signalBand))
+        }
+
+        if !score.priorityReasons.isEmpty {
+          Text(score.priorityReasons.prefix(3).joined(separator: " · "))
+            .font(.caption)
+            .foregroundStyle(Theme.mutedInk)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+
         if !score.topMissing.isEmpty {
           VStack(alignment: .leading, spacing: 6) {
             Text("Missing from your résumé")
@@ -160,5 +175,13 @@ private struct OpportunityScoreCard: View {
       .cardSurface(radius: 22)
     }
     .buttonStyle(.plain)
+  }
+
+  private func signalColor(_ band: OpportunitySignalBand) -> Color {
+    switch band {
+    case .strong: .green
+    case .verify: .orange
+    case .highRisk: .red
+    }
   }
 }

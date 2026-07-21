@@ -257,6 +257,8 @@ struct ResumeEditorView: View {
               .scaledToFill()
           } else {
             accent.opacity(0.14)
+            // a11y-fixed-size: initials stand in for a portrait inside a fixed
+            // avatar circle — they are a glyph, and scaling them overflows it.
             Text(store.document.initials)
               .font(.system(size: 22, weight: .bold))
               .foregroundStyle(accent)
@@ -333,7 +335,7 @@ struct ResumeEditorView: View {
   private var portraitVisibilityControl: some View {
     VStack(alignment: .trailing, spacing: 5) {
       Text("SHOW IN CV")
-        .font(.system(size: 9, weight: .bold))
+        .scaledFont(9, relativeTo: .caption2, weight: .bold)
         .tracking(0.7)
         .foregroundStyle(Theme.mutedInk)
       Toggle("Show portrait in this résumé", isOn: $store.document.isPhotoVisible)
@@ -572,7 +574,7 @@ struct ResumeEditorView: View {
   private var attachmentsSection: some View {
     Section {
       NavigationLink {
-        ResumeAttachmentsView()
+        ResumeAttachmentsView(document: $store.document)
       } label: {
         HStack(spacing: 12) {
           Image(systemName: "paperclip")

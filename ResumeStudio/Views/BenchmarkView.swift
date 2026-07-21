@@ -53,7 +53,7 @@ struct BenchmarkView: View {
     VStack(alignment: .leading, spacing: 8) {
       Text("HOW YOU COMPARE").eyebrow().foregroundStyle(accent)
       Text("You, against people\nsearching like you")
-        .font(Theme.display(30))
+        .displayFont(30)
         .foregroundStyle(Theme.ink)
       Text("""
         A progression rate on its own means very little. The same number next to \

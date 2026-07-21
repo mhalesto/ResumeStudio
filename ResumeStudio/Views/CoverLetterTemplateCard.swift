@@ -128,7 +128,7 @@ struct CoverLetterTemplateCard: View {
   /// The letterheads whose name sits on a dark ground, and so is set in white.
   private var hasDarkLetterhead: Bool {
     [.executive, .gradient, .noir, .nova, .nocturne, .vantage, .zenith, .spectrum, .volta,
-     .obsidian, .verge, .citadel, .sable].contains(template)
+     .obsidian, .verge, .citadel, .sable, .terminal, .passport, .constellation].contains(template)
   }
 
   private var isCentred: Bool {
@@ -386,7 +386,8 @@ struct CoverLetterTemplateCard: View {
     case .zenith, .aperture, .sovereign, .blueprint, .spectrum, .halo, .volta, .obsidian, .radiant,
       .verge, .datum, .pinnacle, .emblem, .cadence, .citadel, .stratus, .mirage,
       .salute, .couture, .medallion, .sable, .terracotta, .lozenge, .circlet, .vogue, .signet,
-      .almanac:
+      .almanac, .kintsugi, .bauhaus, .terminal, .topograph, .passport, .transit, .cutline,
+      .receipt, .constellation, .studioFolio:
       if let ordinal = template.advancedOrdinal {
         AdvancedLetterDecoration(ordinal: ordinal, accent: accent.color)
       }
@@ -530,6 +531,56 @@ private struct AdvancedLetterDecoration: View {
       LinearGradient(colors: [accent.opacity(0.22), accent.opacity(0.04)], startPoint: .top, endPoint: .bottom)
         .frame(height: 78)
         .overlay(alignment: .bottom) { accent.frame(height: 3) }
+    case 27: // Kintsugi
+      Color(red: 0.982, green: 0.963, blue: 0.918).frame(height: 78)
+        .overlay(alignment: .trailing) {
+          StudioLetterCrack().stroke(Color(red: 0.72, green: 0.52, blue: 0.20), lineWidth: 2)
+            .frame(width: 72)
+        }
+    case 28: // Bauhaus
+      Color(red: 0.97, green: 0.95, blue: 0.90).frame(height: 80)
+        .overlay(alignment: .leading) { Color(red: 0.17, green: 0.20, blue: 0.29).frame(width: 20) }
+        .overlay(alignment: .topTrailing) { Circle().fill(accent).frame(width: 78, height: 78).offset(x: 18, y: -24) }
+    case 29: // Terminal
+      Color(red: 0.055, green: 0.067, blue: 0.075).frame(height: 80)
+        .overlay(alignment: .topLeading) {
+          Text("> compose --letter").font(.system(size: 5, design: .monospaced)).foregroundStyle(accent).padding(8)
+        }
+    case 30: // Topograph
+      Color(red: 0.965, green: 0.972, blue: 0.947).frame(height: 80)
+        .overlay(alignment: .topTrailing) {
+          ZStack {
+            ForEach(0..<5, id: \.self) { index in
+              Ellipse().stroke(accent.opacity(0.24), lineWidth: 0.7)
+                .frame(width: 54 + CGFloat(index * 10), height: 38 + CGFloat(index * 8))
+            }
+          }.offset(x: 14, y: -9)
+        }
+    case 31: // Passport
+      Color(red: 0.12, green: 0.27, blue: 0.24).frame(height: 80)
+        .overlay { RoundedRectangle(cornerRadius: 3).stroke(.white.opacity(0.30), lineWidth: 0.7).padding(6) }
+        .overlay(alignment: .leading) { Circle().fill(accent).frame(width: 34, height: 34).padding(.leading, 12) }
+    case 32: // Transit
+      Color(white: 0.985).frame(height: 80)
+        .overlay { StudioLetterTransit().stroke(accent, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round)).padding(8) }
+    case 33: // Cutline
+      Color(white: 0.975).frame(height: 80)
+        .overlay(alignment: .trailing) { Triangle().fill(Color(red: 0.17, green: 0.20, blue: 0.29)).frame(width: 96).rotationEffect(.degrees(180)) }
+    case 34: // Receipt
+      Color(white: 0.985).frame(height: 80)
+        .overlay {
+          VStack(spacing: 18) {
+            Rectangle().stroke(accent.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [3, 3])).frame(height: 1)
+            Rectangle().stroke(accent.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [3, 3])).frame(height: 1)
+          }.padding(.horizontal, 9)
+        }
+    case 35: // Constellation
+      Color(red: 0.055, green: 0.067, blue: 0.105).frame(height: 80)
+        .overlay { StudioLetterConstellation().stroke(accent.opacity(0.55), lineWidth: 0.8).padding(7) }
+    case 36: // Studio Folio
+      Color(white: 0.985).frame(height: 80)
+        .overlay { Rectangle().stroke(Color.black.opacity(0.42), lineWidth: 0.8).padding(7) }
+        .overlay(alignment: .bottom) { accent.frame(width: 42, height: 2).padding(.bottom, 10) }
     default: // Mirage — shimmering gradient
       LinearGradient(colors: [accent.opacity(0.30), accent.opacity(0.02)], startPoint: .leading, endPoint: .trailing)
         .frame(height: 78)
@@ -590,6 +641,48 @@ private struct Trapezoid: Shape {
     path.addLine(to: CGPoint(x: rect.maxX - inset, y: rect.maxY))
     path.addLine(to: CGPoint(x: rect.minX + inset, y: rect.maxY))
     path.closeSubpath()
+    return path
+  }
+}
+
+private struct StudioLetterCrack: Shape {
+  func path(in rect: CGRect) -> Path {
+    var path = Path()
+    path.move(to: CGPoint(x: rect.midX, y: rect.minY))
+    path.addLine(to: CGPoint(x: rect.midX - 8, y: rect.height * 0.28))
+    path.addLine(to: CGPoint(x: rect.midX + 10, y: rect.height * 0.48))
+    path.addLine(to: CGPoint(x: rect.midX - 5, y: rect.height * 0.70))
+    path.addLine(to: CGPoint(x: rect.midX + 12, y: rect.maxY))
+    return path
+  }
+}
+
+private struct StudioLetterTransit: Shape {
+  func path(in rect: CGRect) -> Path {
+    var path = Path()
+    path.move(to: CGPoint(x: rect.minX, y: rect.height * 0.34))
+    path.addLine(to: CGPoint(x: rect.width * 0.38, y: rect.height * 0.34))
+    path.addCurve(
+      to: CGPoint(x: rect.width * 0.56, y: rect.height * 0.68),
+      control1: CGPoint(x: rect.width * 0.50, y: rect.height * 0.34),
+      control2: CGPoint(x: rect.width * 0.44, y: rect.height * 0.68))
+    path.addLine(to: CGPoint(x: rect.maxX, y: rect.height * 0.68))
+    return path
+  }
+}
+
+private struct StudioLetterConstellation: Shape {
+  func path(in rect: CGRect) -> Path {
+    var path = Path()
+    let points = [
+      CGPoint(x: rect.minX, y: rect.height * 0.28),
+      CGPoint(x: rect.width * 0.24, y: rect.height * 0.55),
+      CGPoint(x: rect.width * 0.47, y: rect.height * 0.22),
+      CGPoint(x: rect.width * 0.69, y: rect.height * 0.64),
+      CGPoint(x: rect.maxX, y: rect.height * 0.34),
+    ]
+    path.move(to: points[0])
+    for point in points.dropFirst() { path.addLine(to: point) }
     return path
   }
 }

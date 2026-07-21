@@ -36,6 +36,7 @@ struct CareerCoachView: View {
             }
           } label: {
             Image(systemName: "ellipsis.circle")
+              .accessibilityLabel("Conversation options")
           }
         }
       }

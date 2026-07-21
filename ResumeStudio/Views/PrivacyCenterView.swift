@@ -8,6 +8,8 @@ struct PrivacyCenterView: View {
   @AppStorage(CareerPrivacySetting.keepHistoryKey) private var keepHistory = true
   @AppStorage(CareerPrivacySetting.onDeviceAIKey) private var onDeviceAIEnabled = true
   @AppStorage(CareerPrivacySetting.connectedFallbackKey) private var connectedFallbackEnabled = false
+  @AppStorage(CareerPrivacySetting.opportunityMonitoringKey)
+  private var opportunityMonitoringEnabled = true
   @AppStorage(ProductInsights.enabledKey) private var productInsightsEnabled = false
   @State private var shareBundle: PrivacyExportBundle?
   @State private var confirmsReset = false
@@ -45,6 +47,12 @@ struct PrivacyCenterView: View {
         Text("Only aggregate counters, plan, AI route and app version are shared—never identity, document content, job details, URLs or a persistent device ID.")
           .font(.caption).foregroundStyle(Theme.mutedInk)
         Link("Data-collection summary", destination: ResumeStudioLinks.dataCollection)
+      }
+
+      Section("Opportunity Shield") {
+        Toggle("Refresh saved public listings", isOn: $opportunityMonitoringEnabled)
+        Text("When enabled, ResumeStudio rechecks up to four due saved-job URLs when the app returns online, no more than once per URL each day. The website can see your network address and ResumeStudio user agent. Résumé and personal-profile data are never sent with the request.")
+          .font(.caption).foregroundStyle(Theme.mutedInk)
       }
 
       Section("Never included in writing requests") {

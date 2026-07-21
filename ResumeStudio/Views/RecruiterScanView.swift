@@ -102,7 +102,7 @@ struct RecruiterScanView: View {
             .eyebrow()
             .foregroundStyle(Theme.mutedInk)
           Text("7.4 seconds")
-            .font(Theme.display(58))
+            .displayFont(58)
             .foregroundStyle(Theme.ink)
           Text("That is how long a recruiter's first pass over a résumé lasts, measured with eye-tracking. Almost all of it lands on six data points.")
             .font(.subheadline)
@@ -284,6 +284,12 @@ struct RecruiterScanView: View {
           }
         }
         .padding(.vertical, 6)
+        // The ring carries the score visually and the number sits inside it, so
+        // read as separate elements this announces a bare "72" with no unit and
+        // no verdict. Collapse the whole hero into one score reading.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("First-impression score")
+        .accessibilityValue("\(report.score) out of 100. \(report.verdict). \(report.verdictDetail)")
       }
 
       if let repairSummary {
@@ -703,7 +709,7 @@ private struct RecruiterScanRepairView: View {
         .tracking(1.2)
         .foregroundStyle(original.accent.color)
       Text("Make every second count.")
-        .font(Theme.display(32))
+        .displayFont(32)
         .foregroundStyle(Theme.heroInk)
       Text("Review the prepared wording, add the facts only you know, and apply all confirmed changes together.")
         .font(.subheadline)

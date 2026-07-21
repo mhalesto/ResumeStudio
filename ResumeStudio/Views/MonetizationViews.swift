@@ -93,7 +93,7 @@ struct PlansView: View {
     VStack(alignment: .leading, spacing: 12) {
       Text("A PLAN FOR EVERY JOB SEARCH").eyebrow().foregroundStyle(.orange)
       Text("Pay for momentum,\nnot basic access.")
-        .font(Theme.display(36))
+        .displayFont(36)
         .foregroundStyle(Theme.heroInk)
       Text("Creating and exporting a professional résumé stays free. Upgrade for more AI, every design and hosted feedback.")
         .font(.subheadline)
@@ -263,7 +263,7 @@ struct PlansView: View {
 struct PlanLockBadge: View {
   var body: some View {
     Image(systemName: "crown.fill")
-      .font(.system(size: 12, weight: .semibold))
+      .scaledFont(12, relativeTo: .caption, weight: .semibold)
       .foregroundStyle(
         LinearGradient(
           colors: [

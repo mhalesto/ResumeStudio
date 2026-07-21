@@ -4,7 +4,7 @@ import UniformTypeIdentifiers
 
 /// Manages the supporting documents printed after the last page of the résumé.
 struct ResumeAttachmentsView: View {
-  @EnvironmentObject private var store: ResumeStore
+  @Binding var document: ResumeDocument
 
   @State private var pickedPhotos: [PhotosPickerItem] = []
   @State private var isImportingFile = false
@@ -15,8 +15,8 @@ struct ResumeAttachmentsView: View {
   /// inside `body` would re-decode every payload on every keystroke in a title.
   @State private var thumbnails: [UUID: UIImage] = [:]
 
-  private var accent: Color { store.document.accent.color }
-  private var attachments: [ResumeAttachment] { store.document.attachments }
+  private var accent: Color { document.accent.color }
+  private var attachments: [ResumeAttachment] { document.attachments }
 
   var body: some View {
     Form {
@@ -38,7 +38,7 @@ struct ResumeAttachmentsView: View {
         ToolbarItemGroup(placement: .topBarTrailing) {
           EditButton()
           NavigationLink {
-            ResumePreviewView(document: store.document)
+            ResumePreviewView(document: document)
           } label: {
             Text("Preview").font(.subheadline.weight(.semibold))
           }
@@ -79,7 +79,7 @@ struct ResumeAttachmentsView: View {
     Section {
       VStack(alignment: .leading, spacing: 10) {
         Image(systemName: "paperclip")
-          .font(.system(size: 26))
+          .scaledFont(26, relativeTo: .title2)
           .foregroundStyle(accent)
         Text("Add certificates and supporting pages")
           .font(.headline)
@@ -96,7 +96,7 @@ struct ResumeAttachmentsView: View {
 
   private var attachmentRows: some View {
     Section {
-      ForEach($store.document.attachments) { $attachment in
+      ForEach($document.attachments) { $attachment in
         NavigationLink {
           AttachmentDetailView(attachment: $attachment, accent: accent)
         } label: {
@@ -105,11 +105,11 @@ struct ResumeAttachmentsView: View {
       }
       .onDelete { offsets in
         for index in offsets {
-          thumbnails[store.document.attachments[index].id] = nil
+          thumbnails[document.attachments[index].id] = nil
         }
-        store.document.attachments.remove(atOffsets: offsets)
+        document.attachments.remove(atOffsets: offsets)
       }
-      .onMove { store.document.attachments.move(fromOffsets: $0, toOffset: $1) }
+      .onMove { document.attachments.move(fromOffsets: $0, toOffset: $1) }
     } header: {
       Text("Attached files")
     } footer: {
@@ -164,10 +164,10 @@ struct ResumeAttachmentsView: View {
 
   private var summarySection: some View {
     Section {
-      LabeledContent("Pages added", value: "\(store.document.attachmentPageCount)")
+      LabeledContent("Pages added", value: "\(document.attachmentPageCount)")
       LabeledContent(
         "Total size",
-        value: Int64(store.document.attachmentByteCount).formatted(.byteCount(style: .file))
+        value: Int64(document.attachmentByteCount).formatted(.byteCount(style: .file))
       )
     } footer: {
       Text(
@@ -223,7 +223,7 @@ struct ResumeAttachmentsView: View {
 
   private var isFull: Bool {
     attachments.count >= ResumeAttachmentLimits.maxAttachments
-      || store.document.attachmentByteCount >= ResumeAttachmentLimits.maxTotalBytes
+      || document.attachmentByteCount >= ResumeAttachmentLimits.maxTotalBytes
   }
 
   /// Changes whenever a payload is added, removed or replaced — but not when a
@@ -297,10 +297,10 @@ struct ResumeAttachmentsView: View {
       throw ResumeAttachmentError.libraryFull
     }
     let attachment = try ResumeAttachmentImporter.make(title: title, from: data)
-    guard store.document.canAcceptAttachment(ofSize: attachment.data.count) else {
+    guard document.canAcceptAttachment(ofSize: attachment.data.count) else {
       throw ResumeAttachmentError.noRoomLeft
     }
-    store.document.attachments.append(attachment)
+    document.attachments.append(attachment)
     thumbnails[attachment.id] = attachment.thumbnail()
   }
 }
@@ -371,7 +371,6 @@ private struct AttachmentDetailView: View {
 
 #Preview {
   NavigationStack {
-    ResumeAttachmentsView()
-      .environmentObject(ResumeStore(initialDocument: .example))
+    ResumeAttachmentsView(document: .constant(.example))
   }
 }

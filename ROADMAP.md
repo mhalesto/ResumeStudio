@@ -97,9 +97,49 @@ Acceptance:
 - Offline state cannot manufacture, extend, or upgrade an entitlement.
 - Reconnection refreshes entitlement and cloud state without discarding offline edits.
 
+## Phase 7 — Accessibility floor
+
+- [x] Give every icon-only control an accessibility label naming its action.
+- [x] Announce scores and progress as a labelled value rather than a bare number:
+  readiness, first-impression, campaign progress, and the delivery-score trend.
+- [x] Add Dynamic Type-aware `scaledFont`/`displayFont` modifiers and move screen
+  titles and pinned copy onto them; `Theme.display(_:)` never scaled, despite
+  its documentation saying it did.
+- [x] Hide decorative artwork from VoiceOver and honour Reduce Motion on the
+  career-hub orbit graphic.
+- [x] Audit the two failures in `Tools/AuditAccessibility.py`, with an opt-out
+  marker that requires a written reason.
+- [x] Teach `Tools/AuditLocalization.py` about accessibility strings, which
+  localize like visible copy and were previously unaudited.
+- [ ] Translate the accessibility strings the localization audit now reports.
+
+Acceptance:
+
+- No control announces itself as a raw SF Symbol name.
+- A score is never spoken as an integer with no unit or subject.
+- `python3 Tools/AuditAccessibility.py` exits zero.
+
+## Phase 8 — Opportunity integrity
+
+- [x] Preserve schema.org JobPosting data from Safari sharing and direct public-page capture.
+- [x] Add an explainable on-device pre-apply report for freshness, employer verification, listing quality, and applicant-safety traps.
+- [x] Let users include an optional recruiter message while keeping it in the local application archive.
+- [x] Record public-page status and repost/change history without treating blocked or ambiguous pages as proof that a role is closed.
+- [x] Refresh a bounded due set when the app returns online and support manual refresh from application details.
+- [x] Add unresolved signals to Today and blend them with résumé fit, deadlines, and warm contacts in Where to Apply.
+
+Acceptance:
+
+- The feature says strong signals, verify first, or high-risk signals; it never claims to prove that a job is real or fake.
+- Payment, money-transfer, cheque/equipment, and premature identity-data language cannot receive a strong verdict.
+- A removed or expired listing is visible before tailoring, and a redirected or blocked page remains explicitly inconclusive or unreachable.
+- Résumé and personal-profile data are never included in public-page checks.
+- Existing saved application archives decode without migration.
+
 ## Quality gates
 
 - `npm run check` passes for Firebase Functions.
+- `python3 Tools/AuditAccessibility.py` reports no unnamed control or pinned copy.
 - Backend route tests cover account deletion and Review Room lifecycle.
 - The iOS test suite passes on the supported simulator runtime.
 - App privacy report and archive validation complete without unresolved issues.

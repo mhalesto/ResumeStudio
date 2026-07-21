@@ -36,7 +36,10 @@ private final class CoverLetterLayout {
   /// Noir and Nocturne write in light ink on a dark sheet; everything the
   /// letter's flow draws goes through these so the pair can swap the whole
   /// palette at one seam.
-  private var darkPaper: Bool { document.template == .noir || document.template == .nocturne }
+  private var darkPaper: Bool {
+    document.template == .noir || document.template == .nocturne
+      || document.template == .terminal || document.template == .constellation
+  }
   private var paper: UIColor {
     darkPaper ? UIColor(red: 0.10, green: 0.11, blue: 0.13, alpha: 1) : .white
   }
@@ -144,7 +147,8 @@ private final class CoverLetterLayout {
     case .zenith, .aperture, .sovereign, .blueprint, .spectrum, .halo, .volta, .obsidian, .radiant,
       .verge, .datum, .pinnacle, .emblem, .cadence, .citadel, .stratus, .mirage,
       .salute, .couture, .medallion, .sable, .terracotta, .lozenge, .circlet, .vogue, .signet,
-      .almanac:
+      .almanac, .kintsugi, .bauhaus, .terminal, .topograph, .passport, .transit, .cutline,
+      .receipt, .constellation, .studioFolio:
       if let ordinal = document.template.advancedOrdinal {
         drawAdvancedHeader(ordinal)
       }
@@ -560,6 +564,10 @@ private final class CoverLetterLayout {
   /// hierarchy, geometry and type while the correspondence stays searchable.
   private func drawAdvancedHeader(_ ordinal: Int) {
     let width = bounds.width - margin * 2
+    if ordinal >= 27 {
+      drawStudioLetterhead(ordinal)
+      return
+    }
     // The Showcase Collection letterheads (17-26) are self-contained, echoing the
     // matching Showcase résumé mastheads; the original seventeen stay untouched.
     if ordinal >= 17 {
@@ -892,6 +900,133 @@ private final class CoverLetterLayout {
       drawText(document.senderHeadline.uppercased(), x: margin, y: 92, width: 350, height: 14, font: .systemFont(ofSize: 8.8, weight: .semibold), color: UIColor.white.withAlphaComponent(0.82))
       drawContact(alignment: .left, y: 121, x: margin, width: 350, color: UIColor.white.withAlphaComponent(0.82))
       cursorY = height + 31
+    }
+  }
+
+  // MARK: - Studio Collection letterheads (ordinals 27-36)
+
+  private func drawStudioLetterhead(_ ordinal: Int) {
+    let cg = context.cgContext
+    let w = bounds.width
+    let width = w - margin * 2
+    let warmPaper = UIColor(red: 0.982, green: 0.963, blue: 0.918, alpha: 1)
+    let gold = UIColor(red: 0.72, green: 0.52, blue: 0.20, alpha: 1)
+
+    switch ordinal {
+    case 27:  // Kintsugi
+      let h: CGFloat = 174
+      warmPaper.setFill(); cg.fill(CGRect(x: 0, y: 0, width: w, height: h))
+      let seam = UIBezierPath()
+      seam.move(to: CGPoint(x: w * 0.67, y: 0)); seam.addLine(to: CGPoint(x: w * 0.63, y: 42)); seam.addLine(to: CGPoint(x: w * 0.70, y: 76)); seam.addLine(to: CGPoint(x: w * 0.65, y: 112)); seam.addLine(to: CGPoint(x: w * 0.72, y: h))
+      seam.lineWidth = 3; gold.setStroke(); seam.stroke()
+      drawText("KINTSUGI / CORRESPONDENCE", x: margin, y: 30, width: 280, height: 13, font: serif(7.8, bold: false), color: gold)
+      drawText(document.senderName, x: margin, y: 52, width: 320, height: 44, font: serif(28, bold: true), color: ink)
+      drawText(document.senderHeadline, x: margin, y: 98, width: 320, height: 16, font: serif(10, bold: false), color: muted)
+      drawContact(alignment: .left, y: 132, x: margin, width: 330)
+      cursorY = h + 27
+
+    case 28:  // Bauhaus
+      let h: CGFloat = 184
+      UIColor(red: 0.97, green: 0.95, blue: 0.90, alpha: 1).setFill(); cg.fill(CGRect(x: 0, y: 0, width: w, height: h))
+      navy.setFill(); cg.fill(CGRect(x: 0, y: 0, width: 50, height: h))
+      accent.setFill(); cg.fillEllipse(in: CGRect(x: w - 140, y: -52, width: 190, height: 190))
+      UIColor(red: 0.94, green: 0.72, blue: 0.16, alpha: 1).setFill(); cg.fillEllipse(in: CGRect(x: 72, y: 29, width: 29, height: 29))
+      drawText("B", x: 8, y: 35, width: 34, height: 38, font: .systemFont(ofSize: 27, weight: .black), color: .white, alignment: .center)
+      drawText(document.senderName, x: 76, y: 70, width: 350, height: 48, font: .systemFont(ofSize: 29, weight: .black), color: ink)
+      drawText(document.senderHeadline.uppercased(), x: 78, y: 121, width: 320, height: 14, font: .systemFont(ofSize: 8.4, weight: .bold), color: accent)
+      drawContact(alignment: .left, y: 151, x: 78, width: 320)
+      cursorY = h + 27
+
+    case 29:  // Terminal
+      let h: CGFloat = 170
+      UIColor(red: 0.055, green: 0.067, blue: 0.075, alpha: 1).setFill(); cg.fill(CGRect(x: 0, y: 0, width: w, height: h))
+      accent.setFill(); for x in [20.0, 34.0, 48.0] { cg.fillEllipse(in: CGRect(x: x, y: 18, width: 7, height: 7)) }
+      UIColor.white.withAlphaComponent(0.12).setFill(); cg.fill(CGRect(x: 18, y: 35, width: w - 36, height: 1))
+      drawText("resume-studio ~ % compose --letter", x: 24, y: 49, width: 360, height: 14, font: .monospacedSystemFont(ofSize: 8.4, weight: .semibold), color: accent)
+      drawText(document.senderName, x: 24, y: 70, width: w - 48, height: 36, font: .monospacedSystemFont(ofSize: 24, weight: .bold), color: .white)
+      drawText("role: \(document.senderHeadline)", x: 24, y: 109, width: w - 48, height: 14, font: .monospacedSystemFont(ofSize: 8.5, weight: .regular), color: UIColor.white.withAlphaComponent(0.68))
+      drawContact(alignment: .left, y: 140, x: 24, width: 360, color: UIColor.white.withAlphaComponent(0.72))
+      cursorY = h + 27
+
+    case 30:  // Topograph
+      let h: CGFloat = 180
+      UIColor(red: 0.965, green: 0.972, blue: 0.947, alpha: 1).setFill(); cg.fill(CGRect(x: 0, y: 0, width: w, height: h))
+      cg.setStrokeColor(accent.withAlphaComponent(0.25).cgColor); cg.setLineWidth(0.8)
+      for inset in stride(from: CGFloat(0), through: 58, by: 9) { cg.strokeEllipse(in: CGRect(x: w - 194 - inset, y: -80 - inset / 2, width: 246 + inset * 2, height: 206 + inset * 2)) }
+      drawText("34°03′S / FIELD NOTE", x: margin, y: 27, width: 220, height: 12, font: .systemFont(ofSize: 7.5, weight: .semibold), color: accent)
+      drawText(document.senderName, x: margin, y: 52, width: 340, height: 42, font: .systemFont(ofSize: 28, weight: .bold), color: ink)
+      drawText(document.senderHeadline, x: margin, y: 96, width: 340, height: 16, font: .systemFont(ofSize: 10, weight: .medium), color: muted)
+      accent.setFill(); cg.fill(CGRect(x: margin, y: 123, width: 70, height: 3))
+      drawContact(alignment: .left, y: 145, x: margin, width: 340)
+      cursorY = h + 27
+
+    case 31:  // Passport
+      let h: CGFloat = 186
+      let green = UIColor(red: 0.12, green: 0.27, blue: 0.24, alpha: 1)
+      green.setFill(); cg.fill(CGRect(x: 0, y: 0, width: w, height: h))
+      cg.setStrokeColor(UIColor.white.withAlphaComponent(0.30).cgColor); cg.setLineWidth(0.8); cg.stroke(CGRect(x: 19, y: 18, width: w - 38, height: h - 36))
+      drawLetterMonogram(centre: CGPoint(x: margin + 40, y: 82), radius: 35, filled: true)
+      let tx = margin + 96
+      drawText("CAREER PASSPORT / APPLICATION", x: tx, y: 35, width: w - tx - margin, height: 13, font: .systemFont(ofSize: 7.5, weight: .bold), color: accent)
+      drawText(document.senderName, x: tx, y: 58, width: w - tx - margin, height: 42, font: .systemFont(ofSize: 24, weight: .bold), color: .white)
+      drawText(document.senderHeadline.uppercased(), x: tx, y: 103, width: w - tx - margin, height: 14, font: .systemFont(ofSize: 8.1, weight: .semibold), color: UIColor.white.withAlphaComponent(0.70))
+      cg.setStrokeColor(accent.cgColor); cg.setLineWidth(1.2); cg.strokeEllipse(in: CGRect(x: w - 124, y: 122, width: 78, height: 38))
+      drawText("VERIFIED", x: w - 124, y: 135, width: 78, height: 11, font: .systemFont(ofSize: 7, weight: .bold), color: accent, alignment: .center)
+      drawContact(alignment: .left, y: 150, x: margin, width: 330, color: UIColor.white.withAlphaComponent(0.72))
+      cursorY = h + 27
+
+    case 32:  // Transit
+      let h: CGFloat = 176
+      UIColor(white: 0.985, alpha: 1).setFill(); cg.fill(CGRect(x: 0, y: 0, width: w, height: h))
+      let route = UIBezierPath(); route.move(to: CGPoint(x: margin, y: 40)); route.addLine(to: CGPoint(x: 180, y: 40)); route.addCurve(to: CGPoint(x: 238, y: 88), controlPoint1: CGPoint(x: 216, y: 40), controlPoint2: CGPoint(x: 208, y: 88)); route.addLine(to: CGPoint(x: w - margin, y: 88)); route.lineWidth = 6; route.lineCapStyle = .round; accent.setStroke(); route.stroke()
+      for point in [CGPoint(x: margin, y: 40), CGPoint(x: 238, y: 88), CGPoint(x: w - margin, y: 88)] { UIColor.white.setFill(); cg.fillEllipse(in: CGRect(x: point.x - 7, y: point.y - 7, width: 14, height: 14)); cg.setStrokeColor(accent.cgColor); cg.setLineWidth(3); cg.strokeEllipse(in: CGRect(x: point.x - 7, y: point.y - 7, width: 14, height: 14)) }
+      drawText("LINE 32 / APPLICATION ROUTE", x: margin, y: 16, width: 250, height: 12, font: .systemFont(ofSize: 7.5, weight: .bold), color: accent)
+      drawText(document.senderName, x: margin, y: 105, width: 350, height: 36, font: .systemFont(ofSize: 26, weight: .bold), color: ink)
+      drawContact(alignment: .right, y: 111, x: w - margin - 175, width: 175)
+      cursorY = h + 27
+
+    case 33:  // Cutline
+      let h: CGFloat = 194
+      UIColor(white: 0.975, alpha: 1).setFill(); cg.fill(CGRect(x: 0, y: 0, width: w, height: h))
+      let slash = UIBezierPath(); slash.move(to: CGPoint(x: w * 0.62, y: 0)); slash.addLine(to: CGPoint(x: w, y: 0)); slash.addLine(to: CGPoint(x: w, y: h)); slash.addLine(to: CGPoint(x: w * 0.48, y: 116)); slash.close(); navy.setFill(); slash.fill()
+      drawText("CUT / CORRESPONDENCE", x: margin, y: 29, width: 240, height: 13, font: .systemFont(ofSize: 7.8, weight: .bold), color: accent)
+      drawText(document.senderName, x: margin, y: 51, width: 330, height: 70, font: serif(38, bold: true), color: ink)
+      drawText(document.senderHeadline.uppercased(), x: margin, y: 126, width: 300, height: 14, font: .systemFont(ofSize: 8.2, weight: .bold), color: accent)
+      drawContact(alignment: .left, y: 157, x: margin, width: 320)
+      cursorY = h + 27
+
+    case 34:  // Receipt
+      let h: CGFloat = 178
+      UIColor(white: 0.985, alpha: 1).setFill(); cg.fill(CGRect(x: 32, y: 0, width: w - 64, height: h))
+      cg.setStrokeColor(accent.withAlphaComponent(0.48).cgColor); cg.setLineWidth(1); cg.setLineDash(phase: 0, lengths: [4, 4]); cg.move(to: CGPoint(x: 46, y: 29)); cg.addLine(to: CGPoint(x: w - 46, y: 29)); cg.move(to: CGPoint(x: 46, y: 140)); cg.addLine(to: CGPoint(x: w - 46, y: 140)); cg.strokePath(); cg.setLineDash(phase: 0, lengths: [])
+      drawText("RESUME STUDIO / APPLICATION DOCKET", x: 48, y: 43, width: w - 96, height: 13, font: .monospacedSystemFont(ofSize: 7.6, weight: .bold), color: accent, alignment: .center)
+      drawText(document.senderName, x: 48, y: 65, width: w - 96, height: 34, font: .monospacedSystemFont(ofSize: 21, weight: .bold), color: ink, alignment: .center)
+      drawText(document.senderHeadline.uppercased(), x: 48, y: 102, width: w - 96, height: 13, font: .monospacedSystemFont(ofSize: 7.8, weight: .regular), color: muted, alignment: .center)
+      drawContact(alignment: .center, y: 120, x: margin, width: width)
+      cursorY = h + 27
+
+    case 35:  // Constellation
+      let h: CGFloat = 190
+      UIColor(red: 0.055, green: 0.067, blue: 0.105, alpha: 1).setFill(); cg.fill(CGRect(x: 0, y: 0, width: w, height: h))
+      let stars = [CGPoint(x: 42, y: 31), CGPoint(x: 142, y: 50), CGPoint(x: 260, y: 27), CGPoint(x: 351, y: 74), CGPoint(x: 510, y: 37), CGPoint(x: 451, y: 132)]
+      let network = UIBezierPath(); network.move(to: stars[0]); for point in stars.dropFirst() { network.addLine(to: point) }; network.lineWidth = 0.8; accent.withAlphaComponent(0.42).setStroke(); network.stroke()
+      for (index, point) in stars.enumerated() { (index.isMultiple(of: 2) ? accent : UIColor.white).setFill(); let d: CGFloat = index.isMultiple(of: 2) ? 6 : 3; cg.fillEllipse(in: CGRect(x: point.x - d / 2, y: point.y - d / 2, width: d, height: d)) }
+      drawText("CONSTELLATION / LETTER", x: margin, y: 54, width: 260, height: 13, font: .systemFont(ofSize: 7.5, weight: .bold), color: accent)
+      drawText(document.senderName, x: margin, y: 78, width: 360, height: 42, font: .systemFont(ofSize: 28, weight: .bold), color: .white)
+      drawText(document.senderHeadline, x: margin, y: 122, width: 350, height: 16, font: .systemFont(ofSize: 9.5, weight: .medium), color: UIColor.white.withAlphaComponent(0.68))
+      drawContact(alignment: .left, y: 151, x: margin, width: 350, color: UIColor.white.withAlphaComponent(0.70))
+      cursorY = h + 27
+
+    default:  // Studio Folio — the collection-wide neutral companion.
+      let h: CGFloat = 176
+      UIColor(white: 0.985, alpha: 1).setFill(); cg.fill(CGRect(x: 0, y: 0, width: w, height: h))
+      cg.setStrokeColor(ink.withAlphaComponent(0.45).cgColor); cg.setLineWidth(0.8); cg.stroke(CGRect(x: 28, y: 24, width: w - 56, height: 126))
+      drawText("RESUME STUDIO / FOLIO 01", x: margin, y: 37, width: width, height: 13, font: .systemFont(ofSize: 7.6, weight: .semibold), color: accent, alignment: .center)
+      drawText(document.senderName, x: margin, y: 62, width: width, height: 38, font: serif(27, bold: true), color: ink, alignment: .center)
+      drawText(document.senderHeadline.uppercased(), x: margin, y: 101, width: width, height: 14, font: .systemFont(ofSize: 8.2, weight: .medium), color: muted, alignment: .center)
+      accent.setFill(); cg.fill(CGRect(x: w / 2 - 24, y: 122, width: 48, height: 2))
+      drawContact(alignment: .center, y: 132, x: margin, width: width)
+      cursorY = h + 27
     }
   }
 
@@ -1355,7 +1490,7 @@ private final class CoverLetterLayout {
 
   private func drawContinuationHeader() {
     if let ordinal = document.template.advancedOrdinal {
-      let dark = [0, 4, 6, 7, 9, 14, 20].contains(ordinal)
+      let dark = [0, 4, 6, 7, 9, 14, 20, 29, 35].contains(ordinal)
       (dark ? ink : accent.withAlphaComponent(0.08)).setFill()
       context.cgContext.fill(CGRect(x: 0, y: 0, width: bounds.width, height: 70))
       accent.setFill()
@@ -1454,6 +1589,10 @@ private final class CoverLetterLayout {
     switch document.template {
     case .classic, .signature, .letterpress, .ivy, .aurelia, .nocturne, .sovereign, .halo:
       serif(10.8, bold: false)
+    case .kintsugi, .cutline:
+      serif(10.8, bold: false)
+    case .terminal, .receipt:
+      .monospacedSystemFont(ofSize: 10.1, weight: .regular)
     default: .systemFont(ofSize: 10.5)
     }
   }

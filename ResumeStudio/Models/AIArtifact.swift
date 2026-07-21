@@ -49,6 +49,7 @@ extension ResumeAIAction {
     case .careerToolkit: "Career toolkit draft"
     case .translateResume: "Translated résumé"
     case .outcomeLearning: "Outcome learning draft"
+    case .negotiationPractice: "Negotiation rehearsal"
     }
   }
 
@@ -64,6 +65,7 @@ extension ResumeAIAction {
     case .careerCoach: "bubble.left.and.bubble.right"
     case .captureJob: "briefcase"
     case .careerToolkit: "sparkles.rectangle.stack"
+    case .negotiationPractice: "person.line.dotted.person.fill"
     }
   }
 }

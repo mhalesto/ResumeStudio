@@ -1,4 +1,6 @@
 import PDFKit
+import PencilKit
+import SwiftUI
 import UIKit
 import XCTest
 
@@ -42,6 +44,7 @@ final class ResumeStudioTests: XCTestCase {
     XCTAssertEqual(ResumeAIAction.importResume.creditCost, 0)
     XCTAssertEqual(ResumeAIAction.improveBullet.creditCost, 1)
     XCTAssertEqual(ResumeAIAction.careerCoach.creditCost, 1)
+    XCTAssertEqual(ResumeAIAction.negotiationPractice.creditCost, 1)
     XCTAssertEqual(ResumeAIAction.writeCoverLetter.creditCost, 3)
     XCTAssertEqual(ResumeAIAction.evaluateInterviewAnswer.creditCost, 3)
     XCTAssertEqual(ResumeAIAction.tailorResume.creditCost, 5)
@@ -152,12 +155,12 @@ final class ResumeStudioTests: XCTestCase {
   }
 
   func testTemplateCatalogueIsDistinct() {
-    XCTAssertEqual(ResumeTemplate.allCases.count, 131)
+    XCTAssertEqual(ResumeTemplate.allCases.count, 140)
 
     // Every template is its own look: no shared names, no shared descriptions.
-    XCTAssertEqual(Set(ResumeTemplate.allCases.map(\.title)).count, 131)
-    XCTAssertEqual(Set(ResumeTemplate.allCases.map(\.subtitle)).count, 131)
-    XCTAssertEqual(Set(ResumeTemplate.allCases.map(\.rawValue)).count, 131)
+    XCTAssertEqual(Set(ResumeTemplate.allCases.map(\.title)).count, 140)
+    XCTAssertEqual(Set(ResumeTemplate.allCases.map(\.subtitle)).count, 140)
+    XCTAssertEqual(Set(ResumeTemplate.allCases.map(\.rawValue)).count, 140)
 
     // The photo-led ones build their header around the portrait. Everything else
     // takes a photo too — it just closes the space up without one.
@@ -168,14 +171,15 @@ final class ResumeStudioTests: XCTestCase {
         .nova, .monarch, .eclipse, .aperture, .gallery, .halo, .orbit, .panorama, .spectrum,
         .zenith, .alcove, .radiant, .zephyr, .vellum,
         .salute, .couture, .medallion, .sable, .terracotta, .circlet, .vogue,
+        .passport, .cutline, .constellation,
       ]
     )
   }
 
   func testAdvancedCollectionAndFreeShowcaseStayIntentional() throws {
     let advanced = ResumeTemplate.allCases.filter { $0.advancedStyle != nil }
-    XCTAssertEqual(advanced.count, 62)
-    XCTAssertEqual(Set(advanced.compactMap { $0.advancedStyle?.ordinal }), Set(0..<62))
+    XCTAssertEqual(advanced.count, 71)
+    XCTAssertEqual(Set(advanced.compactMap { $0.advancedStyle?.ordinal }), Set(0..<71))
 
     let freeAdvanced = Set(advanced).intersection(MonetizationCatalog.freeResumeTemplates)
     XCTAssertEqual(freeAdvanced.count, 22)
@@ -189,7 +193,7 @@ final class ResumeStudioTests: XCTestCase {
         .salute, .lozenge,
       ]
     )
-    XCTAssertEqual(Set(advanced).subtracting(freeAdvanced).count, 40)
+    XCTAssertEqual(Set(advanced).subtracting(freeAdvanced).count, 49)
 
     // The twenty Signature Collection mastheads reach beyond the first thirty-two
     // into constructions 8-15, each addressed explicitly rather than by modulo.
@@ -207,7 +211,10 @@ final class ResumeStudioTests: XCTestCase {
 
     // The ten Showcase mastheads occupy their own constructions, 16-25, and all
     // carry the Showcase tag so they group together in the gallery.
-    let showcase = advanced.filter { ($0.advancedStyle?.ordinal ?? 0) >= 52 }
+    let showcase = advanced.filter {
+      let ordinal = $0.advancedStyle?.ordinal ?? 0
+      return ordinal >= 52 && ordinal < 62
+    }
     XCTAssertEqual(showcase.count, 10)
     for template in showcase {
       let style = try XCTUnwrap(template.advancedStyle)
@@ -217,14 +224,22 @@ final class ResumeStudioTests: XCTestCase {
     }
     XCTAssertEqual(
       ResumeTemplate.allCases.filter { $0.styleTags.contains(.showcase) }.count, 10)
+
+    // Studio is the bespoke collection: one dedicated construction per template,
+    // after the Showcase range, and a gallery filter of its own.
+    let studio = advanced.filter { ($0.advancedStyle?.ordinal ?? 0) >= 62 }
+    XCTAssertEqual(studio.count, 9)
+    XCTAssertEqual(studio.compactMap { $0.advancedStyle?.motif }, Array(26...34))
+    XCTAssertTrue(studio.allSatisfy { $0.styleTags.contains(.studio) })
+    XCTAssertEqual(ResumeTemplate.allCases.filter { $0.styleTags.contains(.studio) }.count, 9)
   }
 
   /// The point of the structural templates: they rearrange the page, not the
-  /// letterhead. Fifty-one of them do, and each does it differently — otherwise they
+  /// letterhead. Sixty of them do, and each does it differently — otherwise they
   /// are just more headers on the same one-column résumé.
   func testStructuralTemplatesActuallyRestructureThePage() {
     let structural = ResumeTemplate.allCases.filter { $0.styleTags.contains(.structured) }
-    XCTAssertEqual(structural.count, 51)
+    XCTAssertEqual(structural.count, 60)
 
     // Every structural template departs from the plain single-column flow...
     for template in structural {
@@ -234,7 +249,7 @@ final class ResumeStudioTests: XCTestCase {
     // No two of them are built the same way.
     XCTAssertEqual(Set(structural.map(\.plan)).count, structural.count)
 
-    // Twenty-five run a column of their own; the ATS check has to warn about exactly
+    // Twenty-seven run a column of their own; the ATS check has to warn about exactly
     // those, since a parser can read two columns out of order.
     XCTAssertEqual(
       structural.filter { $0.plan.hasSideColumn },
@@ -243,6 +258,7 @@ final class ResumeStudioTests: XCTestCase {
         .stockholm, .tandem, .varsity, .prism,
         .aperture, .blueprint, .circuit, .district, .facet, .helix, .lattice, .panorama,
         .quantum, .sentinel, .tessera, .alcove, .palisade,
+        .bauhaus, .passport,
       ]
     )
   }
@@ -563,7 +579,7 @@ final class ResumeStudioTests: XCTestCase {
     }
   }
 
-  /// One glance over the whole release: all 32 résumé pages and all seven
+  /// One glance over the whole advanced catalogue, including Studio résumés and
   /// coordinated letters. Kept as a test attachment so visual regressions can be
   /// reviewed alongside the searchable-PDF assertions.
   func testAdvancedCollectionContactSheets() throws {
@@ -796,6 +812,19 @@ final class ResumeStudioTests: XCTestCase {
       WeeklyCampaignService.progress(
         applications: [application], contacts: [contact], voiceAttempts: [attempt], since: start),
       WeeklyCampaignProgress(applications: 1, networking: 1, practice: 1))
+
+    // A negotiation rehearsal counts as practice too; one from last week does not.
+    let rehearsal = NegotiationPracticeSession(
+      company: "Example", role: "Designer", persona: .formalRecruiter, difficulty: .realistic,
+      goal: "Raise base", offerSummary: "Offer: ZAR 100 base", messages: [])
+    var oldRehearsal = rehearsal
+    oldRehearsal.id = UUID()
+    oldRehearsal.createdAt = start.addingTimeInterval(-86_400)
+    XCTAssertEqual(
+      WeeklyCampaignService.progress(
+        applications: [application], contacts: [contact], voiceAttempts: [attempt],
+        negotiationSessions: [rehearsal, oldRehearsal], since: start),
+      WeeklyCampaignProgress(applications: 1, networking: 1, practice: 2))
   }
 
   /// A red square, encoded as a JPEG — enough for the renderer to draw and crop.
@@ -842,7 +871,7 @@ final class ResumeStudioTests: XCTestCase {
   }
 
   func testCoverLetterCatalogueIsDistinct() {
-    XCTAssertEqual(CoverLetterTemplate.allCases.count, 55)
+    XCTAssertEqual(CoverLetterTemplate.allCases.count, 65)
 
     // The matched letters name the résumé they were drawn to sit beside.
     XCTAssertEqual(
@@ -856,9 +885,18 @@ final class ResumeStudioTests: XCTestCase {
         .mirage,
         .salute, .couture, .medallion, .sable, .terracotta, .lozenge, .circlet, .vogue, .signet,
         .almanac,
+        .kintsugi, .bauhaus, .terminal, .topograph, .passport, .transit, .cutline, .receipt,
+        .constellation,
       ]
     )
-    XCTAssertEqual(CoverLetterTemplate.allCases.compactMap(\.advancedOrdinal), Array(0..<27))
+    XCTAssertEqual(CoverLetterTemplate.allCases.compactMap(\.advancedOrdinal), Array(0..<37))
+    let studioLetters = CoverLetterTemplate.allCases.filter { $0.styleTags.contains(.studio) }
+    let studioResumes = Set(
+      ResumeTemplate.allCases.filter { $0.styleTags.contains(.studio) }
+    )
+    XCTAssertEqual(studioLetters.count, 10)
+    XCTAssertEqual(Set(studioLetters.compactMap(\.pairsWith)), studioResumes)
+    XCTAssertEqual(studioLetters.filter { $0.pairsWith == nil }, [.studioFolio])
     XCTAssertEqual(
       Set(CoverLetterTemplate.allCases.map(\.title)).count,
       CoverLetterTemplate.allCases.count
@@ -1506,6 +1544,55 @@ final class ResumeStudioTests: XCTestCase {
     let migrated = try JSONDecoder().decode(ResumeDocument.self, from: Data(legacy.utf8))
     XCTAssertEqual(migrated.attachments, [])
     XCTAssertEqual(migrated.attachmentPageCount, 0)
+    XCTAssertNil(migrated.signature)
+  }
+
+  func testSignatureSurvivesARoundTripAndPrintsWithoutAddingAPage() throws {
+    let points = [
+      PKStrokePoint(
+        location: CGPoint(x: 12, y: 54), timeOffset: 0, size: CGSize(width: 3, height: 3),
+        opacity: 1, force: 1, azimuth: 0, altitude: .pi / 2),
+      PKStrokePoint(
+        location: CGPoint(x: 55, y: 14), timeOffset: 0.1, size: CGSize(width: 3, height: 3),
+        opacity: 1, force: 1, azimuth: 0, altitude: .pi / 2),
+      PKStrokePoint(
+        location: CGPoint(x: 104, y: 45), timeOffset: 0.2, size: CGSize(width: 3, height: 3),
+        opacity: 1, force: 1, azimuth: 0, altitude: .pi / 2),
+    ]
+    let drawing = PKDrawing(strokes: [
+      PKStroke(
+        ink: PKInk(.pen, color: .systemBlue),
+        path: PKStrokePath(controlPoints: points, creationDate: Date())
+      )
+    ])
+
+    let unsignedData = try ResumePDFRenderer.render(document: .example)
+    var signed = ResumeDocument.example
+    signed.signature = ResumeSignature(
+      drawingData: drawing.dataRepresentation(),
+      pageIndex: 99, // A stale choice is clamped to the final résumé page.
+      placement: .lowerCenter,
+      widthPoints: 144
+    )
+
+    let decoded = try JSONDecoder().decode(
+      ResumeDocument.self, from: JSONEncoder().encode(signed))
+    XCTAssertEqual(decoded.signature, signed.signature)
+
+    let unsignedPDF = try XCTUnwrap(PDFDocument(data: unsignedData))
+    let signedPDF = try XCTUnwrap(PDFDocument(data: ResumePDFRenderer.render(document: signed)))
+    XCTAssertEqual(signedPDF.pageCount, unsignedPDF.pageCount)
+    XCTAssertEqual(
+      (0..<signedPDF.pageCount).compactMap { signedPDF.page(at: $0)?.string }.joined(),
+      (0..<unsignedPDF.pageCount).compactMap { unsignedPDF.page(at: $0)?.string }.joined()
+    )
+
+    let last = signedPDF.pageCount - 1
+    let size = CGSize(width: 238, height: 337)
+    XCTAssertNotEqual(
+      signedPDF.page(at: last)?.thumbnail(of: size, for: .mediaBox).pngData(),
+      unsignedPDF.page(at: last)?.thumbnail(of: size, for: .mediaBox).pngData()
+    )
   }
 
   func testAttachmentImportCompressesImagesAndRejectsJunk() throws {
@@ -2182,6 +2269,151 @@ final class ResumeStudioTests: XCTestCase {
     XCTAssertEqual(reloaded.aiRevisions.first?.before, "Original")
     XCTAssertEqual(reloaded.reviewRequests.first?.comments.first?.remoteID, "remote-comment-1")
     XCTAssertTrue(reloaded.reviewRequests.first?.comments.first?.isResolved == true)
+  }
+
+  func testNegotiationRehearsalSurvivesReloadAndLegacyArchivesStillDecode() throws {
+    let url = FileManager.default.temporaryDirectory
+      .appendingPathComponent("negotiation-practice-\(UUID().uuidString).json")
+    defer { try? FileManager.default.removeItem(at: url) }
+
+    var session = NegotiationPracticeSession(
+      company: "Example Labs", role: "Director", persona: .directHiringManager,
+      difficulty: .firm, goal: "Add a signing bonus", offerSummary: "Offer: ZAR 1000000 base",
+      messages: [
+        NegotiationSessionMessage(kind: .counterpart, content: "Where did you land on the offer?"),
+        NegotiationSessionMessage(kind: .user, content: "I would like to discuss the base."),
+        NegotiationSessionMessage(kind: .nudge, content: "Anchor with a number, not a feeling."),
+      ])
+    let store = CareerIntelligenceStore(fileURL: url)
+    store.upsert(session)
+    XCTAssertFalse(store.negotiationSessions.first?.isCompleted ?? true)
+
+    session.debrief = NegotiationDebrief(
+      outcomeSummary: "Secured a conversation about base.",
+      strengths: ["Stayed calm"], improvements: ["State a number"],
+      strongerLines: ["Based on my verified delivery record, I am looking for 1.1M."],
+      tacticsObserved: ["Calibrated question"], missedOpportunities: ["Comfortable silence"])
+    store.upsert(session)
+
+    let reloaded = CareerIntelligenceStore(fileURL: url)
+    XCTAssertEqual(reloaded.negotiationSessions.count, 1)
+    XCTAssertEqual(reloaded.negotiationSessions.first?.messages.count, 3)
+    XCTAssertEqual(reloaded.negotiationSessions.first?.messages.map(\.kind), [.counterpart, .user, .nudge])
+    XCTAssertEqual(reloaded.negotiationSessions.first?.persona, .directHiringManager)
+    XCTAssertEqual(reloaded.negotiationSessions.first?.debrief?.tacticsObserved, ["Calibrated question"])
+    XCTAssertTrue(reloaded.negotiationSessions.first?.isCompleted ?? false)
+
+    reloaded.deleteNegotiationSession(session.id)
+    XCTAssertTrue(reloaded.negotiationSessions.isEmpty)
+    XCTAssertTrue(CareerIntelligenceStore(fileURL: url).negotiationSessions.isEmpty)
+
+    // An archive written before rehearsals existed must still load cleanly.
+    let legacy = """
+      {"evidence":[],"contacts":[],"networkingDrafts":[],"offers":[],
+       "reviewRequests":[],"voiceAttempts":[],"preferredMarket":"southAfrica"}
+      """
+    try Data(legacy.utf8).write(to: url)
+    XCTAssertTrue(CareerIntelligenceStore(fileURL: url).negotiationSessions.isEmpty)
+  }
+
+  /// Renders the rehearsal screen's setup phase — seeded offer preselected,
+  /// history showing both a reviewed and a resumable session — and attaches the
+  /// PNG for visual review, the same way the template render tests do.
+  @MainActor func testNegotiationRehearsalScreenRendersItsSetupAndHistory() throws {
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+
+    let careerStore = CareerIntelligenceStore(fileURL: root.appendingPathComponent("career.json"))
+    let offer = JobOffer(
+      company: "Aurora Analytics", role: "Senior Data Engineer", currencyCode: "ZAR",
+      baseSalary: 980_000, bonus: 98_000, equitySummary: "", benefits: "Medical aid, 25 leave days",
+      workStyle: "Hybrid", commuteMinutes: 40, growthRating: 4, cultureRating: 4,
+      notes: "Verbal offer, written version promised Friday", deadline: nil,
+      negotiationDraft: "", signingBonus: 40_000, leaveDays: 25)
+    careerStore.upsert(offer)
+    careerStore.upsert(NegotiationPracticeSession(
+      offerID: offer.id, company: "Aurora Analytics", role: "Senior Data Engineer",
+      persona: .directHiringManager, difficulty: .firm, goal: "Add a signing bonus",
+      offerSummary: offer.negotiationSummary,
+      messages: [NegotiationSessionMessage(kind: .counterpart, content: "Where did you land?")],
+      debrief: NegotiationDebrief(
+        outcomeSummary: "Secured a written follow-up on the signing bonus.",
+        strengths: ["Anchored early"], improvements: ["Hold the silence"],
+        strongerLines: [], tacticsObserved: ["Anchoring"], missedOpportunities: [])))
+    careerStore.upsert(NegotiationPracticeSession(
+      company: "Northwind Retail", role: "Platform Lead", persona: .warmHRPartner,
+      difficulty: .realistic, goal: "Move the start date out by a month",
+      offerSummary: "Offer: ZAR 700000 base",
+      messages: [NegotiationSessionMessage(kind: .counterpart, content: "Thanks for making time today.")]))
+
+    let screen = NavigationStack {
+      NegotiationPracticeView(offerID: offer.id)
+    }
+    .environmentObject(ResumeStore(
+      fileURL: root.appendingPathComponent("resume.json"), initialDocument: .example))
+    .environmentObject(careerStore)
+    .environmentObject(ApplicationStore(fileURL: root.appendingPathComponent("apps.json")))
+
+    // ImageRenderer cannot draw NavigationStack or ScrollView content, and a
+    // detached UIWindow never commits — the view must live in a window attached
+    // to the host app's real scene before drawHierarchy sees anything.
+    let scene = try XCTUnwrap(
+      UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+    let window = UIWindow(windowScene: scene)
+    window.frame = CGRect(x: 0, y: 0, width: 402, height: 874)
+    window.rootViewController = UIHostingController(rootView: screen)
+    window.isHidden = false
+    window.rootViewController?.view.layoutIfNeeded()
+    RunLoop.main.run(until: Date().addingTimeInterval(0.7))
+
+    func snapshot(_ name: String) {
+      let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+        window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+      }
+      let attachment = XCTAttachment(image: image)
+      attachment.name = name
+      attachment.lifetime = .keepAlways
+      add(attachment)
+    }
+    snapshot("negotiation-rehearsal-setup")
+
+    func scrollView(in view: UIView) -> UIScrollView? {
+      if let scroll = view as? UIScrollView { return scroll }
+      for child in view.subviews { if let found = scrollView(in: child) { return found } }
+      return nil
+    }
+    if let scroll = scrollView(in: window) {
+      scroll.setContentOffset(
+        CGPoint(x: 0, y: max(0, scroll.contentSize.height - scroll.bounds.height)), animated: false)
+      RunLoop.main.run(until: Date().addingTimeInterval(0.4))
+      snapshot("negotiation-rehearsal-history")
+    }
+    window.isHidden = true
+  }
+
+  func testNegotiationTurnDecodesBothExchangeAndDebriefShapes() throws {
+    let exchange = """
+      {"reply":"Our band tops out below that, but tell me more.","coachingNudge":"Ask what the band is.",
+       "conversationComplete":false,"outcomeSummary":"","strengths":[],"improvements":[],
+       "strongerLines":[],"tacticsObserved":[],"missedOpportunities":[]}
+      """
+    let exchangeTurn = try JSONDecoder().decode(AINegotiationTurn.self, from: Data(exchange.utf8))
+    XCTAssertEqual(exchangeTurn.coachingNudge, "Ask what the band is.")
+    XCTAssertFalse(exchangeTurn.conversationComplete)
+
+    let debrief = """
+      {"reply":"","coachingNudge":"","conversationComplete":true,
+       "outcomeSummary":"You secured a review of the base.",
+       "strengths":["Used evidence"],"improvements":["Slow down"],
+       "strongerLines":["I need 1.1M to say yes today."],
+       "tacticsObserved":["Anchoring"],"missedOpportunities":["Trading not conceding"]}
+      """
+    let debriefTurn = try JSONDecoder().decode(AINegotiationTurn.self, from: Data(debrief.utf8))
+    XCTAssertTrue(debriefTurn.conversationComplete)
+    XCTAssertEqual(debriefTurn.tacticsObserved, ["Anchoring"])
+    XCTAssertEqual(debriefTurn.strongerLines.count, 1)
   }
 
   func testOfferComparisonIncludesCashBenefitsAndRealCosts() {

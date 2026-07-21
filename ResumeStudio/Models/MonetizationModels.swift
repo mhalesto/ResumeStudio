@@ -113,7 +113,8 @@ extension ResumeAIAction {
     switch self {
     case .importResume:
       0
-    case .improveBullet, .writeProfile, .suggestCompetencies, .careerCoach, .outcomeLearning:
+    case .improveBullet, .writeProfile, .suggestCompetencies, .careerCoach, .outcomeLearning,
+      .negotiationPractice:
       1
     case .analyzeJob, .writeCoverLetter, .gradeInterviewAssessment,
       .captureJob, .evaluateInterviewAnswer, .careerToolkit:

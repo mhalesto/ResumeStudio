@@ -190,6 +190,8 @@ struct ResumeQuickEditSheet: View {
         } else {
           ZStack {
             accent.opacity(0.12)
+            // a11y-fixed-size: initials stand in for a portrait inside a fixed
+            // avatar circle — they are a glyph, and scaling them overflows it.
             Text(draft.initials)
               .font(.system(size: 46, weight: .semibold, design: .rounded))
               .foregroundStyle(accent)

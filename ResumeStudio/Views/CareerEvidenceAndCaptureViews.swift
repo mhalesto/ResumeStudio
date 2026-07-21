@@ -131,7 +131,7 @@ private struct VaultHero: View {
       VStack(alignment: .leading, spacing: 7) {
         Text("THE FACTS BEHIND YOUR STORY").eyebrow().foregroundStyle(accent)
         Text("Your career memory")
-          .font(Theme.display(31)).foregroundStyle(Theme.heroInk)
+          .displayFont(31).foregroundStyle(Theme.heroInk)
         Text("\(verifiedCount) verified · \(totalCount) total")
           .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.heroMutedInk)
       }.padding(22)
@@ -156,7 +156,12 @@ private struct EvidenceRow: View {
       VStack(alignment: .leading, spacing: 4) {
         HStack {
           Text(item.title.nilIfBlank ?? String(localized: item.kind.title)).font(.headline).foregroundStyle(Theme.ink)
-          if item.isVerified { Image(systemName: "checkmark.seal.fill").font(.caption).foregroundStyle(.green) }
+          // The only place the verified state appears — no caption repeats it,
+          // so without a name it is a green tick that VoiceOver skips.
+          if item.isVerified {
+            Image(systemName: "checkmark.seal.fill").font(.caption).foregroundStyle(.green)
+              .accessibilityLabel("Verified")
+          }
         }
         Text(item.detail).font(.subheadline).foregroundStyle(Theme.inkSoft).lineLimit(3)
         if !item.source.isBlank { Text(item.source).font(.caption).foregroundStyle(Theme.mutedInk) }
@@ -238,6 +243,9 @@ struct JobCaptureView: View {
   @Environment(\.dismiss) private var dismiss
   @State private var sourceURL = ""
   @State private var content = ""
+  @State private var structuredPosting: String?
+  @State private var recruiterMessage = ""
+  @State private var pageInspection: OpportunityPageInspection?
   @State private var captured: AIJobCapture?
   @State private var isWorking = false
   @State private var errorMessage: String?
@@ -256,6 +264,23 @@ struct JobCaptureView: View {
           && existing.role.caseInsensitiveCompare(captured.role) == .orderedSame
           && existing.company.caseInsensitiveCompare(captured.company) == .orderedSame)
     }
+  }
+
+  private var opportunitySignal: OpportunitySignalReport? {
+    guard let captured else { return nil }
+    return OpportunityShieldService.analyze(
+      role: captured.role,
+      company: captured.company,
+      location: captured.location,
+      salary: captured.salary,
+      responsibilities: captured.responsibilities,
+      requirements: captured.requirements,
+      content: content,
+      sourceURL: captured.sourceURL.nilIfBlank ?? sourceURL,
+      structuredPosting: structuredPosting,
+      recruiterMessage: recruiterMessage,
+      pageInspection: pageInspection
+    )
   }
 
   var body: some View {
@@ -293,6 +318,21 @@ struct JobCaptureView: View {
           JobSpecImportButton(jobDescription: $content, errorMessage: $errorMessage)
         }.padding(18).cardSurface()
 
+        DisclosureGroup {
+          TextEditor(text: $recruiterMessage)
+            .frame(minHeight: 90)
+            .padding(8)
+            .background(Theme.muted, in: RoundedRectangle(cornerRadius: 14))
+          Text("Optional. Add the recruiter's message or contact details to check for payment, sensitive-data, messaging-only and free-email signals. It stays in this application archive.")
+            .font(.caption)
+            .foregroundStyle(Theme.mutedInk)
+        } label: {
+          Label("Recruiter message or contact", systemImage: "message.badge.shield.fill")
+            .font(.headline)
+        }
+        .padding(18)
+        .cardSurface()
+
         Button { Task { await analyse() } } label: {
           HStack {
             if isWorking { ProgressView().tint(.white) }
@@ -311,6 +351,13 @@ struct JobCaptureView: View {
             get: { captured! },
             set: { captured = $0 }
           ), accent: resumeStore.document.accent.color)
+        }
+
+        if let opportunitySignal {
+          OpportunityShieldCard(
+            report: opportunitySignal,
+            accent: resumeStore.document.accent.color
+          )
         }
 
         if let captured {
@@ -358,6 +405,7 @@ struct JobCaptureView: View {
     guard let shared = await SharedJobInbox.consumeOffMainThread() else { return }
     sourceURL = shared.url
     content = shared.bestAvailableText
+    structuredPosting = shared.posting
     remainingShared = await SharedJobInbox.pendingCountOffMainThread()
     // Fetching the page from here only ever sees what a signed-out visitor sees,
     // so it stays the last resort — the share extension has already read the
@@ -369,14 +417,38 @@ struct JobCaptureView: View {
 
   @MainActor private func loadPage() async {
     isWorking = true; errorMessage = nil
-    do { content = try await JobCaptureService.text(from: sourceURL) }
+    do {
+      let page = try await JobCaptureService.page(from: sourceURL)
+      content = page.text
+      structuredPosting = page.structuredPosting
+      pageInspection = OpportunityPageInspection(
+        status: .inconclusive,
+        checkedAt: Date(),
+        finalURL: page.finalURL,
+        httpStatus: page.httpStatus,
+        readableText: page.text,
+        structuredPosting: page.structuredPosting
+      )
+    }
     catch { errorMessage = error.localizedDescription }
     isWorking = false
   }
 
   @MainActor private func analyse() async {
     isWorking = true; errorMessage = nil; didCreate = false
-    do { captured = try await ResumeAIService.shared.captureJob(content: content, sourceURL: sourceURL) }
+    do {
+      let result = try await ResumeAIService.shared.captureJob(content: content, sourceURL: sourceURL)
+      captured = result
+      let effectiveURL = result.sourceURL.nilIfBlank ?? sourceURL
+      if !effectiveURL.isBlank {
+        pageInspection = await JobCaptureService.inspect(
+          rawURL: effectiveURL,
+          expectedRole: result.role,
+          expectedCompany: result.company
+        )
+        structuredPosting = pageInspection?.structuredPosting ?? structuredPosting
+      }
+    }
     catch { errorMessage = error.localizedDescription }
     isWorking = false
   }
@@ -395,7 +467,10 @@ struct JobCaptureView: View {
       capturedOpportunity: CapturedJobSnapshot(
         location: result.location, salary: result.salary, closingDate: result.closingDate,
         responsibilities: result.responsibilities, requirements: result.requirements,
-        warnings: result.warnings, originalContent: content
+        warnings: result.warnings, originalContent: content,
+        structuredPosting: structuredPosting,
+        recruiterMessage: recruiterMessage.nilIfBlank,
+        opportunitySignal: opportunitySignal
       ),
       deadline: deadline,
       activities: [ApplicationActivity(
@@ -641,7 +716,7 @@ struct PremiumFeatureHero: View {
       Image(systemName: icon).font(.system(size: 106, weight: .thin)).foregroundStyle(accent.opacity(0.22)).offset(x: 220, y: -28)
       VStack(alignment: .leading, spacing: 8) {
         Text(eyebrow).eyebrow().foregroundStyle(accent)
-        Text(title).font(Theme.display(31)).foregroundStyle(Theme.heroInk).frame(maxWidth: 380, alignment: .leading)
+        Text(title).displayFont(31).foregroundStyle(Theme.heroInk).frame(maxWidth: 380, alignment: .leading)
         Text(subtitle).font(.subheadline).foregroundStyle(Theme.heroMutedInk).frame(maxWidth: 400, alignment: .leading)
       }.padding(22)
     }

@@ -38,7 +38,7 @@ struct CalibrationView: View {
     VStack(alignment: .leading, spacing: 8) {
       Text("WHAT YOUR HISTORY SHOWS").eyebrow().foregroundStyle(accent)
       Text("The parts worth hearing")
-        .font(Theme.display(30))
+        .displayFont(30)
         .foregroundStyle(Theme.ink)
       Text("""
         Most résumé tools only tell you what is going well. This one compares the \

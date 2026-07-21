@@ -36,6 +36,11 @@ struct ResumeDocument: Codable, Equatable, Hashable {
   /// an absent key decodes to none. See `ResumeAttachment`.
   var attachments: [ResumeAttachment]
 
+  /// An optional hand-drawn mark over one résumé page. Stored as PencilKit
+  /// vectors so it stays editable and prints sharply; older drafts simply
+  /// decode this absent key as unsigned.
+  var signature: ResumeSignature?
+
   var suggestedFilename: String {
     let source = personal.fullName.trimmingCharacters(in: .whitespacesAndNewlines)
     let base = source.isEmpty ? "Resume" : "\(source) Resume"
@@ -221,6 +226,7 @@ struct ResumeDocument: Codable, Equatable, Hashable {
     case isPhotoVisible
     case layout
     case attachments
+    case signature
   }
 
   init(
@@ -238,7 +244,8 @@ struct ResumeDocument: Codable, Equatable, Hashable {
     photoCrop: PhotoCrop? = nil,
     isPhotoVisible: Bool = true,
     layout: ResumeLayoutSettings = .standard,
-    attachments: [ResumeAttachment] = []
+    attachments: [ResumeAttachment] = [],
+    signature: ResumeSignature? = nil
   ) {
     self.schemaVersion = schemaVersion
     self.personal = personal
@@ -255,6 +262,7 @@ struct ResumeDocument: Codable, Equatable, Hashable {
     self.isPhotoVisible = isPhotoVisible
     self.layout = layout
     self.attachments = attachments
+    self.signature = signature
   }
 
   init(from decoder: Decoder) throws {
@@ -277,6 +285,7 @@ struct ResumeDocument: Codable, Equatable, Hashable {
     layout.normalize()
     attachments =
       try container.decodeIfPresent([ResumeAttachment].self, forKey: .attachments) ?? []
+    signature = try container.decodeIfPresent(ResumeSignature.self, forKey: .signature)
   }
 
   var photoImage: UIImage? {
@@ -481,6 +490,7 @@ enum ResumeAccent: String, CaseIterable, Codable, Identifiable {
 }
 
 enum TemplateStyleTag: String, CaseIterable, Identifiable, Hashable {
+  case studio
   case showcase
   case structured
   case modern
@@ -495,6 +505,9 @@ enum TemplateStyleTag: String, CaseIterable, Identifiable, Hashable {
 
   var title: LocalizedStringResource {
     switch self {
+    // The most art-directed application systems: every résumé has a bespoke
+    // matching letterhead rather than sharing a parameterised construction.
+    case .studio: "Studio"
     // The Showcase Collection: the portfolio-grade, "goes a bit beyond" designs —
     // monogram badges, vertical names, dot ratings. Kept first so someone after a
     // standout résumé finds them in one tap.
@@ -655,6 +668,17 @@ enum ResumeTemplate: String, CaseIterable, Codable, Identifiable {
   case vogue
   case signet
   case almanac
+  // The Studio Collection: nine deliberately unrelated visual systems rather
+  // than variants of one masthead. Each also has a coordinated cover letter.
+  case kintsugi
+  case bauhaus
+  case terminal
+  case topograph
+  case passport
+  case transit
+  case cutline
+  case receipt
+  case constellation
 
   var id: String { rawValue }
 
@@ -668,6 +692,8 @@ enum ResumeTemplate: String, CaseIterable, Codable, Identifiable {
       .nova, .monarch, .eclipse, .aperture, .gallery, .halo, .orbit, .panorama, .spectrum,
       .zenith, .alcove, .radiant, .zephyr, .vellum,
       .salute, .couture, .medallion, .sable, .terracotta, .circlet, .vogue:
+      true
+    case .passport, .cutline, .constellation:
       true
     default: false
     }
@@ -1010,6 +1036,46 @@ enum ResumeTemplate: String, CaseIterable, Codable, Identifiable {
     case .almanac:
       // Infographic fact strip; carded sections and dot-rated strengths.
       TemplatePlan(competencies: .dots, sectionChrome: .card, skillsFirst: true)
+    // The Studio Collection changes the page below the letterhead as strongly as
+    // the art above it. These plans intentionally combine layout axes that no
+    // existing template combines, so the nine remain distinct with long content.
+    case .kintsugi:
+      TemplatePlan(
+        experience: .dateGutter, competencies: .columns, numberedSections: true,
+        density: 0.97)
+    case .bauhaus:
+      TemplatePlan(
+        body: .side(
+          SideColumn(edge: .leading, width: 164, fill: .accent, startsBelowProfile: true)),
+        competencies: .dots, sectionChrome: .card, contact: .iconRows)
+    case .terminal:
+      TemplatePlan(
+        experience: .timeline, competencies: .columns, numberedSections: true,
+        darkPaper: true, density: 0.90)
+    case .topograph:
+      TemplatePlan(
+        competencies: .chips, numberedSections: true, hangingHeadings: true,
+        bodyInset: 32)
+    case .passport:
+      TemplatePlan(
+        body: .side(SideColumn(edge: .trailing, width: 182, fill: .tint)),
+        experience: .dateGutter, competencies: .iconGrid, contact: .iconRows)
+    case .transit:
+      TemplatePlan(
+        experience: .timeline, competencies: .iconGrid, numberedSections: true,
+        bodyInset: 38)
+    case .cutline:
+      TemplatePlan(
+        experience: .dateGutter, competencies: .dots, profileInHeader: true,
+        density: 0.96)
+    case .receipt:
+      TemplatePlan(
+        competencies: .columns, skillsFirst: true, numberedSections: true,
+        density: 0.82)
+    case .constellation:
+      TemplatePlan(
+        experience: .timeline, competencies: .dots, sectionChrome: .card,
+        numberedSections: true, darkPaper: true, profileInHeader: true)
     default:
       TemplatePlan()
     }
@@ -1466,6 +1532,26 @@ enum ResumeTemplate: String, CaseIterable, Codable, Identifiable {
       AdvancedResumeStyle(motif: 24, variant: 0, ordinal: 60, "Signet Seal", "A pressed wax-seal monogram over a centred classic", "checkmark.seal.fill", [.showcase, .classic, .clean])
     case .almanac:
       AdvancedResumeStyle(motif: 25, variant: 0, ordinal: 61, "Almanac Infographic", "An icon-led fact strip with dot-rated strengths", "chart.bar.xaxis", [.showcase, .modern, .creative, .bold])
+    // The Studio Collection owns motifs 26-34. Unlike earlier collection
+    // variants, every motif has dedicated PDF and loading artwork.
+    case .kintsugi:
+      AdvancedResumeStyle(motif: 26, variant: 0, ordinal: 62, "Kintsugi Gold", "Warm editorial paper repaired with a fractured gold seam", "scribble.variable", [.studio, .structured, .classic, .creative, .ats])
+    case .bauhaus:
+      AdvancedResumeStyle(motif: 27, variant: 1, ordinal: 63, "Bauhaus Signal", "Primary geometry turns the facts column into a graphic poster", "circle.square.fill", [.studio, .structured, .bold, .creative])
+    case .terminal:
+      AdvancedResumeStyle(motif: 28, variant: 2, ordinal: 64, "Terminal Command", "A dark command-line résumé with a live career prompt", "terminal.fill", [.studio, .structured, .bold, .modern, .ats])
+    case .topograph:
+      AdvancedResumeStyle(motif: 29, variant: 0, ordinal: 65, "Topograph Field", "Contour lines and map coordinates guide margin headings", "map.fill", [.studio, .structured, .clean, .creative, .ats])
+    case .passport:
+      AdvancedResumeStyle(motif: 30, variant: 1, ordinal: 66, "Passport Profile", "An identity dossier with stamps, portrait and travel-document precision", "person.text.rectangle.fill", [.studio, .structured, .photo, .creative])
+    case .transit:
+      AdvancedResumeStyle(motif: 31, variant: 3, ordinal: 67, "Transit Map", "Connected stations turn experience into a navigable career route", "point.3.filled.connected.trianglepath.dotted", [.studio, .structured, .modern, .creative])
+    case .cutline:
+      AdvancedResumeStyle(motif: 32, variant: 0, ordinal: 68, "Cutline Editorial", "A cropped portrait and diagonal byline cut through oversized type", "scissors", [.studio, .structured, .photo, .bold, .creative])
+    case .receipt:
+      AdvancedResumeStyle(motif: 33, variant: 2, ordinal: 69, "Receipt One-Page", "A compact proof-of-work strip inspired by a printed receipt", "scroll.fill", [.studio, .structured, .clean, .modern, .ats])
+    case .constellation:
+      AdvancedResumeStyle(motif: 34, variant: 3, ordinal: 70, "Constellation Story", "A midnight network maps the people, roles and strengths in your orbit", "sparkles", [.studio, .structured, .photo, .bold, .creative])
     default:
       nil
     }
@@ -1519,14 +1605,15 @@ struct AdvancedResumeStyle {
     self.variantOverride = variant
   }
 
-  /// Sixteen masthead constructions now, each with up to four art-direction
-  /// variants. The renderer uses both values.
+  /// The original sixteen constructions use variants; motifs 16-34 are bespoke
+  /// Showcase and Studio designs. The renderer uses both values.
   var motif: Int { motifOverride ?? (ordinal % 8) }
   var variant: Int { variantOverride ?? (ordinal / 8) }
   var headerHeight: CGFloat {
     let heights: [CGFloat] = [
       158, 176, 166, 154, 184, 170, 162, 188,
       178, 172, 168, 164, 182, 174, 170, 180,
+      178, 210, 174, 186, 192, 182, 204, 184, 198,
     ]
     return heights[min(max(motif, 0), heights.count - 1)] + CGFloat(variant * 3)
   }

@@ -144,7 +144,10 @@ struct VoiceInterviewStudioView: View {
                   if let score = attempt.deliveryScore { Text("Delivery \(score)/100").font(.caption.bold()).foregroundStyle(resumeStore.document.accent.color) }
                 }
                 if let file = attempt.audioFilename {
-                  Button { audioPlayer.toggle(url: URL(fileURLWithPath: file)) } label: { Image(systemName: "play.circle.fill") }
+                  Button { audioPlayer.toggle(url: URL(fileURLWithPath: file)) } label: {
+                    Image(systemName: "play.circle.fill")
+                      .accessibilityLabel("Play answer recording")
+                  }
                     .buttonStyle(.plain)
                 }
               }
@@ -236,7 +239,7 @@ struct VoiceInterviewStudioView: View {
   private func deliveryMetric(_ value: String, _ label: String) -> some View {
     VStack(spacing: 2) {
       Text(value).font(.caption.bold()).monospacedDigit()
-      Text(label).font(.system(size: 9)).foregroundStyle(Theme.mutedInk)
+      Text(label).scaledFont(9, relativeTo: .caption2).foregroundStyle(Theme.mutedInk)
     }
     .frame(maxWidth: .infinity).padding(.vertical, 7)
     .background(Theme.muted, in: RoundedRectangle(cornerRadius: 9))
@@ -248,15 +251,27 @@ private struct PracticeTrendView: View {
   let accent: Color
   var body: some View {
     HStack(alignment: .bottom, spacing: 7) {
-      ForEach(attempts.reversed()) { attempt in
+      ForEach(Array(attempts.reversed().enumerated()), id: \.element.id) { position, attempt in
         VStack(spacing: 4) {
           RoundedRectangle(cornerRadius: 5)
             .fill(accent.gradient)
             .frame(height: max(8, CGFloat(attempt.deliveryScore ?? 50) * 0.7))
+          // a11y-fixed-size: a bar annotation inside a 90pt chart — the bar
+          // heights are fixed geometry, so the number cannot grow with them.
+          // The reading below carries the same figure to VoiceOver instead.
           Text("\(attempt.deliveryScore ?? 0)").font(.system(size: 8, weight: .bold)).foregroundStyle(Theme.mutedInk)
-        }.frame(maxWidth: .infinity)
+        }
+        .frame(maxWidth: .infinity)
+        // Bar height is the whole message here, and it carries none of it to a
+        // reader who cannot see the chart. Each bar announces its own score.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Practice \(position + 1) of \(attempts.count)")
+        .accessibilityValue(
+          attempt.deliveryScore.map { "Delivery \($0) out of 100" } ?? "Not scored")
       }
-    }.frame(height: 90).padding(10).background(Theme.muted, in: RoundedRectangle(cornerRadius: 14))
+    }
+    .frame(height: 90).padding(10).background(Theme.muted, in: RoundedRectangle(cornerRadius: 14))
+    .accessibilityLabel("Delivery score trend, most recent first")
   }
 }
 
@@ -396,6 +411,7 @@ struct ApplicationCommandCenterView: View {
         }
         .accessibilityLabel("Outcome analytics")
         NavigationLink(value: HomeRoute.jobCapture) { Image(systemName: "plus") }
+          .accessibilityLabel("Capture a job")
       }
     }
     .sheet(item: $outcomeReviewRequest) { request in
@@ -409,7 +425,7 @@ struct ApplicationCommandCenterView: View {
       Circle().fill(resumeStore.document.accent.color.opacity(0.34)).frame(width: 230, height: 230).blur(radius: 40).offset(x: 175, y: -80)
       VStack(alignment: .leading, spacing: 8) {
         Text("APPLICATION COMMAND CENTER").eyebrow().foregroundStyle(resumeStore.document.accent.color)
-        Text("Know what is moving\nand what needs you.").font(Theme.display(31)).foregroundStyle(Theme.heroInk)
+        Text("Know what is moving\nand what needs you.").displayFont(31).foregroundStyle(Theme.heroInk)
         Text("Every opportunity, document, interview and contact in one connected timeline.").font(.subheadline).foregroundStyle(Theme.heroMutedInk)
       }.padding(22)
     }.frame(minHeight: 220).clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))

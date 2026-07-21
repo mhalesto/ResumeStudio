@@ -129,7 +129,7 @@ struct PersonalProfileView: View {
     VStack(alignment: .leading, spacing: 16) {
       VStack(alignment: .leading, spacing: 6) {
         Text("A permanent home for your résumé")
-          .font(Theme.display(26)).foregroundStyle(Theme.ink)
+          .displayFont(26).foregroundStyle(Theme.ink)
         Text("Claim a short link you can put on LinkedIn, in an email signature, or on a business card. It always shows your latest résumé — and, unlike a trackable link, it never expires.")
           .font(.subheadline).foregroundStyle(Theme.mutedInk)
       }
@@ -190,11 +190,18 @@ struct PersonalProfileView: View {
     }
   }
 
+  /// Hidden from VoiceOver on purpose: `handleHint` states the same result in
+  /// words directly beneath the field, so naming the icon too would announce the
+  /// availability twice on the way to the next control.
   @ViewBuilder private var handleStatusIcon: some View {
     switch handleState {
     case .checking: ProgressView().controlSize(.small)
-    case .available: Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-    case .taken, .invalid: Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.orange)
+    case .available:
+      Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+        .accessibilityHidden(true)
+    case .taken, .invalid:
+      Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.orange)
+        .accessibilityHidden(true)
     case .idle: EmptyView()
     }
   }
@@ -228,7 +235,10 @@ struct PersonalProfileView: View {
             TextField("Label (e.g. LinkedIn)", text: $link.label)
             Button {
               links.removeAll { $0.id == link.id }
-            } label: { Image(systemName: "minus.circle.fill").foregroundStyle(Theme.mutedInk) }
+            } label: {
+              Image(systemName: "minus.circle.fill").foregroundStyle(Theme.mutedInk)
+                .accessibilityLabel(link.label.isBlank ? "Remove link" : "Remove \(link.label) link")
+            }
           }
           TextField("https://…", text: $link.url)
             .textInputAutocapitalization(.never).autocorrectionDisabled()

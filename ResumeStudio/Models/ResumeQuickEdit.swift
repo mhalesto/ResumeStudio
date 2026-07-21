@@ -89,7 +89,7 @@ enum ResumeQuickEditTarget: Identifiable, Hashable {
 
 /// Works out which part of a résumé a tapped line of the rendered PDF came from.
 ///
-/// The 131 templates lay the same content out in wildly different ways, so a
+/// The 140 templates lay the same content out in wildly different ways, so a
 /// position on the page says almost nothing about what is there — but the words
 /// are always the user's own. Matching the tapped line against the document's own
 /// text therefore works identically across every design, and asks nothing of the

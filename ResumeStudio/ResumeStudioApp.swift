@@ -1,5 +1,6 @@
 import FirebaseAppCheck
 import FirebaseCore
+import FirebaseFirestore
 import SwiftUI
 import TipKit
 
@@ -100,6 +101,16 @@ struct ResumeStudioApp: App {
       AppCheck.setAppCheckProviderFactory(AppAttestProviderFactory())
     #endif
     FirebaseApp.configure()
+    // AIArtifactStore already keeps a bounded, atomic local archive and retries
+    // its cloud uploads on the next authenticated launch. A second 100 MB
+    // Firestore LevelDB cache adds no offline value here and Firebase treats an
+    // out-of-disk LevelDB commit as a fatal internal assertion. Keep Firestore's
+    // transient query/write state in memory so a full device degrades cloud sync
+    // instead of terminating the process.
+    let firestore = Firestore.firestore()
+    let firestoreSettings = firestore.settings
+    firestoreSettings.cacheSettings = MemoryCacheSettings()
+    firestore.settings = firestoreSettings
     // Warm the attestation asynchronously while the splash animation is
     // playing. The first AI action then has a verified token ready instead of
     // making the user wait for App Attest after tapping the button.

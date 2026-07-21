@@ -228,6 +228,11 @@ struct TemplateGalleryView: View {
                     .background(.ultraThinMaterial, in: Circle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(
+                  favoriteTemplates.contains(template)
+                    ? "Remove \(template.title) from favourites"
+                    : "Add \(template.title) to favourites"
+                )
                 .padding(7)
                 // TemplatePreviewCard also contains its title and subtitle. Anchor
                 // the control to the A4 thumbnail's footer, not the full card.

@@ -26,6 +26,7 @@ enum ResumeAIAction: String, Codable {
   case careerToolkit
   case translateResume
   case outcomeLearning
+  case negotiationPractice
 }
 
 struct AIResumeImportPayload: Codable {
@@ -465,6 +466,26 @@ struct AICareerToolkitPayload: Codable {
   var recipient: String
   var market: String
   var userRequest: String
+}
+
+/// One line of the rehearsal as the backend sees it: only the two speaking
+/// parts travel — coach nudges stay on the device.
+struct AINegotiationWireMessage: Codable, Equatable {
+  var speaker: String
+  var content: String
+}
+
+struct AINegotiationPracticePayload: Codable {
+  var stage: String
+  var persona: String
+  var difficulty: String
+  var goal: String
+  var offerSummary: String
+  var role: String
+  var company: String
+  var resume: AIResumeSnapshot
+  var evidence: [AICareerEvidenceSnapshot]
+  var messages: [AINegotiationWireMessage]
 }
 
 struct AICareerCoachReply: Codable, Equatable {

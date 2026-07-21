@@ -1298,7 +1298,8 @@ struct TemplatePreviewCard: View {
       .pinnacle, .cobalt, .equinox, .mirage, .parallax, .emblem, .cadence, .citadel, .atrium,
       .zephyr, .cinder, .keystone, .loom, .graphite, .stratus, .vellum,
       .salute, .couture, .medallion, .sable, .terracotta, .lozenge, .circlet, .vogue, .signet,
-      .almanac:
+      .almanac, .kintsugi, .bauhaus, .terminal, .topograph, .passport, .transit, .cutline,
+      .receipt, .constellation:
       if let style = template.advancedStyle {
         AdvancedTemplateSkeleton(
           style: style,
@@ -1320,7 +1321,7 @@ private struct AdvancedTemplateSkeleton: View {
   let hasSideColumn: Bool
   let showsPortrait: Bool
 
-  private var darkHeader: Bool { [0, 2, 4, 5, 7, 8, 12].contains(style.motif) }
+  private var darkHeader: Bool { [0, 2, 4, 5, 7, 8, 12, 28, 30, 34].contains(style.motif) }
 
   var body: some View {
     VStack(spacing: 8) {
@@ -1472,6 +1473,90 @@ private struct AdvancedTemplateSkeleton: View {
           startPoint: .top, endPoint: .bottom
         )
         .overlay(alignment: .bottom) { accent.frame(height: 3) }
+      case 26: // Kintsugi
+        Color(red: 0.982, green: 0.963, blue: 0.918)
+          .overlay(alignment: .trailing) {
+            StudioCrack()
+              .stroke(Color(red: 0.72, green: 0.52, blue: 0.20), lineWidth: 2)
+              .frame(width: 70)
+          }
+      case 27: // Bauhaus
+        Color(red: 0.97, green: 0.95, blue: 0.90)
+          .overlay(alignment: .leading) {
+            Color(red: 0.17, green: 0.20, blue: 0.29).frame(width: 20)
+          }
+          .overlay(alignment: .topTrailing) {
+            Circle().fill(accent).frame(width: 76, height: 76).offset(x: 18, y: -25)
+          }
+          .overlay(alignment: .topLeading) {
+            Circle().fill(Color.yellow.opacity(0.8)).frame(width: 14, height: 14)
+              .padding(.leading, 29).padding(.top, 10)
+          }
+      case 28: // Terminal
+        Color(red: 0.055, green: 0.067, blue: 0.075)
+          .overlay(alignment: .topLeading) {
+            VStack(alignment: .leading, spacing: 5) {
+              Text("> whoami").font(.system(size: 5, design: .monospaced)).foregroundStyle(accent)
+              Text("career --evidence").font(.system(size: 5, design: .monospaced)).foregroundStyle(.white.opacity(0.55))
+            }
+            .padding(8)
+          }
+      case 29: // Topograph
+        Color(red: 0.965, green: 0.972, blue: 0.947)
+          .overlay(alignment: .topTrailing) {
+            ZStack {
+              ForEach(0..<5, id: \.self) { index in
+                Ellipse().stroke(accent.opacity(0.24), lineWidth: 0.7)
+                  .frame(width: 54 + CGFloat(index * 10), height: 38 + CGFloat(index * 8))
+              }
+            }
+            .offset(x: 15, y: -10)
+          }
+      case 30: // Passport
+        Color(red: 0.12, green: 0.27, blue: 0.24)
+          .overlay { RoundedRectangle(cornerRadius: 3).stroke(.white.opacity(0.30), lineWidth: 0.7).padding(6) }
+          .overlay(alignment: .bottomTrailing) {
+            Ellipse().stroke(accent, lineWidth: 1).frame(width: 44, height: 24).padding(8)
+          }
+      case 31: // Transit
+        Color(white: 0.985)
+          .overlay {
+            StudioTransitLine().stroke(accent, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
+              .padding(8)
+          }
+          .overlay {
+            HStack {
+              Circle().fill(.white).stroke(accent, lineWidth: 2).frame(width: 10, height: 10)
+              Spacer()
+              Circle().fill(.white).stroke(accent, lineWidth: 2).frame(width: 10, height: 10)
+            }
+            .padding(.horizontal, 9)
+          }
+      case 32: // Cutline
+        Color(white: 0.975)
+          .overlay(alignment: .trailing) {
+            Triangle().fill(Color(red: 0.17, green: 0.20, blue: 0.29))
+              .frame(width: 90).rotationEffect(.degrees(180))
+          }
+          .overlay(alignment: .bottomLeading) { accent.frame(width: 58, height: 3).padding(9) }
+      case 33: // Receipt
+        Color(white: 0.985)
+          .overlay {
+            VStack(spacing: 17) {
+              Rectangle().stroke(accent.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [3, 3])).frame(height: 1)
+              Rectangle().stroke(accent.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [3, 3])).frame(height: 1)
+            }
+            .padding(.horizontal, 9)
+          }
+      case 34: // Constellation
+        Color(red: 0.055, green: 0.067, blue: 0.105)
+          .overlay {
+            StudioConstellation().stroke(accent.opacity(0.55), lineWidth: 0.8).padding(7)
+          }
+          .overlay {
+            Circle().fill(accent).frame(width: 5, height: 5).offset(x: 42, y: -20)
+            Circle().fill(.white).frame(width: 3, height: 3).offset(x: -35, y: 20)
+          }
       default:
         LinearGradient(
           colors: [Color(red: 0.09, green: 0.10, blue: 0.12), Color(red: 0.17, green: 0.20, blue: 0.29)],
@@ -1636,6 +1721,50 @@ private struct Trapezoid: Shape {
     path.addLine(to: CGPoint(x: rect.maxX - inset, y: rect.maxY))
     path.addLine(to: CGPoint(x: rect.minX + inset, y: rect.maxY))
     path.closeSubpath()
+    return path
+  }
+}
+
+private struct StudioCrack: Shape {
+  func path(in rect: CGRect) -> Path {
+    var path = Path()
+    path.move(to: CGPoint(x: rect.midX, y: rect.minY))
+    path.addLine(to: CGPoint(x: rect.midX - 8, y: rect.height * 0.28))
+    path.addLine(to: CGPoint(x: rect.midX + 10, y: rect.height * 0.48))
+    path.addLine(to: CGPoint(x: rect.midX - 5, y: rect.height * 0.70))
+    path.addLine(to: CGPoint(x: rect.midX + 12, y: rect.maxY))
+    path.move(to: CGPoint(x: rect.midX + 10, y: rect.height * 0.48))
+    path.addLine(to: CGPoint(x: rect.maxX, y: rect.height * 0.35))
+    return path
+  }
+}
+
+private struct StudioTransitLine: Shape {
+  func path(in rect: CGRect) -> Path {
+    var path = Path()
+    path.move(to: CGPoint(x: rect.minX, y: rect.height * 0.35))
+    path.addLine(to: CGPoint(x: rect.width * 0.38, y: rect.height * 0.35))
+    path.addCurve(
+      to: CGPoint(x: rect.width * 0.56, y: rect.height * 0.68),
+      control1: CGPoint(x: rect.width * 0.50, y: rect.height * 0.35),
+      control2: CGPoint(x: rect.width * 0.44, y: rect.height * 0.68))
+    path.addLine(to: CGPoint(x: rect.maxX, y: rect.height * 0.68))
+    return path
+  }
+}
+
+private struct StudioConstellation: Shape {
+  func path(in rect: CGRect) -> Path {
+    var path = Path()
+    let points = [
+      CGPoint(x: rect.minX, y: rect.height * 0.30),
+      CGPoint(x: rect.width * 0.24, y: rect.height * 0.55),
+      CGPoint(x: rect.width * 0.46, y: rect.height * 0.22),
+      CGPoint(x: rect.width * 0.68, y: rect.height * 0.64),
+      CGPoint(x: rect.maxX, y: rect.height * 0.35),
+    ]
+    path.move(to: points[0])
+    for point in points.dropFirst() { path.addLine(to: point) }
     return path
   }
 }

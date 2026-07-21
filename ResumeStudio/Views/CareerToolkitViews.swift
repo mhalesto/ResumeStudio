@@ -351,6 +351,12 @@ struct OfferComparisonView: View {
         toolkitButton(isLoading ? "Preparing…" : "Prepare negotiation for \(selectedOffer.company)", isLoading: isLoading) {
           Task { await negotiate(selectedOffer) }
         }
+        NavigationLink(value: HomeRoute.negotiationPractice(selectedOffer.id)) {
+          Label("Rehearse the conversation", systemImage: "person.line.dotted.person.fill")
+            .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 13)
+        }
+        .buttonStyle(.bordered)
+        .tint(resumeStore.document.accent.color)
       }
       if let negotiation { ToolkitDraftCard(draft: negotiation, accent: resumeStore.document.accent.color, copyLabel: "Copy negotiation script") }
       errorLabel(errorMessage)
@@ -365,7 +371,7 @@ struct OfferComparisonView: View {
   @MainActor private func negotiate(_ offer: JobOffer) async {
     isLoading = true; errorMessage = nil
     let application = offer.applicationID.flatMap { id in applicationStore.applications.first { $0.id == id } }
-    let context = "Offer: \(offer.currencyCode) \(offer.baseSalary) base, \(offer.bonus) bonus, \(offer.signingBonus ?? 0) signing, \(offer.employerRetirementAnnual ?? 0) retirement, \(offer.medicalAnnual ?? 0) medical, \(offer.equityAnnualValue ?? 0) annual equity, \(offer.commuteAnnualCost ?? 0) commute cost, \(offer.remoteSavingsAnnual ?? 0) remote savings, \(offer.leaveDays ?? 0) leave days. Benefits: \(offer.benefits). Work style: \(offer.workStyle). Notes: \(offer.notes). Do not invent market salary data."
+    let context = offer.negotiationSummary + " Do not invent market salary data."
     do {
       negotiation = try await ResumeAIService.shared.createCareerToolkitDraft(
         kind: "offerNegotiation", document: resumeStore.document,
@@ -532,6 +538,7 @@ struct ReviewRoomView: View {
                 }
               } label: {
                 Image(systemName: "ellipsis.circle")
+                  .accessibilityLabel("Review room actions")
               }
             }
             Spacer()

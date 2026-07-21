@@ -9,7 +9,7 @@ ResumeStudio is a native SwiftUI app for building polished, export-ready resumes
 - Structured editing for personal details, profile, competencies, experience, education, and references
 - AI profile writing, competency suggestions, experience-bullet rewrites, job-match review, and reviewed résumé tailoring
 - AI-generated cover letters grounded in the existing résumé and pasted job description
-- Fifty-five editable, searchable-PDF cover-letter templates, with coordinated designs drawn to match résumé templates
+- Sixty-five editable, searchable-PDF cover-letter templates, with coordinated designs drawn to match résumé templates
 - Multiple named résumé versions with duplication and non-destructive AI tailoring
 - Side-by-side version comparison with per-section restore into the active résumé
 - A Layout Studio with font, scale, line spacing, margins, paper size, custom headings, section order, and one- or two-page auto-fit
@@ -18,13 +18,15 @@ ResumeStudio is a native SwiftUI app for building polished, export-ready resumes
 - Application tracker with saved, applied, interview, offer, and rejected stages
 - Live ATS coaching with a readiness score, matched and missing job-language evidence, and links back to the exact résumé section
 - A Recruiter Scan that replays the eye-tracking research's 7.4-second first pass on the rendered page — an animated gaze spotlight adapted to the template's layout, a dwell-time heatmap, a first-impression score weighted by gaze share with low, medium, and high strictness, and what the recruiter left with versus looked for and never found — computed entirely on device
+- Back It Up, which audits every claim the résumé makes against what actually demonstrates it — each skill and bullet sorted into provable (carries a figure, a named piece of work, or a referee's confirmation), assertable (shown, but with no figure a reader can weigh), or bare (nothing on the page demonstrates it, which is the pattern hiring managers report rejecting as machine-padded). It never rewrites: each finding ends in show it, evidence it, or cut it, and the same audit read backwards is the list of claims an interviewer will ask you to prove. On device, no AI credits
 - Trackable résumé links: send a hosted link instead of an attachment and know when it is opened — per-viewer opens, honest visible-tab reading time, PDF-save flags, privacy-safe daily trends with 7/30/90/all ranges and bar/line/area views, link filters, engagement insights, refresh-driven alerts, a Today-queue follow-up nudge, and one-tap revoke; the viewer page states plainly that opens are visible to the sender, and viewers are never identified
 - A role-, seniority-, market-, portrait-, page-, plan-, and ATS-aware Template Finder with favorites, recent styles, and three-way comparison
 - Per-application packets that keep the selected résumé, cover letter, application email, follow-up email, notes, and interview checklist together
 - Outcome analytics for application-to-interview and interview-to-offer conversion, response time, source performance, and résumé-version performance
 - A private Outcome Learning Loop with one-minute stage debriefs, exact résumé/packet attribution, a ranked next recommendation, free on-device drafting, optional connected drafting for paid plans, and review-before-apply improvement versions
+- Opportunity Shield, an explainable pre-apply check for listing freshness, employer/domain consistency, advert specificity, and common applicant-safety traps. It preserves schema.org posting dates and employer links from Safari capture, can inspect only the public source page, records change/repost history, refreshes a bounded due set on foreground, and deliberately reports strong signals, verify first, or high-risk signals rather than claiming that a job is real or fake
 - A Reality Check that reports what the application history actually shows, including the unflattering parts: whether the roles being applied for are ahead of the evidence, whether a response drought means volume is not the constraint, and whether one source is doing all the work and none of the landing — every signal carries the sample it was drawn from, and small samples are labelled as hypotheses rather than findings
-- Where to Apply, which ranks the saved shortlist against the résumé on device before an evening is spent on the wrong application — ready to send, worth tailoring, or a long shot — anchored to the same keyword threshold the ATS check uses, at no AI-credit cost and with the advert text never leaving the phone
+- Where to Apply, which prioritizes the saved shortlist on device using résumé fit, Opportunity Shield, deadlines, and warm saved contacts before an evening is spent on the wrong application. High-risk listings stay below safer work even when their keyword fit is strong, at no AI-credit cost and with the advert text never leaving the phone
 - Opt-in outcome benchmarks that compare a progression rate against people applying for similar roles in the same market. The contribution is three counts and a cohort of three fixed categories — never a job title, employer, or any résumé text — a repeat contribution replaces rather than accumulates, no single installation can define a thin cohort, and a cohort stays unpublished until enough separate people are in it
 - Evidence attestations: a former manager or colleague confirms one claim from the evidence vault through a one-use hosted link, answers once, and the answer is final. Kept deliberately distinct from the self-declared verified tick, and stated plainly wherever it appears — ResumeStudio records that someone holding the link replied, when, and what they wrote, and does not check who they are
 - A complete interview workspace with a graphical calendar, upcoming and past interviews, outcomes, reflections, and local day-before reminders
@@ -37,8 +39,9 @@ ResumeStudio is a native SwiftUI app for building polished, export-ready resumes
 - Projects, certifications, languages, awards, volunteering, publications, and custom sections
 - Automatic local draft persistence
 - Reordering and deletion of repeatable sections
-- One hundred and thirty-one distinct résumé PDF templates, thirty of them photo-led
-- Fifty-one structural templates that rearrange the page rather than the letterhead: sidebar columns for contact, skills and education; a dated timeline rail; dates hung in the margin; card-per-entry; two-column splits; a ticked skills matrix; and a skills-first order
+- One hundred and forty distinct résumé PDF templates, thirty-three of them photo-led
+- Sixty structural templates that rearrange the page rather than the letterhead: sidebar columns for contact, skills and education; a dated timeline rail; dates hung in the margin; card-per-entry; two-column splits; a ticked skills matrix; and a skills-first order
+- A nine-design Studio Collection with bespoke Kintsugi, Bauhaus, terminal, topographic, passport, transit-map, cutline, receipt and constellation systems, plus ten coordinated Studio cover letters
 - Contact icons, skill pills and a skills matrix drawn as real text, so a two-column page stays searchable and selectable
 - An optional profile photo on every template: the photo-led styles build their header around it, the rest close the space up without one
 - An ATS check that warns when a template puts content in a second column, because some parsers read columns out of order
@@ -47,6 +50,7 @@ ResumeStudio is a native SwiftUI app for building polished, export-ready resumes
 - A private Application Answer Vault for reusable screening answers, with built-in matching for work authorization, sponsorship, availability, salary expectations, relocation, work arrangement and role motivation; Safari shows reviewable Fill controls and never submits a form
 - Section styles: every section's look is separable from the template it came with, so a résumé can keep one masthead and take the timeline from Chronicle, the skill pills from Atlas, the margin dates from Modena, or a sidebar from a template that never had one — each picker names a template the style is native to, and defaults to leaving the template alone
 - Attachments: certificates, licences, transcripts, portfolio pages or reference letters added as extra pages after the last résumé page, captioned in the accent, reorderable, and includable per version — attached PDFs keep their own pages and stay selectable
+- Document signing from Preview: draw with a finger or Apple Pencil, choose the résumé page and lower-page position, preview the placement, and keep the editable vector signature with that résumé
 - Data-driven, automatically paginated PDF generation
 - Live PDFKit preview
 - Searchable PDF and editable DOCX export, Files export, and iOS share-sheet support
@@ -65,9 +69,11 @@ ResumeStudio is a native SwiftUI app for building polished, export-ready resumes
 - `Services/ApplicationStore.swift`: local application-tracker persistence
 - `Services/ResumeAnalysisServices.swift`: on-device job-advert and ATS checks
 - `Services/RecruiterScanService.swift`: the recruiter first-pass simulation — fixation audit and template-aware gaze path
+- `Services/ClaimAuditService.swift`: the claim audit — claim extraction, evidence and referee matching, and the provable/assertable/bare verdicts
 - `Services/SmartLinkService.swift` and `Services/SmartLinkStore.swift`: hosted trackable-link publishing, activity polling, and view alerts
 - `Services/ApplicationCalibrationService.swift`: the Reality Check — on-device comparison of what landed against what did not, with sample-size-aware confidence
 - `Services/OpportunityRankingService.swift`: on-device shortlist ranking, anchored to `ATSReadinessService.jobLanguagePassThreshold`
+- `Services/OpportunityShieldService.swift`: deterministic listing-signal policy, schema.org metadata parsing, public-page change history, and bounded foreground monitoring
 - `Services/BenchmarkService.swift`: cohort derivation, local history measurement, and the hosted benchmark contribution
 - `Services/EvidenceAttestationService.swift`: hosted referee-confirmation requests, polling, and withdrawal
 - `Services/ProductivityServices.swift`: template recommendations, packet export, analytics, auto-fit, and market localization

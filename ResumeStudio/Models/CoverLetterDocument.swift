@@ -151,6 +151,18 @@ enum CoverLetterTemplate: String, CaseIterable, Codable, Identifiable {
   case vogue
   case signet
   case almanac
+  // The Studio Collection: nine direct résumé counterparts and one neutral
+  // folio letter that can accompany any design in the collection.
+  case kintsugi
+  case bauhaus
+  case terminal
+  case topograph
+  case passport
+  case transit
+  case cutline
+  case receipt
+  case constellation
+  case studioFolio
 
   var id: String { rawValue }
 
@@ -201,6 +213,15 @@ enum CoverLetterTemplate: String, CaseIterable, Codable, Identifiable {
     case .vogue: .vogue
     case .signet: .signet
     case .almanac: .almanac
+    case .kintsugi: .kintsugi
+    case .bauhaus: .bauhaus
+    case .terminal: .terminal
+    case .topograph: .topograph
+    case .passport: .passport
+    case .transit: .transit
+    case .cutline: .cutline
+    case .receipt: .receipt
+    case .constellation: .constellation
     default: nil
     }
   }
@@ -262,6 +283,16 @@ enum CoverLetterTemplate: String, CaseIterable, Codable, Identifiable {
     case .citadel: "Citadel Dispatch"
     case .stratus: "Stratus Statement"
     case .mirage: "Mirage Letter"
+    case .kintsugi: "Kintsugi Gold Letter"
+    case .bauhaus: "Bauhaus Signal Letter"
+    case .terminal: "Terminal Command Letter"
+    case .topograph: "Topograph Field Letter"
+    case .passport: "Passport Profile Letter"
+    case .transit: "Transit Map Letter"
+    case .cutline: "Cutline Editorial Letter"
+    case .receipt: "Receipt One-Page Letter"
+    case .constellation: "Constellation Story Letter"
+    case .studioFolio: "Studio Folio Letter"
     }
   }
 
@@ -322,6 +353,16 @@ enum CoverLetterTemplate: String, CaseIterable, Codable, Identifiable {
     case .citadel: "Fortress framing and firm type, to match Citadel"
     case .stratus: "Soft gradient bands drift up top, to match Stratus"
     case .mirage: "A shimmering gradient masthead, to match Mirage"
+    case .kintsugi: "A fractured gold seam on warm paper, to match Kintsugi"
+    case .bauhaus: "Primary geometry and poster type, to match Bauhaus"
+    case .terminal: "A command-line application note, to match Terminal"
+    case .topograph: "Contour lines and coordinates, to match Topograph"
+    case .passport: "An identity-document letterhead, to match Passport"
+    case .transit: "A connected route through your case, to match Transit"
+    case .cutline: "A diagonal editorial byline, to match Cutline"
+    case .receipt: "A concise proof-of-work docket, to match Receipt"
+    case .constellation: "A midnight network of ideas, to match Constellation"
+    case .studioFolio: "A quiet gallery label that pairs with every Studio design"
     }
   }
 
@@ -382,6 +423,16 @@ enum CoverLetterTemplate: String, CaseIterable, Codable, Identifiable {
     case .citadel: "building.2.fill"
     case .stratus: "cloud.fill"
     case .mirage: "aqi.medium"
+    case .kintsugi: "scribble.variable"
+    case .bauhaus: "circle.square.fill"
+    case .terminal: "terminal.fill"
+    case .topograph: "map.fill"
+    case .passport: "person.text.rectangle.fill"
+    case .transit: "point.3.filled.connected.trianglepath.dotted"
+    case .cutline: "scissors"
+    case .receipt: "scroll.fill"
+    case .constellation: "sparkles"
+    case .studioFolio: "rectangle.stack.fill"
     }
   }
 
@@ -442,6 +493,16 @@ enum CoverLetterTemplate: String, CaseIterable, Codable, Identifiable {
     case .citadel: [.classic, .bold, .structured]
     case .stratus: [.clean, .modern, .creative]
     case .mirage: [.modern, .creative]
+    case .kintsugi: [.studio, .classic, .creative, .ats]
+    case .bauhaus: [.studio, .bold, .creative]
+    case .terminal: [.studio, .bold, .modern, .ats]
+    case .topograph: [.studio, .clean, .creative, .ats]
+    case .passport: [.studio, .photo, .creative]
+    case .transit: [.studio, .modern, .creative]
+    case .cutline: [.studio, .photo, .bold, .creative]
+    case .receipt: [.studio, .clean, .modern, .ats]
+    case .constellation: [.studio, .photo, .bold, .creative]
+    case .studioFolio: [.studio, .clean, .modern, .ats]
     }
   }
 
@@ -477,6 +538,16 @@ enum CoverLetterTemplate: String, CaseIterable, Codable, Identifiable {
     case .vogue: 24
     case .signet: 25
     case .almanac: 26
+    case .kintsugi: 27
+    case .bauhaus: 28
+    case .terminal: 29
+    case .topograph: 30
+    case .passport: 31
+    case .transit: 32
+    case .cutline: 33
+    case .receipt: 34
+    case .constellation: 35
+    case .studioFolio: 36
     default: nil
     }
   }

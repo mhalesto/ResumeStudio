@@ -44,6 +44,14 @@ struct CapturedJobSnapshot: Codable, Equatable {
   var warnings: [String]
   var originalContent: String
   var capturedAt = Date()
+  /// The source page's schema.org JobPosting. Keeping it separate from the
+  /// readable advert preserves posting dates, expiry and the employer's own
+  /// website for Opportunity Shield without exposing any résumé data.
+  var structuredPosting: String? = nil
+  /// Optional message or contact details supplied by the user for scam-signal
+  /// checks. It stays inside the local application archive.
+  var recruiterMessage: String? = nil
+  var opportunitySignal: OpportunitySignalReport? = nil
 }
 
 enum ContactInteractionKind: String, CaseIterable, Codable, Identifiable {
@@ -262,4 +270,5 @@ enum CareerPrivacySetting {
   static let keepHistoryKey = "careerAIKeepProcessingHistory"
   static let onDeviceAIKey = "careerAIUseOnDeviceIntelligence"
   static let connectedFallbackKey = "careerAIAllowConnectedFallback"
+  static let opportunityMonitoringKey = "opportunityShieldMonitoringEnabled"
 }

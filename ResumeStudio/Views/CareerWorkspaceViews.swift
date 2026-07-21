@@ -123,7 +123,10 @@ struct ResumeLibraryView: View {
           if purchases.canCreateResume(currentCount: store.resumes.count) { store.duplicateActiveResume() }
           else { purchases.requestPlans() }
         }
-      } label: { Image(systemName: "plus") }
+      } label: {
+        Image(systemName: "plus")
+          .accessibilityLabel("Add résumé")
+      }
     }
     .alert("Rename résumé", isPresented: Binding(
       get: { renameDraft != nil }, set: { if !$0 { renameDraft = nil } }
@@ -192,7 +195,7 @@ private struct LibraryPremiumActionCard: View {
             .font(.headline)
             .foregroundStyle(Theme.ink)
           Text("FEATURED")
-            .font(.system(size: 8, weight: .black))
+            .scaledFont(8, relativeTo: .caption2, weight: .black)
             .tracking(0.7)
             .foregroundStyle(accent)
             .padding(.horizontal, 7)
@@ -259,6 +262,18 @@ struct ATSCheckerView: View {
     ATSReadinessService.analyze(document: store.document, jobDescription: jobDescription)
   }
 
+  /// Spoken form of the readiness ring, including the movement since the screen
+  /// opened — the delta is the part a sighted user reads from the coloured
+  /// caption, so it has to survive into the announcement.
+  private var readinessAccessibilityValue: String {
+    var value = "\(report.score) out of 100"
+    if let baselineScore, baselineScore != report.score {
+      let change = report.score - baselineScore
+      value += ", \(change > 0 ? "up" : "down") \(abs(change)) since opening"
+    }
+    return value
+  }
+
   var body: some View {
     List {
       Section {
@@ -280,6 +295,11 @@ struct ATSCheckerView: View {
             }
           }
         }.padding(.vertical, 6)
+        // Announce the ring, the number and the movement as one score rather
+        // than as a stray integer followed by unrelated sentences.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Readiness score")
+        .accessibilityValue(readinessAccessibilityValue)
       }
 
       Section {
@@ -330,10 +350,13 @@ struct ATSCheckerView: View {
         NavigationLink(value: HomeRoute.recruiterScan) {
           Label("Watch the 7.4-second recruiter scan", systemImage: "eye")
         }
+        NavigationLink(value: HomeRoute.claimAudit) {
+          Label("Check what your claims are backed by", systemImage: "checkmark.seal")
+        }
       } header: {
         Text("The human pass")
       } footer: {
-        Text("The checks above are for the machine. This replays the recruiter's first look on your résumé, from published eye-tracking research.")
+        Text("The checks above are for the machine. These two are for the person: what the recruiter's first look leaves them with, and whether the claims underneath survive a second read.")
       }
     }
     .supportsKeyboardDismissal()
@@ -444,6 +467,7 @@ struct ApplicationDetailView: View {
   @State private var draft: JobApplication?
   @State private var originalStatus: JobApplicationStatus?
   @State private var outcomeReviewRequest: OutcomeReviewRequest?
+  @State private var isRefreshingOpportunity = false
 
   var body: some View {
     Form {
@@ -457,6 +481,39 @@ struct ApplicationDetailView: View {
             set: { updateStatus($0) }
           )) {
             ForEach(JobApplicationStatus.allCases) { Text($0.title).tag($0) }
+          }
+        }
+        if let report = binding.wrappedValue.capturedOpportunity?.opportunitySignal {
+          Section {
+            OpportunityShieldCard(
+              report: report,
+              accent: .orange,
+              isRefreshing: isRefreshingOpportunity,
+              onRefresh: binding.wrappedValue.sourceURL.isBlank ? nil : {
+                Task { await refreshOpportunitySignals() }
+              }
+            )
+            .listRowInsets(EdgeInsets())
+            .listRowBackground(Color.clear)
+          } header: {
+            Text("Pre-apply check")
+          }
+
+          Section {
+            TextEditor(text: Binding(
+              get: { draft?.capturedOpportunity?.recruiterMessage ?? "" },
+              set: { value in
+                guard var snapshot = draft?.capturedOpportunity else { return }
+                snapshot.recruiterMessage = value.nilIfBlank
+                draft?.capturedOpportunity = snapshot
+                rebuildLocalSignal()
+              }
+            ))
+            .frame(minHeight: 90)
+          } header: {
+            Text("Recruiter message or contact")
+          } footer: {
+            Text("Optional and stored locally with this application. Used only for explainable applicant-safety signals.")
           }
         }
         Section("Notes") { TextEditor(text: binding.notes).frame(minHeight: 120) }
@@ -531,6 +588,7 @@ struct ApplicationDetailView: View {
     .navigationTitle(draft?.role.nilIfBlank ?? "Application")
     .onAppear {
       draft = store.applications.first { $0.id == applicationID }
+      rebuildLocalSignal()
       originalStatus = draft?.status
     }
     .onDisappear {
@@ -549,7 +607,35 @@ struct ApplicationDetailView: View {
 
   private func reload() {
     draft = store.applications.first { $0.id == applicationID }
+    rebuildLocalSignal()
     originalStatus = draft?.status
+  }
+
+  private func rebuildLocalSignal() {
+    guard var application = draft, var snapshot = application.capturedOpportunity else { return }
+    snapshot.opportunitySignal = OpportunityShieldService.analyze(
+      role: application.role,
+      company: application.company,
+      location: snapshot.location,
+      salary: snapshot.salary,
+      responsibilities: snapshot.responsibilities,
+      requirements: snapshot.requirements,
+      content: snapshot.originalContent,
+      sourceURL: application.sourceURL,
+      structuredPosting: snapshot.structuredPosting,
+      recruiterMessage: snapshot.recruiterMessage ?? "",
+      previous: snapshot.opportunitySignal
+    )
+    application.capturedOpportunity = snapshot
+    draft = application
+  }
+
+  @MainActor private func refreshOpportunitySignals() async {
+    guard let current = draft, !current.sourceURL.isBlank else { return }
+    isRefreshingOpportunity = true
+    draft = await OpportunityShieldMonitor.refreshed(current)
+    if let draft { store.update(draft) }
+    isRefreshingOpportunity = false
   }
 
   private func updateStatus(_ status: JobApplicationStatus) {
@@ -1639,7 +1725,7 @@ private struct InterviewAssessmentView: View {
       if let evaluation {
         Section {
         VStack(spacing: 8) {
-          Text("\(evaluation.score)/\(evaluation.total)").font(.system(size: 44, weight: .bold))
+          Text("\(evaluation.score)/\(evaluation.total)").scaledFont(44, relativeTo: .largeTitle, weight: .bold, maxSize: 70)
           Text("\(evaluation.percentage)% · \(evaluation.percentage >= 75 ? "Strong preparation" : "More practice recommended")")
             .foregroundStyle(Theme.mutedInk)
         }.frame(maxWidth: .infinity).padding(.vertical)

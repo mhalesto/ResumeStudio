@@ -163,7 +163,7 @@ struct SmartLinksView: View {
 
           HStack(alignment: .firstTextBaseline) {
             Text("Your links")
-              .font(Theme.display(25))
+              .displayFont(25)
             Spacer()
             Menu {
               Picker("Show", selection: $listScope) {
@@ -254,7 +254,7 @@ struct SmartLinksView: View {
         .padding(12)
         .background(accent.opacity(0.12), in: Circle())
       Text("Know when you're read")
-        .font(Theme.display(30))
+        .displayFont(30)
       Text("Send a link instead of an attachment. See meaningful opens, visible reading time, PDF saves, and daily engagement trends.")
         .font(.subheadline)
         .foregroundStyle(Theme.inkSoft)

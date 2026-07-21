@@ -66,6 +66,14 @@ struct OpportunityScore: Identifiable, Equatable {
   /// The advert's most frequent terms that the résumé never uses, most
   /// important first.
   var topMissing: [String]
+  /// Opportunity Shield is a separate axis from résumé fit. It can lower a
+  /// strong keyword match when the listing itself needs verification.
+  var signalBand: OpportunitySignalBand? = nil
+  /// Combined shortlist ordering: fit, safety/freshness, deadline and a warm
+  /// contact. This is an effort score, not a probability of being hired.
+  var priorityScore: Double = 0
+  var priorityReasons: [String] = []
+  var deadline: Date? = nil
 
   var coveragePercentText: String {
     guard let coverage else { return "—" }
@@ -86,6 +94,9 @@ struct OpportunityRanking: Equatable {
   var possibleCount: Int { scores.count { $0.band == .possible } }
   var longShotCount: Int { scores.count { $0.band == .longShot } }
   var unscoredCount: Int { scores.count { $0.band == .unscored } }
+  var verifyFirstCount: Int {
+    scores.count { $0.signalBand == .verify || $0.signalBand == .highRisk }
+  }
 
   /// The one-line verdict over the whole shortlist.
   var summary: String {
@@ -99,6 +110,7 @@ struct OpportunityRanking: Equatable {
     if strongCount > 0 { parts.append("\(strongCount) ready to send") }
     if possibleCount > 0 { parts.append("\(possibleCount) worth tailoring") }
     if longShotCount > 0 { parts.append("\(longShotCount) to skip") }
+    if verifyFirstCount > 0 { parts.append("\(verifyFirstCount) to verify first") }
     return parts.joined(separator: ", ") + "."
   }
 

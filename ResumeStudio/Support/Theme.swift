@@ -78,11 +78,91 @@ enum Theme {
 
   // MARK: - Type styles
 
-  /// The display face. The prototype sets Instrument Serif and falls back to
-  /// New York on Apple platforms — which is what `.serif` resolves to, so this
-  /// is the prototype's own intended iOS typeface, with Dynamic Type for free.
+  /// The display face at a **fixed** point size. The prototype sets Instrument
+  /// Serif and falls back to New York on Apple platforms — which is what
+  /// `.serif` resolves to, so this is the prototype's own intended iOS typeface.
+  ///
+  /// This does *not* respond to Dynamic Type: `Font.system(size:)` is a fixed
+  /// size, unlike the text-style fonts (`.body`, `.title`…). Prefer the
+  /// `displayFont(_:)` view modifier below, which scales the same face with the
+  /// reader's text-size setting. This overload remains for the few places that
+  /// need a concrete `Font` value rather than a modifier — measuring text, or
+  /// drawing at a size that is deliberately absolute.
   static func display(_ size: CGFloat) -> Font {
     .system(size: size, weight: .regular, design: .serif)
+  }
+}
+
+// MARK: - Dynamic Type
+
+/// Applies a system font at a point size that grows with the reader's text-size
+/// setting.
+///
+/// `Font.system(size:)` is fixed — a 14pt label stays 14pt at every Dynamic Type
+/// setting, including the accessibility sizes. `@ScaledMetric` is the piece that
+/// makes a specific size responsive, and because it reads the environment
+/// SwiftUI re-evaluates the body when the setting changes. It has to live in a
+/// `View`, which is why this is a modifier rather than a `Font` factory.
+///
+/// `relativeTo` picks the curve the size follows: a caption-sized label should
+/// scale like a caption, a title like a title.
+private struct ScaledFontModifier: ViewModifier {
+  @ScaledMetric private var size: CGFloat
+  private let weight: Font.Weight
+  private let design: Font.Design
+  private let maxSize: CGFloat?
+
+  init(
+    size: CGFloat,
+    relativeTo textStyle: Font.TextStyle,
+    weight: Font.Weight,
+    design: Font.Design,
+    maxSize: CGFloat?
+  ) {
+    _size = ScaledMetric(wrappedValue: size, relativeTo: textStyle)
+    self.weight = weight
+    self.design = design
+    self.maxSize = maxSize
+  }
+
+  func body(content: Content) -> some View {
+    content.font(.system(size: min(size, maxSize ?? .greatestFiniteMagnitude), weight: weight, design: design))
+  }
+}
+
+extension View {
+  /// A system font at `size`, scaled for Dynamic Type. Use in place of
+  /// `.font(.system(size:))` on anything a reader has to actually read.
+  ///
+  /// Decorative glyphs — background watermarks, bullet dots, the miniature type
+  /// inside a template preview — should keep a fixed size and stay on
+  /// `.font(.system(size:))`, because they represent artwork rather than text.
+  ///
+  /// `maxSize` caps growth for large display type, where the accessibility sizes
+  /// would otherwise push a heading past anything the layout can hold.
+  func scaledFont(
+    _ size: CGFloat,
+    relativeTo textStyle: Font.TextStyle = .body,
+    weight: Font.Weight = .regular,
+    design: Font.Design = .default,
+    maxSize: CGFloat? = nil
+  ) -> some View {
+    modifier(ScaledFontModifier(size: size, relativeTo: textStyle, weight: weight, design: design, maxSize: maxSize))
+  }
+
+  /// The serif display face at a Dynamic Type-aware size — the scaling
+  /// counterpart to `Theme.display(_:)`, and the one screen titles should use.
+  ///
+  /// Display type is capped at 1.6× its designed size. Left uncapped, a 58pt
+  /// score at the largest accessibility setting renders around 150pt and drives
+  /// everything beneath it off the screen; 1.6× keeps the heading clearly
+  /// responsive while the body text around it carries on scaling to full size.
+  func displayFont(
+    _ size: CGFloat,
+    relativeTo textStyle: Font.TextStyle = .largeTitle,
+    weight: Font.Weight = .regular
+  ) -> some View {
+    scaledFont(size, relativeTo: textStyle, weight: weight, design: .serif, maxSize: size * 1.6)
   }
 }
 

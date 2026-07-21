@@ -40,6 +40,8 @@ PREPARE FOR INTERVIEWS
 MANAGE YOUR JOB SEARCH
 
 - Track saved, applied, interview, offer and rejected applications.
+- Check listing freshness, employer/domain consistency, advert detail and common applicant-safety traps before applying with explainable Opportunity Shield signals.
+- Prioritise saved opportunities using CV fit, listing signals, deadlines and saved contacts.
 - Turn interviews, offers and rejections into a private debrief and one evidence-based next improvement.
 - Keep career evidence, offers and application details organised.
 - Invite trusted reviewers through hosted Review Rooms on eligible plans.
@@ -47,7 +49,7 @@ MANAGE YOUR JOB SEARCH
 
 PRIVACY AND CONTROL
 
-Resume Studio works without an account. CV versions, applications and cover letters can sync through your private iCloud workspace. Supported Apple Intelligence devices handle lightweight writing and extraction privately on device; Free uses that route first, while Go and Pro use the connected quality model first with an on-device fallback. Contact details, references, profile photographs and attached source files are excluded from connected AI writing requests. You can pause AI tools, disable on-device intelligence, opt out of anonymous aggregate product counters, inspect local processing history, export career-intelligence data or erase it at any time.
+Resume Studio works without an account. CV versions, applications and cover letters can sync through your private iCloud workspace. Opportunity Shield evaluates saved advert text on device; optional monitoring requests only the public listing URL and does not send CV or personal-profile data. Supported Apple Intelligence devices handle lightweight writing and extraction privately on device; Free uses that route first, while Go and Pro use the connected quality model first with an on-device fallback. Contact details, references, profile photographs and attached source files are excluded from connected AI writing requests. You can pause AI tools, disable on-device intelligence, opt out of anonymous aggregate product counters, inspect local processing history, export career-intelligence data or erase it at any time.
 
 CORE TOOLS STAY FREE
 

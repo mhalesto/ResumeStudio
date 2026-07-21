@@ -41,6 +41,8 @@ PREPARE FOR INTERVIEWS
 MANAGE YOUR JOB SEARCH
 
 - Track saved, applied, interview, offer and rejected applications.
+- Check listing freshness, employer/domain consistency, advert detail and common applicant-safety traps before applying with explainable Opportunity Shield signals.
+- Prioritize saved opportunities using résumé fit, listing signals, deadlines and saved contacts.
 - Turn interviews, offers and rejections into a private debrief and one evidence-based next improvement.
 - Keep career evidence, offers and application details organized.
 - Invite trusted reviewers through hosted Review Rooms on eligible plans.
@@ -48,7 +50,7 @@ MANAGE YOUR JOB SEARCH
 
 PRIVACY AND CONTROL
 
-Resume Studio works without an account. Résumé versions, applications and cover letters can sync through your private iCloud workspace. Application Answer Vault entries remain in the app sandbox and are copied to the private app group only when you explicitly publish Safari autofill data; the extension requires a tap to show matched answers and never submits a form. Supported Apple Intelligence devices handle lightweight writing and extraction privately on device; Free uses that route first, while Go and Pro use the connected quality model first with an on-device fallback. Contact details, references, profile photographs and attached source files are excluded from connected AI writing requests. You can pause AI tools, disable on-device intelligence, opt out of anonymous aggregate product counters, inspect local processing history, export career-intelligence data or erase it at any time.
+Resume Studio works without an account. Résumé versions, applications and cover letters can sync through your private iCloud workspace. Opportunity Shield evaluates saved advert text on device; optional monitoring requests only the public listing URL and does not send résumé or personal-profile data. Application Answer Vault entries remain in the app sandbox and are copied to the private app group only when you explicitly publish Safari autofill data; the extension requires a tap to show matched answers and never submits a form. Supported Apple Intelligence devices handle lightweight writing and extraction privately on device; Free uses that route first, while Go and Pro use the connected quality model first with an on-device fallback. Contact details, references, profile photographs and attached source files are excluded from connected AI writing requests. You can pause AI tools, disable on-device intelligence, opt out of anonymous aggregate product counters, inspect local processing history, export career-intelligence data or erase it at any time.
 
 CORE TOOLS STAY FREE
 

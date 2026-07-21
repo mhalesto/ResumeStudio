@@ -202,7 +202,7 @@ private struct OutcomeReviewHero: View {
           systemImage: application.status.systemImage)
           .eyebrow().foregroundStyle(accent)
         Text(application.role.nilIfBlank ?? "Application outcome")
-          .font(Theme.display(30)).foregroundStyle(Theme.heroInk)
+          .displayFont(30).foregroundStyle(Theme.heroInk)
         Text(application.company.nilIfBlank ?? "Company not set")
           .font(.headline).foregroundStyle(Theme.heroMutedInk)
         Label("Usually takes about one minute", systemImage: "timer")

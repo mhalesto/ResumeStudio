@@ -8,7 +8,7 @@ struct ReferralView: View {
     List {
       Section {
         VStack(alignment: .leading, spacing: 10) {
-          Text("Give 10. Get 5.").font(Theme.display(30))
+          Text("Give 10. Get 5.").displayFont(30)
           Text("A new ResumeStudio member gets 10 AI credits when they create an account with your link. You receive 5 credits after their account is verified.")
             .foregroundStyle(Theme.mutedInk)
         }.padding(.vertical, 8)

@@ -416,6 +416,38 @@ actor ResumeAIService {
     )
   }
 
+  func negotiationPractice(
+    stage: String,
+    persona: NegotiationPersona,
+    difficulty: NegotiationDifficulty,
+    goal: String,
+    offerSummary: String,
+    role: String,
+    company: String,
+    document: ResumeDocument,
+    evidence: [CareerEvidence],
+    messages: [AINegotiationWireMessage]
+  ) async throws -> AINegotiationTurn {
+    try await request(
+      action: .negotiationPractice,
+      payload: AINegotiationPracticePayload(
+        stage: stage,
+        persona: persona.aiDescription,
+        difficulty: difficulty.aiDescription,
+        goal: String(goal.prefix(500)),
+        offerSummary: String(offerSummary.prefix(2_000)),
+        role: String(role.prefix(140)),
+        company: String(company.prefix(140)),
+        resume: AIResumeSnapshot(document: document),
+        evidence: Self.shareVerifiedEvidence
+          ? Array(evidence.filter(\.isVerified).prefix(40)).map(AICareerEvidenceSnapshot.init) : [],
+        messages: messages.suffix(24).map {
+          AINegotiationWireMessage(speaker: $0.speaker, content: String($0.content.prefix(1_500)))
+        }
+      )
+    )
+  }
+
   private func request<Payload: Encodable, Result: Codable>(
     action: ResumeAIAction,
     artifactContext: String? = nil,

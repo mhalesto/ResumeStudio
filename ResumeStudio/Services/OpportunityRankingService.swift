@@ -20,12 +20,17 @@ enum OpportunityRankingService {
 
   static func rank(
     applications: [JobApplication],
-    document: ResumeDocument
+    document: ResumeDocument,
+    contacts: [CareerContact] = [],
+    now: Date = Date()
   ) -> OpportunityRanking {
     let candidates = applications.filter { $0.status == .saved }
-    let scores = candidates.map { score($0, document: document) }
+    let scores = candidates.map { score($0, document: document, contacts: contacts, now: now) }
     return OpportunityRanking(
       scores: scores.sorted { left, right in
+        if left.signalBand == .highRisk && right.signalBand != .highRisk { return false }
+        if right.signalBand == .highRisk && left.signalBand != .highRisk { return true }
+        if left.priorityScore != right.priorityScore { return left.priorityScore > right.priorityScore }
         if left.band != right.band { return left.band.rank < right.band.rank }
         if left.coverage != right.coverage { return (left.coverage ?? 0) > (right.coverage ?? 0) }
         return left.label < right.label
@@ -33,9 +38,16 @@ enum OpportunityRankingService {
     )
   }
 
-  static func score(_ application: JobApplication, document: ResumeDocument) -> OpportunityScore {
+  static func score(
+    _ application: JobApplication,
+    document: ResumeDocument,
+    contacts: [CareerContact] = [],
+    now: Date = Date()
+  ) -> OpportunityScore {
     let advert = application.jobDescription
     guard advert.split(whereSeparator: \.isWhitespace).count >= minimumAdvertWords else {
+      let effortPriority = priority(
+        coverage: nil, application: application, contacts: contacts, now: now)
       return OpportunityScore(
         id: application.id,
         role: application.role,
@@ -44,7 +56,11 @@ enum OpportunityRankingService {
         band: .unscored,
         matchedCount: 0,
         missingCount: 0,
-        topMissing: []
+        topMissing: [],
+        signalBand: application.capturedOpportunity?.opportunitySignal?.band,
+        priorityScore: effortPriority.score,
+        priorityReasons: effortPriority.reasons,
+        deadline: application.deadline
       )
     }
 
@@ -52,6 +68,8 @@ enum OpportunityRankingService {
     let matched = report.matchedKeywords.count
     let total = matched + report.missingKeywords.count
     guard total > 0 else {
+      let effortPriority = priority(
+        coverage: nil, application: application, contacts: contacts, now: now)
       return OpportunityScore(
         id: application.id,
         role: application.role,
@@ -60,7 +78,11 @@ enum OpportunityRankingService {
         band: .unscored,
         matchedCount: 0,
         missingCount: 0,
-        topMissing: []
+        topMissing: [],
+        signalBand: application.capturedOpportunity?.opportunitySignal?.band,
+        priorityScore: effortPriority.score,
+        priorityReasons: effortPriority.reasons,
+        deadline: application.deadline
       )
     }
 
@@ -70,6 +92,8 @@ enum OpportunityRankingService {
       .prefix(missingKeywordLimit)
       .map(\.keyword)
 
+    let effortPriority = priority(
+      coverage: coverage, application: application, contacts: contacts, now: now)
     return OpportunityScore(
       id: application.id,
       role: application.role,
@@ -78,8 +102,68 @@ enum OpportunityRankingService {
       band: band(for: coverage),
       matchedCount: matched,
       missingCount: report.missingKeywords.count,
-      topMissing: topMissing
+      topMissing: topMissing,
+      signalBand: application.capturedOpportunity?.opportunitySignal?.band,
+      priorityScore: effortPriority.score,
+      priorityReasons: effortPriority.reasons,
+      deadline: application.deadline
     )
+  }
+
+  private static func priority(
+    coverage: Double?,
+    application: JobApplication,
+    contacts: [CareerContact],
+    now: Date
+  ) -> (score: Double, reasons: [String]) {
+    var score = (coverage ?? 0) * 0.7
+    var reasons: [String] = []
+    if let coverage {
+      reasons.append("\(Int((coverage * 100).rounded()))% résumé language coverage")
+    } else {
+      reasons.append("Full advert needed for fit scoring")
+    }
+
+    if let signal = application.capturedOpportunity?.opportunitySignal?.band {
+      score += signal.rankingWeight
+      switch signal {
+      case .strong: reasons.append("Strong opportunity signals")
+      case .verify: reasons.append("Verify the listing before tailoring")
+      case .highRisk: reasons.append("Resolve high-risk signals before applying")
+      }
+    }
+
+    if let deadline = application.deadline {
+      let days = Calendar.current.dateComponents(
+        [.day], from: Calendar.current.startOfDay(for: now),
+        to: Calendar.current.startOfDay(for: deadline)
+      ).day ?? 0
+      if days < 0 {
+        score -= 0.2
+        reasons.append("Saved deadline has passed")
+      } else if days <= 2 {
+        score += 0.18
+        reasons.append("Deadline is within two days")
+      } else if days <= 7 {
+        score += 0.12
+        reasons.append("Deadline is within a week")
+      } else if days <= 14 {
+        score += 0.06
+        reasons.append("Deadline is within two weeks")
+      }
+    }
+
+    let warmContact = contacts.first { contact in
+      contact.applicationID == application.id
+        || (!contact.company.isBlank && !application.company.isBlank
+          && contact.company.caseInsensitiveCompare(application.company) == .orderedSame)
+    }
+    if let warmContact {
+      let bonus = min(0.16, 0.1 + Double(warmContact.relationshipStrength ?? 0) * 0.012)
+      score += bonus
+      reasons.append("Warm contact at this employer")
+    }
+    return (max(-1, min(1.2, score)), reasons)
   }
 
   static func band(for coverage: Double) -> OpportunityBand {

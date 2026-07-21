@@ -72,6 +72,7 @@ private final class ResumePDFLayout {
   private let footerTop: CGFloat = 810
   private var cursorY: CGFloat = 0
   private var pageNumber = 0
+  private var signatureWasDrawn = false
 
   /// The column the body flows down. The original catalogue runs it the full
   /// width of the page; the structural templates narrow it and put a second
@@ -162,6 +163,11 @@ private final class ResumePDFLayout {
       beginPage(isFirst: true)
       renderMainSections()
     }
+    // Nothing implicitly closes the final UIGraphicsPDFRenderer page until the
+    // render block returns. Draw the signature now so it stays above the résumé
+    // artwork, and clamp a stale page choice to the last résumé page if a later
+    // content edit shortened the document.
+    finishResumePageSignature(clampToCurrentPage: true)
     drawAttachmentPages()
   }
 
@@ -315,6 +321,7 @@ private final class ResumePDFLayout {
   }
 
   private func beginAttachmentPage() {
+    finishResumePageSignature()
     rendererContext.beginPage()
     pageNumber += 1
     UIColor.white.setFill()
@@ -446,6 +453,10 @@ private final class ResumePDFLayout {
   }
 
   private func beginPage(isFirst: Bool) {
+    // `beginPage` closes the previous sheet. The signature is an annotation, so
+    // it is deliberately the last thing drawn there rather than being covered by
+    // the body text that follows the page background.
+    finishResumePageSignature()
     rendererContext.beginPage()
     pageNumber += 1
 
@@ -472,6 +483,64 @@ private final class ResumePDFLayout {
       sideY = isFirst ? sideFirstPageTop : continuationTop
       drainSideColumn()
     }
+  }
+
+  // MARK: - Hand-drawn signature
+
+  private func finishResumePageSignature(clampToCurrentPage: Bool = false) {
+    guard !signatureWasDrawn, pageNumber > 0, let signature = document.signature,
+      let image = signature.image()
+    else { return }
+
+    let currentPageIndex = pageNumber - 1
+    guard signature.pageIndex == currentPageIndex
+      || (clampToCurrentPage && signature.pageIndex >= currentPageIndex)
+    else { return }
+
+    drawSignature(image, configuration: signature)
+    signatureWasDrawn = true
+  }
+
+  /// Draws a compact signed mark just above the footer. A pale plate keeps black
+  /// ink legible on dark templates and intentionally masks the small patch below
+  /// it, which is preferable to résumé text showing through someone's signature.
+  private func drawSignature(_ image: UIImage, configuration: ResumeSignature) {
+    guard image.size.width > 0, image.size.height > 0 else { return }
+
+    let width = CGFloat(configuration.widthPoints)
+    let imageHeight = min(38, width * image.size.height / image.size.width)
+    let plateSize = CGSize(width: width + 16, height: imageHeight + 12)
+    let x: CGFloat = switch configuration.placement {
+    case .lowerLeading: margin
+    case .lowerCenter: pageBounds.midX - plateSize.width / 2
+    case .lowerTrailing: pageBounds.maxX - margin - plateSize.width
+    }
+    let plate = CGRect(
+      x: x,
+      y: footerTop - plateSize.height - 3,
+      width: plateSize.width,
+      height: plateSize.height
+    )
+
+    let context = rendererContext.cgContext
+    context.saveGState()
+    UIColor.white.withAlphaComponent(plan.darkPaper ? 0.96 : 0.90).setFill()
+    UIBezierPath(roundedRect: plate, cornerRadius: 5).fill()
+    hairlineInk.withAlphaComponent(plan.darkPaper ? 0.36 : 0.55).setStroke()
+    let baseline = UIBezierPath()
+    baseline.move(to: CGPoint(x: plate.minX + 7, y: plate.maxY - 5))
+    baseline.addLine(to: CGPoint(x: plate.maxX - 7, y: plate.maxY - 5))
+    baseline.lineWidth = 0.55
+    baseline.stroke()
+    image.draw(
+      in: CGRect(
+        x: plate.minX + 8,
+        y: plate.minY + 3,
+        width: width,
+        height: imageHeight
+      )
+    )
+    context.restoreGState()
   }
 
   /// Where the body starts on page one. The stacked-portrait templates push it
@@ -1134,6 +1203,10 @@ private final class ResumePDFLayout {
   /// designs receive a real spine; every other design gets a discreet catalogue
   /// code, making continuation pages recognisably part of the same system.
   private func drawAdvancedPageFurniture(_ style: AdvancedResumeStyle) {
+    if style.motif >= 26 {
+      drawStudioPageFurniture(style)
+      return
+    }
     if plan.bodyInset > 0 {
       let spineWidth = max(plan.bodyInset, 24)
       (style.variant.isMultiple(of: 2) ? accent : navy).setFill()
@@ -1176,6 +1249,10 @@ private final class ResumePDFLayout {
   /// of each. The motif controls the geometry; the variant changes alignment,
   /// ornament density, portrait frame and typographic voice.
   private func drawAdvancedPrimaryHeader(_ style: AdvancedResumeStyle) {
+    if style.motif >= 26 {
+      drawStudioMasthead(style)
+      return
+    }
     // The Showcase Collection (mastheads 16-25) is self-contained: each draws its
     // own background, name, portrait and contact, so the original sixteen motifs
     // below are untouched.
@@ -1544,6 +1621,10 @@ private final class ResumePDFLayout {
   }
 
   private func drawAdvancedContinuationHeader(_ style: AdvancedResumeStyle) {
+    if style.motif >= 26 {
+      drawStudioContinuation(style)
+      return
+    }
     if style.motif >= 16 {
       drawShowcaseContinuation(style)
       return
@@ -1577,6 +1658,391 @@ private final class ResumePDFLayout {
       alignment: .right,
       kern: 1
     )
+  }
+
+  // MARK: - Studio Collection (mastheads 26-34)
+
+  /// Repeating details for the nine Studio systems. These are deliberately
+  /// motif-specific: the collection is meant to feel like nine commissioned
+  /// identities, not nine colourways of the same résumé.
+  private func drawStudioPageFurniture(_ style: AdvancedResumeStyle) {
+    let cg = rendererContext.cgContext
+    switch style.motif {
+    case 26:  // Kintsugi — one repaired seam reaches beyond the letterhead.
+      let seam = UIBezierPath()
+      seam.move(to: CGPoint(x: pageBounds.width - 22, y: 244))
+      seam.addLine(to: CGPoint(x: pageBounds.width - 34, y: 420))
+      seam.addLine(to: CGPoint(x: pageBounds.width - 24, y: 596))
+      seam.addLine(to: CGPoint(x: pageBounds.width - 38, y: 782))
+      seam.lineWidth = 1.4
+      UIColor(red: 0.72, green: 0.52, blue: 0.20, alpha: 0.42).setStroke()
+      seam.stroke()
+    case 27:  // Bauhaus — primary blocks pin the page corners.
+      accent.setFill()
+      cg.fill(CGRect(x: 0, y: pageBounds.height - 20, width: 62, height: 20))
+      navy.setFill()
+      cg.fillEllipse(in: CGRect(x: pageBounds.width - 31, y: 14, width: 13, height: 13))
+    case 28:  // Terminal — prompt rail and scan lines.
+      accent.withAlphaComponent(0.45).setFill()
+      cg.fill(CGRect(x: 16, y: 0, width: 2, height: pageBounds.height))
+      UIColor.white.withAlphaComponent(0.035).setFill()
+      for y in stride(from: CGFloat(226), through: pageBounds.height - 36, by: 24) {
+        cg.fill(CGRect(x: 18, y: y, width: pageBounds.width - 34, height: 0.5))
+      }
+    case 29:  // Topograph — survey rings live in the outside field.
+      cg.setStrokeColor(accent.withAlphaComponent(0.13).cgColor)
+      cg.setLineWidth(0.7)
+      for inset in stride(from: CGFloat(0), through: 42, by: 8) {
+        cg.strokeEllipse(
+          in: CGRect(x: pageBounds.width - 80 - inset, y: 360 - inset, width: 116 + inset * 2, height: 92 + inset * 2))
+      }
+    case 30:  // Passport — the page remains a document with a serial border.
+      cg.setStrokeColor(accent.withAlphaComponent(0.28).cgColor)
+      cg.setLineWidth(0.8)
+      cg.stroke(CGRect(x: 20, y: 20, width: pageBounds.width - 40, height: pageBounds.height - 52))
+      drawVerticalText(
+        String(format: "STUDIO / P%02d / %02d", style.ordinal + 1, pageNumber),
+        x: pageBounds.width - 14, bottom: 760, length: 210,
+        font: mediumFont(6.2), color: mutedInk, lineHeight: 8, kern: 1.4)
+    case 31:  // Transit — a route line occupies the inset claimed by the plan.
+      accent.withAlphaComponent(0.42).setFill()
+      cg.fill(CGRect(x: 21, y: 0, width: 3, height: pageBounds.height))
+      for y in [260.0, 430.0, 600.0, 770.0] {
+        paper.setFill()
+        cg.fillEllipse(in: CGRect(x: 16, y: y, width: 13, height: 13))
+        cg.setStrokeColor(accent.cgColor)
+        cg.setLineWidth(2)
+        cg.strokeEllipse(in: CGRect(x: 16, y: y, width: 13, height: 13))
+      }
+    case 32:  // Cutline — crop marks and a diagonal slash.
+      accent.withAlphaComponent(0.55).setStroke()
+      let cut = UIBezierPath()
+      cut.move(to: CGPoint(x: pageBounds.width - 46, y: 250))
+      cut.addLine(to: CGPoint(x: pageBounds.width - 14, y: 218))
+      cut.lineWidth = 2
+      cut.stroke()
+      cg.setStrokeColor(hairlineInk.cgColor)
+      cg.setLineWidth(0.8)
+      cg.stroke(CGRect(x: 18, y: 18, width: pageBounds.width - 36, height: pageBounds.height - 50))
+    case 33:  // Receipt — a perforated docket edge.
+      cg.setStrokeColor(accent.withAlphaComponent(0.4).cgColor)
+      cg.setLineWidth(1)
+      cg.setLineDash(phase: 0, lengths: [3, 4])
+      cg.move(to: CGPoint(x: 28, y: 20))
+      cg.addLine(to: CGPoint(x: 28, y: pageBounds.height - 28))
+      cg.move(to: CGPoint(x: pageBounds.width - 28, y: 20))
+      cg.addLine(to: CGPoint(x: pageBounds.width - 28, y: pageBounds.height - 28))
+      cg.strokePath()
+      cg.setLineDash(phase: 0, lengths: [])
+    default:  // Constellation — quiet stars repeat across the dark sheet.
+      UIColor.white.withAlphaComponent(0.20).setFill()
+      for point in [
+        CGPoint(x: 38, y: 284), CGPoint(x: 548, y: 322), CGPoint(x: 513, y: 486),
+        CGPoint(x: 62, y: 612), CGPoint(x: 530, y: 748),
+      ] {
+        cg.fillEllipse(in: CGRect(x: point.x - 1.5, y: point.y - 1.5, width: 3, height: 3))
+      }
+    }
+  }
+
+  private func drawStudioMasthead(_ style: AdvancedResumeStyle) {
+    let cg = rendererContext.cgContext
+    let w = pageBounds.width
+    let name = displayName
+    let headline = document.personal.headline.trimmingCharacters(in: .whitespacesAndNewlines)
+    let warmPaper = UIColor(red: 0.982, green: 0.963, blue: 0.918, alpha: 1)
+    let gold = UIColor(red: 0.72, green: 0.52, blue: 0.20, alpha: 1)
+    var headerHeight = style.headerHeight
+
+    switch style.motif {
+    case 26:  // Kintsugi — warm paper and a fractured metallic repair.
+      headerHeight = 178
+      warmPaper.setFill()
+      cg.fill(CGRect(x: 0, y: 0, width: w, height: headerHeight))
+      let seam = UIBezierPath()
+      seam.move(to: CGPoint(x: w * 0.62, y: 0))
+      seam.addLine(to: CGPoint(x: w * 0.59, y: 43))
+      seam.addLine(to: CGPoint(x: w * 0.66, y: 75))
+      seam.addLine(to: CGPoint(x: w * 0.61, y: 112))
+      seam.addLine(to: CGPoint(x: w * 0.68, y: headerHeight))
+      seam.lineWidth = 3
+      gold.setStroke()
+      seam.stroke()
+      let branch = UIBezierPath()
+      branch.move(to: CGPoint(x: w * 0.66, y: 75))
+      branch.addLine(to: CGPoint(x: w * 0.75, y: 57))
+      branch.lineWidth = 1.2
+      gold.withAlphaComponent(0.8).setStroke()
+      branch.stroke()
+      drawText("KINTSUGI / CAREER EDITION", rect: CGRect(x: margin, y: 30, width: 280, height: 13), font: mediumFont(7.5), color: gold, lineHeight: 10, kern: 2.2)
+      drawText(name, rect: CGRect(x: margin, y: 50, width: 315, height: 54), font: boldFont(31), color: headingInk, lineHeight: 34)
+      drawText(headline, rect: CGRect(x: margin, y: 108, width: 315, height: 16), font: mediumFont(9.6), color: mutedInk, lineHeight: 13)
+      drawContactStrip(x: margin, y: 145, color: mutedInk, iconColor: gold)
+
+    case 27:  // Bauhaus — primary geometry and asymmetric poster type.
+      headerHeight = 200
+      UIColor(red: 0.97, green: 0.95, blue: 0.90, alpha: 1).setFill()
+      cg.fill(CGRect(x: 0, y: 0, width: w, height: headerHeight))
+      accent.setFill()
+      cg.fillEllipse(in: CGRect(x: w - 142, y: -46, width: 186, height: 186))
+      navy.setFill()
+      cg.fill(CGRect(x: 0, y: 0, width: 52, height: headerHeight))
+      UIColor(red: 0.94, green: 0.72, blue: 0.16, alpha: 1).setFill()
+      cg.fillEllipse(in: CGRect(x: 72, y: 30, width: 30, height: 30))
+      drawText("27", rect: CGRect(x: 9, y: 38, width: 34, height: 42), font: boldFont(29), color: .white, lineHeight: 32, alignment: .center)
+      drawText(name.uppercased(), rect: CGRect(x: 76, y: 72, width: 360, height: 70), font: boldFont(35), color: headingInk, lineHeight: 36)
+      drawText(headline.uppercased(), rect: CGRect(x: 78, y: 145, width: 330, height: 14), font: mediumFont(8.5), color: accent, lineHeight: 11, kern: 1.8)
+      drawContactStrip(x: 78, y: 174, color: mutedInk, iconColor: navy)
+
+    case 28:  // Terminal — a real command prompt, not merely mono type.
+      headerHeight = 174
+      UIColor(red: 0.055, green: 0.067, blue: 0.075, alpha: 1).setFill()
+      cg.fill(CGRect(x: 0, y: 0, width: w, height: headerHeight))
+      accent.setFill()
+      for x in [20.0, 34.0, 48.0] {
+        cg.fillEllipse(in: CGRect(x: x, y: 18, width: 7, height: 7))
+      }
+      UIColor.white.withAlphaComponent(0.12).setFill()
+      cg.fill(CGRect(x: 18, y: 35, width: w - 36, height: 1))
+      drawText("resume-studio ~ % whoami", rect: CGRect(x: 24, y: 48, width: 350, height: 13), font: mediumFont(8.6), color: accent, lineHeight: 11)
+      drawText(name, rect: CGRect(x: 24, y: 68, width: w - 48, height: 37), font: boldFont(26), color: .white, lineHeight: 30)
+      drawText("role: \(headline)", rect: CGRect(x: 24, y: 108, width: w - 48, height: 14), font: regularFont(9), color: UIColor.white.withAlphaComponent(0.70), lineHeight: 12)
+      drawText("status: open_to_impact  |  mode: evidence_first", rect: CGRect(x: 24, y: 130, width: w - 48, height: 13), font: regularFont(7.8), color: accent.withAlphaComponent(0.85), lineHeight: 10)
+      drawContactStrip(x: 24, y: 151, color: UIColor.white.withAlphaComponent(0.70), iconColor: accent)
+
+    case 29:  // Topograph — contour field with a survey coordinate.
+      headerHeight = 186
+      UIColor(red: 0.965, green: 0.972, blue: 0.947, alpha: 1).setFill()
+      cg.fill(CGRect(x: 0, y: 0, width: w, height: headerHeight))
+      cg.setStrokeColor(accent.withAlphaComponent(0.26).cgColor)
+      cg.setLineWidth(0.8)
+      for inset in stride(from: CGFloat(0), through: 60, by: 9) {
+        cg.strokeEllipse(in: CGRect(x: w - 196 - inset, y: -82 - inset / 2, width: 250 + inset * 2, height: 210 + inset * 2))
+      }
+      drawText("34°03′S / 18°25′E", rect: CGRect(x: margin, y: 28, width: 180, height: 12), font: mediumFont(7.2), color: accent, lineHeight: 9, kern: 1.5)
+      drawText(name, rect: CGRect(x: margin, y: 51, width: 350, height: 45), font: boldFont(29), color: headingInk, lineHeight: 32)
+      drawText(headline, rect: CGRect(x: margin, y: 99, width: 350, height: 16), font: mediumFont(9.5), color: mutedInk, lineHeight: 13)
+      accent.setFill()
+      cg.fill(CGRect(x: margin, y: 124, width: 72, height: 3))
+      drawContactStrip(x: margin, y: 148, color: mutedInk, iconColor: accent)
+
+    case 30:  // Passport — an identity dossier with stamps and portrait.
+      headerHeight = 192
+      let green = UIColor(red: 0.12, green: 0.27, blue: 0.24, alpha: 1)
+      green.setFill()
+      cg.fill(CGRect(x: 0, y: 0, width: w, height: headerHeight))
+      UIColor.white.withAlphaComponent(0.09).setFill()
+      cg.fillEllipse(in: CGRect(x: w - 160, y: -80, width: 230, height: 230))
+      let pSize: CGFloat = 104
+      if showsPortrait {
+        drawPortrait(in: CGRect(x: margin, y: 34, width: pSize, height: pSize), ring: .white, ringWidth: 2.5, emptyFill: accent, emptyText: .white, shape: .rounded(5))
+      }
+      let tx = margin + (showsPortrait ? pSize + 24 : 0)
+      drawText("CAREER PASSPORT  /  RS-\(style.ordinal + 1)", rect: CGRect(x: tx, y: 29, width: w - tx - margin, height: 13), font: mediumFont(7.4), color: accent, lineHeight: 10, kern: 1.6)
+      drawText(name.uppercased(), rect: CGRect(x: tx, y: 54, width: w - tx - margin, height: 48), font: boldFont(25), color: .white, lineHeight: 28)
+      drawText(headline.uppercased(), rect: CGRect(x: tx, y: 105, width: w - tx - margin, height: 14), font: mediumFont(8.1), color: UIColor.white.withAlphaComponent(0.72), lineHeight: 11, kern: 1.1)
+      cg.setStrokeColor(accent.cgColor)
+      cg.setLineWidth(1.4)
+      cg.strokeEllipse(in: CGRect(x: w - 120, y: 119, width: 74, height: 42))
+      drawText("VERIFIED", rect: CGRect(x: w - 120, y: 133, width: 74, height: 12), font: boldFont(7), color: accent, lineHeight: 9, alignment: .center, kern: 1.2)
+      drawContactStrip(x: margin, y: 165, color: UIColor.white.withAlphaComponent(0.75), iconColor: accent)
+
+    case 31:  // Transit — routes and stations make a real wayfinding system.
+      headerHeight = 182
+      UIColor(white: 0.985, alpha: 1).setFill()
+      cg.fill(CGRect(x: 0, y: 0, width: w, height: headerHeight))
+      let route = UIBezierPath()
+      route.move(to: CGPoint(x: margin, y: 42))
+      route.addLine(to: CGPoint(x: 180, y: 42))
+      route.addCurve(to: CGPoint(x: 238, y: 92), controlPoint1: CGPoint(x: 216, y: 42), controlPoint2: CGPoint(x: 208, y: 92))
+      route.addLine(to: CGPoint(x: w - margin, y: 92))
+      route.lineWidth = 6
+      route.lineCapStyle = .round
+      accent.setStroke()
+      route.stroke()
+      for point in [CGPoint(x: margin, y: 42), CGPoint(x: 238, y: 92), CGPoint(x: w - margin, y: 92)] {
+        UIColor.white.setFill()
+        cg.fillEllipse(in: CGRect(x: point.x - 7, y: point.y - 7, width: 14, height: 14))
+        cg.setStrokeColor(accent.cgColor)
+        cg.setLineWidth(3)
+        cg.strokeEllipse(in: CGRect(x: point.x - 7, y: point.y - 7, width: 14, height: 14))
+      }
+      drawText("LINE 31 / CAREER ROUTE", rect: CGRect(x: margin, y: 17, width: 220, height: 12), font: boldFont(7.5), color: accent, lineHeight: 10, kern: 1.5)
+      drawText(name, rect: CGRect(x: margin, y: 108, width: 360, height: 38), font: boldFont(27), color: headingInk, lineHeight: 31)
+      drawText(headline, rect: CGRect(x: margin, y: 145, width: 330, height: 15), font: mediumFont(9.4), color: mutedInk, lineHeight: 12)
+      drawContactStrip(x: w - margin - 180, y: 145, color: mutedInk, iconColor: accent)
+
+    case 32:  // Cutline — image crop, diagonal byline and editorial scale.
+      let carriesProfile = plan.profileInHeader && heroCarriesProfile
+      let profileHeight = carriesProfile ? heroProfileHeight : 0
+      headerHeight = max(204, carriesProfile ? 215 + profileHeight : 204)
+      UIColor(white: 0.975, alpha: 1).setFill()
+      cg.fill(CGRect(x: 0, y: 0, width: w, height: headerHeight))
+      let slash = UIBezierPath()
+      slash.move(to: CGPoint(x: w * 0.58, y: 0))
+      slash.addLine(to: CGPoint(x: w, y: 0))
+      slash.addLine(to: CGPoint(x: w, y: 178))
+      slash.addLine(to: CGPoint(x: w * 0.48, y: 116))
+      slash.close()
+      navy.setFill()
+      slash.fill()
+      if showsPortrait {
+        drawPortrait(in: CGRect(x: w - 154, y: 18, width: 120, height: 148), ring: accent, ringWidth: 2, emptyFill: accent, emptyText: .white, shape: .square)
+      }
+      drawText("CUT / 01", rect: CGRect(x: margin, y: 28, width: 130, height: 13), font: mediumFont(7.8), color: accent, lineHeight: 10, kern: 2)
+      drawText(name, rect: CGRect(x: margin, y: 49, width: 330, height: 78), font: boldFont(40), color: headingInk, lineHeight: 41)
+      drawText(headline.uppercased(), rect: CGRect(x: margin, y: 132, width: 310, height: 14), font: mediumFont(8.2), color: accent, lineHeight: 11, kern: 1.6)
+      drawContactStrip(x: margin, y: 164, color: mutedInk, iconColor: accent)
+      if carriesProfile {
+        drawText(document.professionalProfile.trimmingCharacters(in: .whitespacesAndNewlines), rect: CGRect(x: margin, y: 194, width: contentWidth, height: profileHeight), font: regularFont(9.2), color: mutedInk, lineHeight: 13.2)
+      }
+
+    case 33:  // Receipt — a thermal proof-of-work docket.
+      headerHeight = 184
+      UIColor(white: 0.985, alpha: 1).setFill()
+      cg.fill(CGRect(x: 32, y: 0, width: w - 64, height: headerHeight))
+      cg.setStrokeColor(accent.withAlphaComponent(0.45).cgColor)
+      cg.setLineWidth(1)
+      cg.setLineDash(phase: 0, lengths: [4, 4])
+      cg.move(to: CGPoint(x: 46, y: 30)); cg.addLine(to: CGPoint(x: w - 46, y: 30))
+      cg.move(to: CGPoint(x: 46, y: 145)); cg.addLine(to: CGPoint(x: w - 46, y: 145))
+      cg.strokePath(); cg.setLineDash(phase: 0, lengths: [])
+      drawText("RESUME STUDIO / PROOF OF WORK", rect: CGRect(x: 48, y: 43, width: w - 96, height: 13), font: boldFont(7.8), color: accent, lineHeight: 10, alignment: .center, kern: 1.3)
+      drawText(name.uppercased(), rect: CGRect(x: 48, y: 65, width: w - 96, height: 34), font: boldFont(23), color: headingInk, lineHeight: 27, alignment: .center)
+      drawText(headline.uppercased(), rect: CGRect(x: 48, y: 102, width: w - 96, height: 13), font: mediumFont(8), color: mutedInk, lineHeight: 10, alignment: .center)
+      drawText("ITEMS: EXPERIENCE / SKILLS / IMPACT", rect: CGRect(x: 48, y: 121, width: w - 96, height: 12), font: regularFont(7.3), color: mutedInk, lineHeight: 9, alignment: .center)
+      drawCentredContact(y: 157)
+
+    default:  // 34 Constellation — a midnight network around the portrait.
+      let carriesProfile = plan.profileInHeader && heroCarriesProfile
+      let profileHeight = carriesProfile ? heroProfileHeight : 0
+      headerHeight = max(198, carriesProfile ? 205 + profileHeight : 198)
+      UIColor(red: 0.055, green: 0.067, blue: 0.105, alpha: 1).setFill()
+      cg.fill(CGRect(x: 0, y: 0, width: w, height: headerHeight))
+      let stars = [CGPoint(x: 46, y: 32), CGPoint(x: 146, y: 52), CGPoint(x: 260, y: 28), CGPoint(x: 350, y: 76), CGPoint(x: 506, y: 38), CGPoint(x: 448, y: 132)]
+      let network = UIBezierPath()
+      for (index, point) in stars.enumerated() {
+        if index == 0 { network.move(to: point) } else { network.addLine(to: point) }
+      }
+      network.lineWidth = 0.8
+      accent.withAlphaComponent(0.42).setStroke(); network.stroke()
+      for (index, point) in stars.enumerated() {
+        (index.isMultiple(of: 2) ? accent : UIColor.white).setFill()
+        let d: CGFloat = index.isMultiple(of: 2) ? 6 : 3
+        cg.fillEllipse(in: CGRect(x: point.x - d / 2, y: point.y - d / 2, width: d, height: d))
+      }
+      let pSize: CGFloat = 82
+      if showsPortrait {
+        drawPortrait(in: CGRect(x: w - margin - pSize, y: 55, width: pSize, height: pSize), ring: accent, ringWidth: 2.5, emptyFill: navy, emptyText: .white, shape: .circle, outerRing: accent.withAlphaComponent(0.35), outerRingWidth: 5)
+      }
+      let textW = w - margin * 2 - (showsPortrait ? pSize + 24 : 0)
+      drawText("CONSTELLATION / 34", rect: CGRect(x: margin, y: 54, width: textW, height: 13), font: mediumFont(7.5), color: accent, lineHeight: 10, kern: 2)
+      drawText(name, rect: CGRect(x: margin, y: 76, width: textW, height: 48), font: boldFont(29), color: .white, lineHeight: 32)
+      drawText(headline, rect: CGRect(x: margin, y: 126, width: textW, height: 15), font: mediumFont(9.2), color: UIColor.white.withAlphaComponent(0.70), lineHeight: 12)
+      drawContactStrip(x: margin, y: 157, color: UIColor.white.withAlphaComponent(0.65), iconColor: accent)
+      if carriesProfile {
+        drawText(document.professionalProfile.trimmingCharacters(in: .whitespacesAndNewlines), rect: CGRect(x: margin, y: 187, width: contentWidth, height: profileHeight), font: regularFont(9.2), color: UIColor.white.withAlphaComponent(0.76), lineHeight: 13.2)
+      }
+    }
+
+    measuredHeaderBottom = headerHeight + 24
+  }
+
+  private func drawStudioContinuation(_ style: AdvancedResumeStyle) {
+    let cg = rendererContext.cgContext
+    let dark = style.motif == 28 || style.motif == 34
+    if dark {
+      (style.motif == 28 ? UIColor(red: 0.055, green: 0.067, blue: 0.075, alpha: 1) : navy).setFill()
+      cg.fill(CGRect(x: 0, y: 0, width: pageBounds.width, height: 68))
+    } else {
+      (style.motif == 26 ? UIColor(red: 0.982, green: 0.963, blue: 0.918, alpha: 1) : accent.withAlphaComponent(0.07)).setFill()
+      cg.fill(CGRect(x: 0, y: 0, width: pageBounds.width, height: 64))
+    }
+    accent.setFill()
+    cg.fill(CGRect(x: 0, y: dark ? 68 : 64, width: pageBounds.width, height: 3))
+    let prefix = style.motif == 28 ? "> " : style.motif == 31 ? "● " : ""
+    drawText(prefix + displayName, rect: CGRect(x: bodyX, y: 21, width: bodyWidth - 90, height: 24), font: boldFont(17), color: dark ? .white : headingInk, lineHeight: 21)
+    drawText(String(format: "STUDIO %02d / PAGE %02d", style.motif, pageNumber), rect: CGRect(x: pageBounds.width - margin - 150, y: 25, width: 150, height: 12), font: mediumFont(7.2), color: dark ? accent : mutedInk, lineHeight: 9, alignment: .right, kern: 1.2)
+  }
+
+  private func drawStudioSectionTitle(_ title: String, style: AdvancedResumeStyle) {
+    let continued = title.hasSuffix("Continued")
+    if plan.numberedSections && !continued { sectionNumber += 1 }
+    let number = String(format: "%02d", max(sectionNumber, 1))
+    let cg = rendererContext.cgContext
+
+    switch style.motif {
+    case 26:  // A small repaired seam joins number and heading.
+      drawText(number, rect: CGRect(x: bodyX, y: cursorY - 1, width: 28, height: 20), font: boldFont(12), color: UIColor(red: 0.72, green: 0.52, blue: 0.20, alpha: 1), lineHeight: 15)
+      let seam = UIBezierPath(); seam.move(to: CGPoint(x: bodyX + 28, y: cursorY + 7)); seam.addLine(to: CGPoint(x: bodyX + 38, y: cursorY + 2)); seam.addLine(to: CGPoint(x: bodyX + 46, y: cursorY + 11)); seam.lineWidth = 1.5
+      UIColor(red: 0.72, green: 0.52, blue: 0.20, alpha: 1).setStroke(); seam.stroke()
+      drawText(title.uppercased(), rect: CGRect(x: bodyX + 54, y: cursorY + 1, width: bodyWidth - 54, height: 17), font: boldFont(10), color: headingInk, lineHeight: 13, kern: 1)
+    case 27:
+      accent.setFill(); cg.fillEllipse(in: CGRect(x: bodyX, y: cursorY, width: 21, height: 21))
+      drawText(number, rect: CGRect(x: bodyX, y: cursorY + 4, width: 21, height: 13), font: boldFont(7.6), color: .white, lineHeight: 10, alignment: .center)
+      navy.setFill(); cg.fill(CGRect(x: bodyX + 28, y: cursorY, width: min(bodyWidth - 28, 184), height: 21))
+      drawText(title.uppercased(), rect: CGRect(x: bodyX + 39, y: cursorY + 4, width: bodyWidth - 44, height: 14), font: boldFont(9.4), color: .white, lineHeight: 11)
+    case 28:
+      drawText("// \(number) :: \(title.uppercased())", rect: CGRect(x: bodyX, y: cursorY, width: bodyWidth, height: 17), font: boldFont(9), color: accent, lineHeight: 12)
+      UIColor.white.withAlphaComponent(0.16).setFill(); cg.fill(CGRect(x: bodyX, y: cursorY + 21, width: bodyWidth, height: 0.7))
+    case 29:
+      hairlineInk.setFill(); cg.fill(CGRect(x: bodyX, y: cursorY, width: bodyWidth, height: 0.7))
+      cg.setStrokeColor(accent.withAlphaComponent(0.65).cgColor); cg.setLineWidth(1)
+      cg.strokeEllipse(in: CGRect(x: margin, y: cursorY + 4, width: 24, height: 24))
+      drawText(number, rect: CGRect(x: margin, y: cursorY + 10, width: 24, height: 12), font: boldFont(7), color: accent, lineHeight: 9, alignment: .center)
+      drawText(title.uppercased(), rect: CGRect(x: margin + 32, y: cursorY + 7, width: headingGutter + 5, height: 28), font: boldFont(8), color: headingInk, lineHeight: 10, kern: 1.1)
+      cursorY += 14
+      return
+    case 30:
+      let stamp = UIBezierPath(roundedRect: CGRect(x: bodyX, y: cursorY, width: min(bodyWidth, 214), height: 23), cornerRadius: 4)
+      accent.withAlphaComponent(0.10).setFill(); stamp.fill(); accent.setStroke(); stamp.lineWidth = 1; stamp.stroke()
+      drawText("\(number)  \(title.uppercased())", rect: CGRect(x: bodyX + 10, y: cursorY + 5, width: min(bodyWidth - 16, 196), height: 14), font: boldFont(8.6), color: headingInk, lineHeight: 11, kern: 0.7)
+    case 31:
+      accent.withAlphaComponent(0.5).setFill(); cg.fill(CGRect(x: bodyX, y: cursorY + 9, width: bodyWidth, height: 3))
+      paper.setFill(); cg.fillEllipse(in: CGRect(x: bodyX, y: cursorY + 2, width: 17, height: 17))
+      cg.setStrokeColor(accent.cgColor); cg.setLineWidth(2.5); cg.strokeEllipse(in: CGRect(x: bodyX, y: cursorY + 2, width: 17, height: 17))
+      paper.setFill(); cg.fill(CGRect(x: bodyX + 29, y: cursorY, width: min(bodyWidth - 29, 210), height: 22))
+      drawText("\(number) / \(title.uppercased())", rect: CGRect(x: bodyX + 35, y: cursorY + 4, width: bodyWidth - 39, height: 14), font: boldFont(9.2), color: headingInk, lineHeight: 11)
+    case 32:
+      drawText(number, rect: CGRect(x: bodyX, y: cursorY - 5, width: 42, height: 28), font: boldFont(21), color: accent, lineHeight: 24)
+      let slash = UIBezierPath(); slash.move(to: CGPoint(x: bodyX + 42, y: cursorY + 21)); slash.addLine(to: CGPoint(x: bodyX + 58, y: cursorY - 2)); slash.lineWidth = 2; headingInk.setStroke(); slash.stroke()
+      drawText(title.uppercased(), rect: CGRect(x: bodyX + 68, y: cursorY + 2, width: bodyWidth - 68, height: 17), font: boldFont(10.4), color: headingInk, lineHeight: 13, kern: 1.1)
+    case 33:
+      drawText("[\(number)]  \(title.uppercased())", rect: CGRect(x: bodyX, y: cursorY, width: bodyWidth, height: 16), font: boldFont(8.8), color: headingInk, lineHeight: 11, alignment: .center)
+      cg.setStrokeColor(accent.withAlphaComponent(0.55).cgColor); cg.setLineWidth(1); cg.setLineDash(phase: 0, lengths: [3, 3]); cg.move(to: CGPoint(x: bodyX, y: cursorY + 21)); cg.addLine(to: CGPoint(x: bodyX + bodyWidth, y: cursorY + 21)); cg.strokePath(); cg.setLineDash(phase: 0, lengths: [])
+    default:
+      drawText("✦", rect: CGRect(x: bodyX, y: cursorY - 2, width: 18, height: 20), font: boldFont(12), color: accent, lineHeight: 15, alignment: .center)
+      drawText("\(number)  \(title.uppercased())", rect: CGRect(x: bodyX + 25, y: cursorY + 1, width: bodyWidth - 25, height: 17), font: boldFont(9.7), color: .white, lineHeight: 12, kern: 1)
+      UIColor.white.withAlphaComponent(0.22).setFill(); cg.fill(CGRect(x: bodyX + 25, y: cursorY + 21, width: bodyWidth - 25, height: 0.7))
+    }
+    cursorY += 30
+  }
+
+  private func drawStudioReferenceCard(_ style: AdvancedResumeStyle, rect: CGRect) {
+    let cg = rendererContext.cgContext
+    (plan.darkPaper ? faintFill : UIColor.white).setFill()
+    cg.fill(rect)
+    switch style.motif {
+    case 26:
+      cg.setStrokeColor(UIColor(red: 0.72, green: 0.52, blue: 0.20, alpha: 0.55).cgColor); cg.setLineWidth(1); cg.stroke(rect.insetBy(dx: 0.5, dy: 0.5))
+      let seam = UIBezierPath(); seam.move(to: CGPoint(x: rect.minX, y: rect.minY + 31)); seam.addLine(to: CGPoint(x: rect.minX + 13, y: rect.minY + 24)); seam.addLine(to: CGPoint(x: rect.minX + 22, y: rect.minY + 35)); seam.lineWidth = 1.5; UIColor(red: 0.72, green: 0.52, blue: 0.20, alpha: 1).setStroke(); seam.stroke()
+    case 27:
+      accent.setFill(); cg.fillEllipse(in: CGRect(x: rect.maxX - 29, y: rect.minY + 9, width: 18, height: 18)); navy.setFill(); cg.fill(CGRect(x: rect.minX, y: rect.minY, width: 8, height: rect.height))
+    case 28:
+      cg.setStrokeColor(accent.withAlphaComponent(0.6).cgColor); cg.setLineWidth(1); cg.stroke(rect.insetBy(dx: 0.5, dy: 0.5)); drawText(">_", rect: CGRect(x: rect.maxX - 30, y: rect.minY + 7, width: 20, height: 12), font: boldFont(7), color: accent, lineHeight: 9)
+    case 29:
+      cg.setStrokeColor(accent.withAlphaComponent(0.4).cgColor); cg.setLineWidth(0.8); for inset in [4.0, 8.0] { cg.strokeEllipse(in: CGRect(x: rect.maxX - 31 - inset, y: rect.minY + 7 - inset, width: 22 + inset * 2, height: 22 + inset * 2)) }
+    case 30:
+      cg.setStrokeColor(accent.withAlphaComponent(0.6).cgColor); cg.setLineWidth(1.2); cg.stroke(rect.insetBy(dx: 2, dy: 2)); accent.withAlphaComponent(0.10).setFill(); cg.fill(CGRect(x: rect.minX + 2, y: rect.minY + 2, width: rect.width - 4, height: 25))
+    case 31:
+      accent.withAlphaComponent(0.45).setFill(); cg.fill(CGRect(x: rect.minX, y: rect.minY + 18, width: rect.width, height: 3)); paper.setFill(); cg.fillEllipse(in: CGRect(x: rect.minX + 9, y: rect.minY + 13, width: 13, height: 13)); cg.setStrokeColor(accent.cgColor); cg.setLineWidth(2); cg.strokeEllipse(in: CGRect(x: rect.minX + 9, y: rect.minY + 13, width: 13, height: 13))
+    case 32:
+      cg.setStrokeColor(hairlineInk.cgColor); cg.setLineWidth(0.8); cg.stroke(rect.insetBy(dx: 0.5, dy: 0.5)); accent.setFill(); let slash = UIBezierPath(); slash.move(to: CGPoint(x: rect.maxX - 34, y: rect.minY)); slash.addLine(to: CGPoint(x: rect.maxX, y: rect.minY)); slash.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + 34)); slash.close(); slash.fill()
+    case 33:
+      cg.setStrokeColor(accent.withAlphaComponent(0.5).cgColor); cg.setLineWidth(1); cg.setLineDash(phase: 0, lengths: [3, 3]); cg.stroke(rect.insetBy(dx: 1, dy: 1)); cg.setLineDash(phase: 0, lengths: [])
+    default:
+      cg.setStrokeColor(UIColor.white.withAlphaComponent(0.28).cgColor); cg.setLineWidth(0.8); cg.stroke(rect.insetBy(dx: 0.5, dy: 0.5)); accent.setFill(); cg.fillEllipse(in: CGRect(x: rect.maxX - 22, y: rect.minY + 10, width: 5, height: 5))
+    }
   }
 
   // MARK: - Showcase Collection (mastheads 16-25)
@@ -6601,7 +7067,8 @@ private final class ResumePDFLayout {
       .pinnacle, .cobalt, .equinox, .mirage, .parallax, .emblem, .cadence, .citadel, .atrium,
       .zephyr, .cinder, .keystone, .loom, .graphite, .stratus, .vellum,
       .salute, .couture, .medallion, .sable, .terracotta, .lozenge, .circlet, .vogue, .signet,
-      .almanac:
+      .almanac, .kintsugi, .bauhaus, .terminal, .topograph, .passport, .transit, .cutline,
+      .receipt, .constellation:
       if let style = template.advancedStyle {
         drawAdvancedReferenceCard(style, rect: cardRect)
       }
@@ -6801,6 +7268,10 @@ private final class ResumePDFLayout {
   }
 
   private func drawAdvancedSectionTitle(_ title: String, style: AdvancedResumeStyle) {
+    if style.motif >= 26 {
+      drawStudioSectionTitle(title, style: style)
+      return
+    }
     if plan.hangingHeadings {
       hairlineInk.setFill()
       rendererContext.cgContext.fill(
@@ -6914,6 +7385,10 @@ private final class ResumePDFLayout {
   }
 
   private func drawAdvancedReferenceCard(_ style: AdvancedResumeStyle, rect: CGRect) {
+    if style.motif >= 26 {
+      drawStudioReferenceCard(style, rect: rect)
+      return
+    }
     let context = rendererContext.cgContext
     (plan.darkPaper ? faintFill : UIColor.white).setFill()
     context.fill(rect)
@@ -7539,6 +8014,39 @@ private final class ResumePDFLayout {
   private func drawAdvancedBullet(_ style: AdvancedResumeStyle, x: CGFloat, y: CGFloat) {
     let context = rendererContext.cgContext
     accent.setFill()
+    if style.motif >= 26 {
+      switch style.motif {
+      case 26:
+        let seam = UIBezierPath()
+        seam.move(to: CGPoint(x: x - 1, y: y + 4))
+        seam.addLine(to: CGPoint(x: x + 2, y: y))
+        seam.addLine(to: CGPoint(x: x + 5, y: y + 4))
+        seam.lineWidth = 1.4
+        UIColor(red: 0.72, green: 0.52, blue: 0.20, alpha: 1).setStroke()
+        seam.stroke()
+      case 27: context.fillEllipse(in: CGRect(x: x, y: y, width: 5, height: 5))
+      case 28: context.fill(CGRect(x: x, y: y, width: 5, height: 5))
+      case 29:
+        context.setStrokeColor(accent.cgColor); context.setLineWidth(1)
+        context.strokeEllipse(in: CGRect(x: x, y: y, width: 5, height: 5))
+      case 30:
+        context.setStrokeColor(accent.cgColor); context.setLineWidth(1)
+        context.stroke(CGRect(x: x, y: y, width: 5, height: 5))
+      case 31:
+        context.fill(CGRect(x: x - 1, y: y + 2, width: 7, height: 2))
+        paper.setFill(); context.fillEllipse(in: CGRect(x: x, y: y, width: 5, height: 5))
+        context.setStrokeColor(accent.cgColor); context.setLineWidth(1)
+        context.strokeEllipse(in: CGRect(x: x, y: y, width: 5, height: 5))
+      case 32:
+        context.fill(CGRect(x: x + 2, y: y - 1, width: 1.5, height: 7))
+      case 33:
+        context.fill(CGRect(x: x, y: y + 1.5, width: 6, height: 1))
+      default:
+        context.fill(CGRect(x: x + 2, y: y - 1, width: 1.4, height: 7))
+        context.fill(CGRect(x: x - 1, y: y + 2, width: 7, height: 1.4))
+      }
+      return
+    }
     switch style.motif % 4 {
     case 0:
       context.fillEllipse(in: CGRect(x: x, y: y, width: 4, height: 4))
@@ -7682,6 +8190,16 @@ private final class ResumePDFLayout {
       case 23: .baskerville  // Vogue — serif editorial
       case 24: .georgia  // Signet — classic serif
       case 25: .helvetica  // Almanac — data
+      // The Studio Collection.
+      case 26: .iowan  // Kintsugi — warm editorial
+      case 27: .futura  // Bauhaus — geometric poster
+      case 28: .menlo  // Terminal — command line
+      case 29: .avenir  // Topograph — field guide
+      case 30: .helvetica  // Passport — identity document
+      case 31: .avenir  // Transit — wayfinding
+      case 32: .baskerville  // Cutline — editorial
+      case 33: .menlo  // Receipt — thermal docket
+      case 34: .avenir  // Constellation — contemporary story
       default: .avenir
       }
     }

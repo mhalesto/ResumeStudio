@@ -43,6 +43,13 @@ LOCALIZING = [
     re.compile(r'\bLink\("((?:[^"\\]|\\.)+)"'),
     re.compile(r'configurationDisplayName\("((?:[^"\\]|\\.)+)"'),
     re.compile(r'\.description\("((?:[^"\\]|\\.)+)"'),
+    # Spoken copy localizes exactly like visible copy — the literal overloads
+    # take `LocalizedStringKey`. It is easier to miss precisely because nobody
+    # sees it on screen: an untranslated label is silent until a German reader
+    # turns VoiceOver on and hears English.
+    re.compile(r'\.accessibilityLabel\("((?:[^"\\]|\\.)+)"'),
+    re.compile(r'\.accessibilityValue\("((?:[^"\\]|\\.)+)"'),
+    re.compile(r'\.accessibilityHint\("((?:[^"\\]|\\.)+)"'),
 ]
 
 # Property names that read as display copy rather than data or identifiers.

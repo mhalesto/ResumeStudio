@@ -16205,6 +16205,202 @@
     "Every template supports a photo. These designs build their header around it: %@.": {
       "extractionState": "manual",
       "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Jede Vorlage unterstützt ein Foto. Diese Designs bauen ihren Kopfbereich darum herum auf: %@." } } }
+    },
+    "OPPORTUNITY SHIELD": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "OPPORTUNITY SHIELD" } } }
+    },
+    "Strong signals": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Starke Signale" } } }
+    },
+    "Verify first": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Zuerst prüfen" } } }
+    },
+    "High-risk signals": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Signale mit hohem Risiko" } } }
+    },
+    "The listing exposes enough current, specific and verifiable detail to justify the next step.": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Die Stellenanzeige enthält genügend aktuelle, konkrete und überprüfbare Angaben für den nächsten Schritt." } } }
+    },
+    "Some useful signals are missing or unclear. Confirm the role on the employer's own website before sharing sensitive information.": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Einige nützliche Signale fehlen oder sind unklar. Bestätigen Sie die Stelle auf der Website des Arbeitgebers, bevor Sie sensible Daten weitergeben." } } }
+    },
+    "One or more concrete warning signs need attention before you spend time tailoring or share personal information.": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Ein oder mehrere konkrete Warnzeichen sollten geprüft werden, bevor Sie Zeit in die Anpassung investieren oder persönliche Daten weitergeben." } } }
+    },
+    "Limited evidence": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Begrenzte Belege" } } }
+    },
+    "Useful evidence": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Nützliche Belege" } } }
+    },
+    "Strong evidence": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Starke Belege" } } }
+    },
+    "Freshness": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Aktualität" } } }
+    },
+    "Employer verification": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Arbeitgeberprüfung" } } }
+    },
+    "Listing quality": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Qualität der Stellenanzeige" } } }
+    },
+    "Safety": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Sicherheit" } } }
+    },
+    "Not checked online": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Nicht online geprüft" } } }
+    },
+    "Listing still live": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Stellenanzeige noch online" } } }
+    },
+    "Listing removed": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Stellenanzeige entfernt" } } }
+    },
+    "Page could not confirm the role": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Seite konnte die Stelle nicht bestätigen" } } }
+    },
+    "Page could not be reached": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Seite war nicht erreichbar" } } }
+    },
+    "Checking public page…": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Öffentliche Seite wird geprüft …" } } }
+    },
+    "Refresh public-page signals": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Signale der öffentlichen Seite aktualisieren" } } }
+    },
+    "This is an explainable pre-apply check, not proof that a job is real or fake. Verify the role with the employer before sending money or sensitive identity information.": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Dies ist eine nachvollziehbare Prüfung vor der Bewerbung, kein Beweis dafür, dass eine Stelle echt oder gefälscht ist. Bestätigen Sie die Stelle beim Arbeitgeber, bevor Sie Geld oder sensible Identitätsdaten senden." } } }
+    },
+    "Pre-apply check": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Prüfung vor der Bewerbung" } } }
+    },
+    "Recruiter message or contact": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Nachricht oder Kontakt der Personalvermittlung" } } }
+    },
+    "Optional and stored locally with this application. Used only for explainable applicant-safety signals.": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Optional und lokal mit dieser Bewerbung gespeichert. Wird nur für nachvollziehbare Sicherheitssignale verwendet." } } }
+    },
+    "Optional. Add the recruiter's message or contact details to check for payment, sensitive-data, messaging-only and free-email signals. It stays in this application archive.": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Optional. Fügen Sie die Nachricht oder Kontaktdaten der Personalvermittlung hinzu, um Zahlungs-, sensible Daten-, reine Messenger- und kostenlose E-Mail-Signale zu prüfen. Die Angaben bleiben in diesem Bewerbungsarchiv." } } }
+    },
+    "Opportunity Shield": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Opportunity Shield" } } }
+    },
+    "Refresh saved public listings": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Gespeicherte öffentliche Stellenanzeigen aktualisieren" } } }
+    },
+    "When enabled, ResumeStudio rechecks up to four due saved-job URLs when the app returns online, no more than once per URL each day. The website can see your network address and ResumeStudio user agent. Résumé and personal-profile data are never sent with the request.": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Wenn aktiviert, prüft ResumeStudio bis zu vier fällige gespeicherte Stellen-URLs, sobald die App wieder online ist, höchstens einmal pro URL und Tag. Die Website kann Ihre Netzwerkadresse und den ResumeStudio-Benutzeragenten sehen. Lebenslauf- und persönliche Profildaten werden nie mit der Anfrage gesendet." } } }
+    },
+    "Add attachments": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Anlagen hinzufügen" } } }
+    },
+    "Attachments (%lld)": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Anlagen (%lld)" } } }
+    },
+    "Centre": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Mitte" } } }
+    },
+    "Clear": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Löschen" } } }
+    },
+    "Draw signature": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Unterschrift zeichnen" } } }
+    },
+    "Edit signature": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Unterschrift bearbeiten" } } }
+    },
+    "Left": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Links" } } }
+    },
+    "Page %lld of %lld": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Seite %1$lld von %2$lld" } } }
+    },
+    "Page preview": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Seitenvorschau" } } }
+    },
+    "Page %lld signature placement preview": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Vorschau der Unterschriftsplatzierung auf Seite %lld" } } }
+    },
+    "Placement": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Platzierung" } } }
+    },
+    "Position": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Position" } } }
+    },
+    "Remove signature": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Unterschrift entfernen" } } }
+    },
+    "Remove this signature?": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Diese Unterschrift entfernen?" } } }
+    },
+    "Right": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Rechts" } } }
+    },
+    "Sign document": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Dokument unterschreiben" } } }
+    },
+    "Size": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Größe" } } }
+    },
+    "The résumé content stays unchanged; only the hand-drawn mark is removed.": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Der Inhalt des Lebenslaufs bleibt unverändert; nur die handgezeichnete Unterschrift wird entfernt." } } }
+    },
+    "The signature is placed just above the footer and does not add a page or change searchable résumé text.": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Die Unterschrift wird direkt über der Fußzeile platziert. Sie fügt keine Seite hinzu und verändert den durchsuchbaren Lebenslauftext nicht." } } }
+    },
+    "Use a finger or Apple Pencil. Your signature stays inside this résumé on this device and in your own synced résumé library.": {
+      "extractionState": "manual",
+      "localizations": { "de": { "stringUnit": { "state": "translated", "value": "Verwenden Sie einen Finger oder Apple Pencil. Ihre Unterschrift bleibt in diesem Lebenslauf auf diesem Gerät und in Ihrer eigenen synchronisierten Lebenslaufbibliothek." } } }
     }
   },
   "version": "1.1"
